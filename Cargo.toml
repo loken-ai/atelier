@@ -1,0 +1,71 @@
+[package]
+name = "atelier"
+version = "0.1.0"
+edition = "2021"
+description = "Desktop client for LOKEN: chat, and a studio for image, audio and video generation"
+repository = "https://github.com/loken-ai/atelier"
+license = "MIT OR Apache-2.0"
+keywords = ["gui", "llm", "multimodal"]
+categories = ["gui", "multimedia"]
+
+[[bin]]
+name = "atelier"
+path = "src/main.rs"
+
+[dependencies]
+# `inspection` exposes the AccessKit tree so the headless test harness can drive
+# the app without a display server.
+eframe = { version = "0.35", default-features = false, features = ["glow", "default_fonts", "inspection"] }
+egui = "0.35"
+egui_extras = { version = "0.35", features = ["image", "svg"] }
+egui_commonmark = "0.24"
+
+# In-process audio output: the portable device layer (ALSA / WASAPI / CoreAudio).
+# Decoding and mixing are ours.
+cpal = { version = "0.15", optional = true }
+
+rfd = "0.17"
+image = "0.25"
+rusty_h264 = { version = "0.3", default-features = false }
+mp4 = "0.14"
+directories = "6.0"
+toml = "1.1"
+base64 = "0.22"
+reqwest = { version = "0.13", features = ["json", "blocking", "stream", "multipart"] }
+tokio = { version = "1.0", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4.5", features = ["derive"] }
+thiserror = "2.0"
+anyhow = "1.0"
+
+# `wayland` and `x11` are the LINUX platform backends: without one of them the
+# eframe -> winit chain has no platform implementation and the build fails with
+# winit's "platform not supported". They are meaningless elsewhere, and enabling
+# them there pulls x11-dl into the build, so they live here.
+[target.'cfg(target_os = "linux")'.dependencies]
+eframe = { version = "0.35", default-features = false, features = ["glow", "default_fonts", "wayland", "x11", "inspection"] }
+
+[dev-dependencies]
+# Tests only - temporary directory naming for parallel isolation. Kept out of the
+# regular dependencies so release builds do not link it.
+uuid = { version = "1.0", features = ["v4"] }
+# Headless egui harness reading the AccessKit tree: drives the Media Studio panels
+# so a broken kind or arm is caught without a display server.
+egui_kittest = "0.35.0"
+
+[features]
+# In-process audio output, on by default: it is what makes playback behave the same
+# on every platform. Needs the ALSA development headers on Linux (libasound2-dev);
+# Windows and macOS need no system package. Without it the transport reports
+# "no audio output device" rather than quietly behaving differently, so this is a
+# build requirement and never a behavioural switch.
+default = ["native-audio"]
+native-audio = ["dep:cpal"]
+
+[profile.release]
+opt-level = 3
+lto = "thin"
