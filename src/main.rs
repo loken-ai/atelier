@@ -18,6 +18,7 @@ mod audio_playback;
 mod chat_tab;
 mod config;
 mod dialog;
+mod hardware_tab;
 mod icons;
 mod image_viewer;
 mod media_tab;
