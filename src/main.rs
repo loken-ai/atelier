@@ -14,7 +14,11 @@
 pub mod api;
 mod app;
 mod config;
+mod icons;
 mod state;
+mod texture;
+mod theme;
+pub mod ui;
 
 use clap::Parser;
 use eframe::egui;
