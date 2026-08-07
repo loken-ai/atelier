@@ -16,6 +16,7 @@ mod app;
 mod config;
 mod icons;
 mod state;
+mod task;
 mod texture;
 mod theme;
 pub mod ui;
