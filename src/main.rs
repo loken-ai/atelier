@@ -14,11 +14,14 @@
 pub mod api;
 mod app;
 mod config;
+mod dialog;
 mod icons;
 mod state;
 mod task;
 mod texture;
 mod theme;
+mod toast;
+mod timefmt;
 pub mod ui;
 
 use clap::Parser;
