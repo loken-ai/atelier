@@ -13,6 +13,7 @@
 
 pub mod api;
 mod app;
+mod chat_tab;
 mod config;
 mod dialog;
 mod icons;
