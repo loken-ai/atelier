@@ -17,6 +17,7 @@ mod chat_tab;
 mod config;
 mod dialog;
 mod icons;
+mod modality;
 mod state;
 mod task;
 mod texture;
