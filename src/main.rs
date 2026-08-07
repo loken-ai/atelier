@@ -11,6 +11,7 @@
 //! - CLI commands (load, unload, list, pull, etc.)
 //! - Hardware monitoring (via server API)
 
+pub mod api;
 
 use clap::Parser;
 use eframe::egui;
