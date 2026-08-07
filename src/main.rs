@@ -13,6 +13,8 @@
 
 pub mod api;
 mod app;
+mod audio_engine;
+mod audio_playback;
 mod chat_tab;
 mod config;
 mod dialog;
