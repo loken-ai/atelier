@@ -12,6 +12,9 @@
 //! - Hardware monitoring (via server API)
 
 pub mod api;
+mod app;
+mod config;
+mod state;
 
 use clap::Parser;
 use eframe::egui;
