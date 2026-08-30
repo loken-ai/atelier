@@ -115,8 +115,9 @@ pub fn top_bar(
             ui.horizontal(|ui| {
                 ui.set_min_height(32.0);
 
-                // App title
-                ui.label(RichText::new("LLM Server").size(16.0).strong().color(text_primary));
+                // App title. It named the server before, which is the one thing this
+                // window is not: it holds no model and can point at any backend.
+                ui.label(RichText::new("Atelier").size(16.0).strong().color(text_primary));
                 ui.add_space(16.0);
 
                 // Server status dot + label. The short_status text

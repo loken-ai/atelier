@@ -82,7 +82,7 @@ fn chat_tab() {
 
     let mut cache = egui_commonmark::CommonMarkCache::default();
     let mut textures: HashMap<String, egui::TextureHandle> = HashMap::new();
-    shoot("gui-chat", (1000.0, 640.0), move |ui| {
+    shoot("atelier-chat", (1000.0, 640.0), move |ui| {
         let _ = crate::chat_tab::render(
             ui,
             &mut chat,
@@ -108,7 +108,7 @@ fn media_tab() {
     };
 
     let mut textures: HashMap<String, egui::TextureHandle> = HashMap::new();
-    shoot("gui-media", (1000.0, 640.0), move |ui| {
+    shoot("atelier-media", (1000.0, 640.0), move |ui| {
         let mut player = crate::audio_playback::AudioPlayer::default();
         let mut video = crate::video_engine::VideoPlayback::default();
         let _ = crate::media_tab::render(

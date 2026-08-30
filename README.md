@@ -10,9 +10,9 @@ cargo build --release      # target/release/atelier
 It talks to the server over HTTP and holds no model itself, so it runs on a laptop while the
 work happens on the box with the cards.
 
-![Chat](docs/img/gui-chat.png)
+![Chat](docs/img/atelier-chat.png)
 
-![Media Studio](docs/img/gui-media.png)
+![Media Studio](docs/img/atelier-media.png)
 
 Both images are rendered by the test suite from state written in `src/screenshots.rs`, so they
 show the current layout and can show no real address, path or prompt. Regenerate them with

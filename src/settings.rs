@@ -95,7 +95,7 @@ pub fn render_edit_modal(
                         ui.selectable_value(
                             &mut profile.api_type,
                             ApiType::Loken,
-                            "LLM Server",
+                            "LOKEN",
                         );
                         ui.selectable_value(&mut profile.api_type, ApiType::Ollama, "Ollama");
                         ui.selectable_value(&mut profile.api_type, ApiType::OpenApi, "OpenAPI");

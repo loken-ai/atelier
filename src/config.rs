@@ -4,7 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Default URL of the local loken binary. Hardcoded into
+/// Default URL of the local LOKEN binary. Hardcoded into
 /// AppConfig::default(), the seed Default profile, the Settings tab's
 /// Quick Connect chip, and the "+ New Profile" template — keeping
 /// them in lockstep matters because changing one without the others
@@ -30,7 +30,7 @@ pub enum ApiType {
 impl std::fmt::Display for ApiType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ApiType::Loken => write!(f, "LLM Server"),
+            ApiType::Loken => write!(f, "LOKEN"),
             ApiType::Ollama => write!(f, "Ollama"),
             ApiType::OpenApi => write!(f, "OpenAPI"),
         }
@@ -455,7 +455,7 @@ mod tests {
 
     #[test]
     fn app_config_default_has_two_profiles_with_unique_names() {
-        // AppConfig::default seeds two profiles (Default for loken
+        // AppConfig::default seeds two profiles (Default for LOKEN
         // and Ollama for vanilla Ollama). Pin both so a future change
         // to remove or rename either can't silently break the
         // first-run UX where the Settings tab expects to find them.
@@ -484,7 +484,7 @@ mod tests {
 
     #[test]
     fn app_config_default_endpoints_match_well_known_ports() {
-        // Default's loken URL must point at loken's canonical
+        // Default's LOKEN URL must point at LOKEN's canonical
         // port (11435) so first-run users hit a server that exists if
         // they followed the README. Ollama profile's URL must point at
         // the upstream Ollama port (11434).
@@ -506,7 +506,7 @@ mod tests {
         // (Loken → 'LOKEN' or 'Server', etc.) doesn't
         // silently change the dropdown label and confuse users
         // mid-session.
-        assert_eq!(ApiType::Loken.to_string(), "LLM Server");
+        assert_eq!(ApiType::Loken.to_string(), "LOKEN");
         assert_eq!(ApiType::Ollama.to_string(),    "Ollama");
         assert_eq!(ApiType::OpenApi.to_string(),   "OpenAPI");
     }
@@ -548,8 +548,8 @@ mod tests {
         assert!(o.num_ctx >= 512,                       "ollama num_ctx must be sane");
 
         let l = LokenParams::default();
-        assert!((0.0..=2.0).contains(&l.temperature),  "loken temp = {}", l.temperature);
-        assert!(l.context_length >= 512,               "loken context too small");
+        assert!((0.0..=2.0).contains(&l.temperature),  "LOKEN temp = {}", l.temperature);
+        assert!(l.context_length >= 512,               "LOKEN context too small");
 
         let p = OpenApiParams::default();
         assert!((0.0..=2.0).contains(&p.temperature),  "openapi temp = {}", p.temperature);
@@ -583,7 +583,7 @@ mod tests {
         assert!((p.ollama_params.temperature - 0.15).abs() < 1e-6,
             "ollama temperature default must be 0.15 (post-migration)");
         assert!((p.loken_params.temperature - 0.15).abs() < 1e-6,
-            "loken temperature default must be 0.15 (post-migration)");
+            "LOKEN temperature default must be 0.15 (post-migration)");
     }
 
     #[test]

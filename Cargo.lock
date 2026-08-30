@@ -487,6 +487,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "atelier"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base64",
+ "chrono",
+ "clap",
+ "cpal",
+ "directories",
+ "eframe",
+ "egui",
+ "egui_commonmark",
+ "egui_extras",
+ "egui_kittest",
+ "image",
+ "mp4",
+ "reqwest",
+ "rfd",
+ "rusty_h264",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.19",
+ "tokio",
+ "toml",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
 name = "atomic-waker"
 version = "1.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2755,36 +2785,6 @@ name = "litrs"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "11d3d7f243d5c5a8b9bb5d6dd2b1602c0cb0b9db1621bafc7ed66e35ff9fe092"
-
-[[package]]
-name = "atelier"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "base64",
- "chrono",
- "clap",
- "cpal",
- "directories",
- "eframe",
- "egui",
- "egui_commonmark",
- "egui_extras",
- "egui_kittest",
- "image",
- "mp4",
- "reqwest",
- "rfd",
- "rusty_h264",
- "serde",
- "serde_json",
- "thiserror 2.0.19",
- "tokio",
- "toml",
- "tracing",
- "tracing-subscriber",
- "uuid",
-]
 
 [[package]]
 name = "lock_api"

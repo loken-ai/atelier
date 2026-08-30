@@ -774,7 +774,7 @@ fn render_chat_header(
                         ui.label(RichText::new(label.as_ref()).size(11.0).color(theme::PRIMARY));
                     });
                     let api_kind = match profile.api_type {
-                        crate::config::ApiType::Loken => "LLM Server",
+                        crate::config::ApiType::Loken => "LOKEN",
                         crate::config::ApiType::Ollama    => "Ollama",
                         crate::config::ApiType::OpenApi   => "OpenAPI",
                     };

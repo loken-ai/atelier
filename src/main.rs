@@ -138,7 +138,7 @@ fn main() -> eframe::Result<()> {
             persisted.window_height.unwrap_or(750.0),
         ])
         .with_min_inner_size([600.0, 400.0])
-        .with_title("LLM GUI");
+        .with_title("Atelier");
     // On most window managers a maximised request wins over an explicit size, so
     // the size below only applies when the user has un-maximised. Absent state
     // means first run, which starts maximised.
@@ -151,7 +151,7 @@ fn main() -> eframe::Result<()> {
     };
 
     eframe::run_native(
-        "LLM GUI",
+        "Atelier",
         options,
         Box::new(|cc| {
             // Install egui_extras image loaders (SVG + raster) so the
