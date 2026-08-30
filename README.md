@@ -26,8 +26,12 @@ show the current layout and can show no real address, path or prompt. Regenerate
   owning its own parameters so switching between them keeps what you set.
 - **A viewer** for what comes back: fullscreen, zoom, and a strip of earlier generations that
   a new run does not wipe.
-- **Hardware and server views**: per-device topology, what is loaded where, and the server's
-  own log.
+- **A model list, a terminal and the server's own log**, for loading, pulling and reading what
+  the server says while it works.
+
+What each machine in a cluster is doing is not here: it lives in
+[atlas](https://github.com/loken-ai/atlas). One machine's view of its own cards could never
+show the others.
 
 ## Where it is careful
 

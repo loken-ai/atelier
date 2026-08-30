@@ -3,13 +3,14 @@
 // builds keep it, because that is where the tracing output is read from.
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
-//! LLM GUI Client
+//! Atelier - the desktop client for LOKEN.
 //!
-//! A standalone desktop GUI that connects to any Ollama/OpenAI-compatible server.
-//! Features:
-//! - Chat with LLM models
-//! - CLI commands (load, unload, list, pull, etc.)
-//! - Hardware monitoring (via server API)
+//! A chat window and a studio for generating images, audio, speech and video, against a
+//! server running on your own machine. It holds no model itself and speaks HTTP, so it also
+//! talks to Ollama or any OpenAI-compatible endpoint.
+//!
+//! What the cluster is doing lives in atlas, not here: one machine's view of its own cards
+//! could never show the others.
 
 pub mod api;
 mod app;

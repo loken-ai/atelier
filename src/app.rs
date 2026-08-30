@@ -537,10 +537,10 @@ async fn speech_body_to_output(
 // Command-line Arguments
 // ============================================================================
 
-/// LLM GUI - Standalone LLM application with optional embedded server
+/// Atelier - chat and media generation against a local inference server.
 #[derive(Parser)]
 #[command(name = "atelier")]
-#[command(about = "LLM GUI - Chat with LLM models, optional embedded server")]
+#[command(about = "Atelier - chat and media generation against a local inference server")]
 #[command(version)]
 pub struct Args {
     /// Model to load on startup
