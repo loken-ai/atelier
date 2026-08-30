@@ -8,6 +8,12 @@
 pub struct ServerConfig {
     pub host: String,
     pub port: u16,
+    /// What the server declares here and this editor does not show. Every struct needs its
+    /// own: a passthrough on the parent does not catch unknown keys inside a table the parent
+    /// names, which left seven keys still being deleted after the first fix - including
+    /// `require_auth` and `api_keys`.
+    #[serde(flatten)]
+    pub passthrough: std::collections::BTreeMap<String, toml::Value>,
 }
 
 impl Default for ServerConfig {
@@ -15,6 +21,7 @@ impl Default for ServerConfig {
         Self {
             host: "127.0.0.1".to_string(),
             port: 11435,
+            passthrough: Default::default(),
         }
     }
 }
@@ -36,6 +43,12 @@ pub struct InferenceConfigToml {
     pub use_quantized_gpu: Option<bool>,
     pub cpu_threads: Option<usize>,
     pub disable_arc_layers: Option<bool>,
+    /// What the server declares here and this editor does not show. Every struct needs its
+    /// own: a passthrough on the parent does not catch unknown keys inside a table the parent
+    /// names, which left seven keys still being deleted after the first fix - including
+    /// `require_auth` and `api_keys`.
+    #[serde(flatten)]
+    pub passthrough: std::collections::BTreeMap<String, toml::Value>,
 }
 
 /// Root configuration structure (local copy for GUI editing)
@@ -45,6 +58,16 @@ pub struct Config {
     pub inference: InferenceConfigToml,
     pub ollama_models_dir: Option<String>,
     pub huggingface_models_dir: Option<String>,
+    /// Everything the server understands and this editor does not.
+    ///
+    /// Without it a save DELETES what it cannot show, because serialising this struct writes
+    /// exactly its own fields: opening Settings on a clustered node and pressing save dropped
+    /// the whole `[cluster]` block, the whole `[energy]` block, and every authentication and
+    /// rate-limit setting - eighteen keys out of thirty-two. Carrying the rest through is the
+    /// fix that does not need a second hand-maintained copy of the server's schema, which is
+    /// what drifted in the first place.
+    #[serde(flatten)]
+    pub passthrough: std::collections::BTreeMap<String, toml::Value>,
 }
 
 impl Config {
@@ -106,6 +129,14 @@ pub struct ConfigEditorState {
     pub use_quantized_gpu: bool,
     pub cpu_threads_str: String,
 
+    /// Everything the loaded file held that this editor has no control for, kept so that a
+    /// save writes it back untouched. One per section, because an unknown key inside
+    /// `[server]` is not carried by a passthrough on the root. Without these, saving is
+    /// destructive: see the test at the end of this file.
+    pub passthrough: std::collections::BTreeMap<String, toml::Value>,
+    pub server_passthrough: std::collections::BTreeMap<String, toml::Value>,
+    pub inference_passthrough: std::collections::BTreeMap<String, toml::Value>,
+
     // UI state
     pub error_message: Option<String>,
 
@@ -155,6 +186,9 @@ impl ConfigEditorState {
             use_quantized_gpu: inference.use_quantized_gpu.unwrap_or(true),
             cpu_threads_str: inference.cpu_threads.unwrap_or(0).to_string(),
 
+            passthrough: config.passthrough.clone(),
+            server_passthrough: server.passthrough.clone(),
+            inference_passthrough: inference.passthrough.clone(),
             error_message: None,
             inapp_picker: None,
         }
@@ -220,11 +254,14 @@ impl ConfigEditorState {
             .map_err(|_| "Invalid cpu_threads (must be a positive integer)".to_string())?;
 
         Ok(Config {
+            passthrough: self.passthrough.clone(),
             server: Some(ServerConfig {
                 host: self.server_host.clone(),
                 port: server_port,
+                passthrough: self.server_passthrough.clone(),
             }),
             inference: InferenceConfigToml {
+                passthrough: self.inference_passthrough.clone(),
                 model_id: self.model_id.clone(),
                 model_source: None,
                 max_tokens: Some(max_tokens),
@@ -280,6 +317,9 @@ mod to_config_range_tests {
             force_gpu_layers_str: String::new(),
             use_quantized_gpu: true,
             cpu_threads_str: "0".into(),
+            passthrough: Default::default(),
+            server_passthrough: Default::default(),
+            inference_passthrough: Default::default(),
             error_message: None,
             inapp_picker: None,
         }
@@ -400,6 +440,7 @@ mod to_config_range_tests {
         // Option<…>::unwrap_or default so a quiet change reaches a
         // power user as a value swap, not a silent reset.
         let empty_inference = InferenceConfigToml {
+            passthrough: Default::default(),
             model_id: "llama3:latest".into(),
             model_source: None,
             max_tokens: None,
@@ -416,6 +457,7 @@ mod to_config_range_tests {
             disable_arc_layers: None,
         };
         let cfg = Config {
+            passthrough: Default::default(),
             server: None,
             inference: empty_inference,
             ollama_models_dir: None,
@@ -454,6 +496,7 @@ mod to_config_range_tests {
         // a value, from_config must thread it through unchanged
         // (not silently replace it with the default).
         let inf = InferenceConfigToml {
+            passthrough: Default::default(),
             model_id: "qwen3-coder:30b".into(),
             model_source: Some("ollama".into()),
             max_tokens: Some(8192),
@@ -470,7 +513,8 @@ mod to_config_range_tests {
             disable_arc_layers: Some(true),
         };
         let cfg = Config {
-            server: Some(ServerConfig { host: "0.0.0.0".into(), port: 8080 }),
+            passthrough: Default::default(),
+            server: Some(ServerConfig { host: "0.0.0.0".into(), port: 8080, passthrough: Default::default() }),
             inference: inf,
             ollama_models_dir: Some("/data/ollama".into()),
             huggingface_models_dir: Some("/data/hf".into()),
@@ -506,5 +550,101 @@ mod to_config_range_tests {
         let mut s = valid();
         s.temperature_str = "2.0".into();
         assert!(s.to_config().is_ok());
+    }
+}
+
+#[cfg(test)]
+mod every_config_field_reaches_the_editor {
+    //! The server's `config.toml` is the serialised state this editor claims to edit. This
+    //! walks it key by key and fails on any key the editor cannot carry - the shape of test
+    //! that, in another catalogue of editors, found a missing control in almost every one.
+    //!
+    //! It walks LEAVES, including inside tables: a shallow walk over top-level keys finds
+    //! nothing, because everything interesting lives under `[server]`, `[inference]`,
+    //! `[energy]` and `[cluster]`.
+
+    use super::Config;
+
+    /// Every leaf of a TOML document, as `section.key`.
+    fn leaves(doc: &toml::Value, prefix: &str, out: &mut Vec<String>) {
+        match doc {
+            toml::Value::Table(t) => {
+                for (k, v) in t {
+                    let path = if prefix.is_empty() { k.clone() } else { format!("{prefix}.{k}") };
+                    leaves(v, &path, out);
+                }
+            }
+            _ => out.push(prefix.to_string()),
+        }
+    }
+
+    /// A config carrying every field the server declares, one node would really write.
+    const FULL: &str = r#"
+ollama_models_dir = "/models/ollama"
+huggingface_models_dir = "/models/hf"
+lora_dir = "/models/lora"
+
+[server]
+host = "0.0.0.0"
+port = 11435
+require_auth = true
+api_keys = ["k"]
+allowed_origins = ["https://example.test"]
+rate_limit_per_minute = 60
+rate_limit_burst = 10
+
+[inference]
+model_id = "qwen3:1.7b"
+max_tokens = 2048
+context_length = 4096
+temperature = 0.15
+top_p = 0.9
+top_k = 50
+seed = 42
+max_gpu_memory_fraction = 0.95
+use_quantized_gpu = true
+cpu_threads = 0
+kv_quant = "q8"
+continuous_batching = true
+
+[energy]
+enabled = true
+carbon_intensity = 55.0
+cpu_tdp_w = 125.0
+water_l_per_kwh = 1.8
+
+[cluster]
+name = "home"
+node_id = "desktop"
+advertise = "http://192.0.2.10:11435"
+join = ["http://192.0.2.11:11435"]
+gossip_interval_ms = 1000
+min_speedup = 1.15
+"#;
+
+    /// Load a full config, save it back, and compare key sets. A field the editor does not
+    /// know is a field the editor DELETES: `save_default` serialises its own struct, so the
+    /// round trip is destructive, not merely incomplete. Someone who opens Settings on a
+    /// clustered node and presses save loses the whole `[cluster]` block and every
+    /// authentication setting.
+    #[test]
+    fn saving_a_config_does_not_drop_what_the_editor_cannot_show() {
+        let original: toml::Value = toml::from_str(FULL).expect("fixture parses");
+        let mut before = Vec::new();
+        leaves(&original, "", &mut before);
+
+        let parsed: Config = toml::from_str(FULL).expect("the editor parses a full config");
+        let round_tripped = toml::to_string_pretty(&parsed).expect("serialise");
+        let after_doc: toml::Value = toml::from_str(&round_tripped).expect("re-parse");
+        let mut after = Vec::new();
+        leaves(&after_doc, "", &mut after);
+
+        let lost: Vec<&String> = before.iter().filter(|k| !after.contains(k)).collect();
+        assert!(
+            lost.is_empty(),
+            "{} of {} keys are dropped by a save: {lost:?}",
+            lost.len(),
+            before.len()
+        );
     }
 }
