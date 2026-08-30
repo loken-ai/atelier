@@ -293,23 +293,6 @@ pub fn sidebar(
             }
             ui.add_space(4.0);
 
-            // Collapse/expand toggle. A chevron pointing "«" (collapse)
-            // when expanded and "»" (expand) when collapsed — the glyph
-            // shows the direction the rail will move. Full-width button
-            // so it stays clickable in the 56px collapsed rail.
-            let (glyph, tip) = if sidebar_expanded {
-                ("\u{00AB}", "Collapse sidebar to icons only")
-            } else {
-                ("\u{00BB}", "Expand sidebar to show labels")
-            };
-            let toggle = egui::Button::new(RichText::new(glyph).size(16.0).color(toggle_color))
-                .fill(Color32::TRANSPARENT)
-                .min_size(Vec2::new(ui.available_width(), 24.0));
-            if ui.add(toggle).on_hover_text(tip).clicked() {
-                toggle_clicked = true;
-            }
-            ui.add_space(4.0);
-
             for item in NAV_ITEMS {
                 render_nav_item(ui, current, &item.icon, item.label, item.tip, item.section, item.accent, dark, sidebar_expanded);
                 ui.add_space(2.0);
@@ -507,5 +490,35 @@ mod tests {
         use crate::state::ConnectionState;
         let (_, label) = classify_top_bar_status(ConnectionState::Disconnected, true);
         assert_eq!(label, "Online");
+    }
+
+    /// The sidebar draws its collapse toggle once. The block was pasted twice, which put two
+    /// identical chevron buttons at the top of the rail; it was invisible in review and
+    /// obvious the moment the window was rendered.
+    #[test]
+    fn the_sidebar_has_one_collapse_toggle() {
+        fn chevrons(expanded: bool) -> usize {
+            use egui_kittest::kittest::NodeT;
+            let mut section = Section::Chat;
+            let mut harness = egui_kittest::Harness::new_ui(move |ui| {
+                sidebar(ui, &mut section, true, expanded);
+            });
+            harness.run();
+            harness
+                .root()
+                .children_recursive()
+                .filter(|n| {
+                    let ak = n.accesskit_node();
+                    let text = format!(
+                        "{}{}",
+                        ak.label().unwrap_or_default(),
+                        ak.value().unwrap_or_default()
+                    );
+                    text.contains('\u{00AB}') || text.contains('\u{00BB}')
+                })
+                .count()
+        }
+        assert_eq!(chevrons(true), 1, "expanded rail");
+        assert_eq!(chevrons(false), 1, "collapsed rail");
     }
 }
