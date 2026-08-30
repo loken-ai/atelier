@@ -57,7 +57,7 @@ pub fn render(ui: &mut egui::Ui, cli: &mut CLIState, _models: &ModelState) {
                     }
                     ui.add_space(8.0);
                     ui.label(
-                        RichText::new("Press \u{2191} / \u{2193} to recall past commands.")
+                        RichText::new("Press Up / Down to recall past commands.")
                             .size(11.0)
                             .italics()
                             .color(text_muted),
@@ -167,7 +167,7 @@ fn render_input_area(
             let response = ui.add(
                 egui::TextEdit::singleline(&mut cli.input)
                     .desired_width(ui.available_width())
-                    .hint_text("Enter command...  (\u{2191}/\u{2193} for history)")
+                    .hint_text("Enter command...  (Up/Down for history)")
                     .id_salt("cli_input"),
             );
 

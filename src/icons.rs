@@ -20,6 +20,7 @@ use eframe::egui;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Icon {
     Attach,
+    Bot,
     Bolt,
     Chat,
     Check,
@@ -46,6 +47,7 @@ pub enum Icon {
     Speaker,
     Stop,
     Trash,
+    User,
     Warning,
 }
 
@@ -54,6 +56,7 @@ impl Icon {
     fn bytes(self) -> &'static [u8] {
         match self {
             Self::Attach   => include_bytes!("icons/attach.svg"),
+            Self::Bot      => include_bytes!("icons/bot.svg"),
             Self::Bolt     => include_bytes!("icons/bolt.svg"),
             Self::Chat     => include_bytes!("icons/chat.svg"),
             Self::Check    => include_bytes!("icons/check.svg"),
@@ -80,6 +83,7 @@ impl Icon {
             Self::Speaker  => include_bytes!("icons/speaker.svg"),
             Self::Stop     => include_bytes!("icons/stop.svg"),
             Self::Trash    => include_bytes!("icons/trash.svg"),
+            Self::User     => include_bytes!("icons/user.svg"),
             Self::Warning  => include_bytes!("icons/warning.svg"),
         }
     }
@@ -90,6 +94,7 @@ impl Icon {
     fn uri(self) -> &'static str {
         match self {
             Self::Attach   => "bytes://icons/attach.svg",
+            Self::Bot      => "bytes://icons/bot.svg",
             Self::Bolt     => "bytes://icons/bolt.svg",
             Self::Chat     => "bytes://icons/chat.svg",
             Self::Check    => "bytes://icons/check.svg",
@@ -116,6 +121,7 @@ impl Icon {
             Self::Speaker  => "bytes://icons/speaker.svg",
             Self::Stop     => "bytes://icons/stop.svg",
             Self::Trash    => "bytes://icons/trash.svg",
+            Self::User     => "bytes://icons/user.svg",
             Self::Warning  => "bytes://icons/warning.svg",
         }
     }
@@ -148,8 +154,74 @@ mod tests {
     /// guarantees that both `bytes()` and `uri()` are wired up and the
     /// SVG file under crates/gui/src/icons/ actually exists at build
     /// time (via include_bytes! in `bytes()`).
+    /// Codepoints measured to draw as the replacement character in
+    /// the bundled fonts, so a label carrying one shows a box on
+    /// every machine. The measurement is
+    /// `screenshots::which_literal_glyphs_resolve`, which renders
+    /// each one and counts inked pixels; re-run it after a font
+    /// change rather than editing this list from memory.
+    ///
+    /// The rule is not "avoid emoji" - these are all plain geometric
+    /// shapes and they still do not resolve. Anything decorative is
+    /// an SVG from this module; anything structural is a word.
+    const MISSING_GLYPHS: &[(char, &str)] = &[
+        ('\u{25CF}', "black circle - theme::ICON_FILLED or an Icon"),
+        ('\u{25C6}', "black diamond - use an Icon"),
+        ('\u{2715}', "multiplication x - Icon::Cross"),
+        ('\u{2191}', "up arrow - use the word"),
+        ('\u{2193}', "down arrow - use the word"),
+        ('\u{2588}', "full block - paint a rect"),
+    ];
+
+    /// No source file may carry a codepoint the fonts cannot draw,
+    /// in a literal or in a comment that will be copied into one.
+    /// Scans this crate's own sources, so a new call site fails here
+    /// rather than shipping a box.
+    #[test]
+    fn no_source_file_carries_a_glyph_the_fonts_cannot_draw() {
+        fn walk(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+            for entry in std::fs::read_dir(dir).expect("read src") {
+                let path = entry.expect("entry").path();
+                if path.is_dir() {
+                    walk(&path, out);
+                } else if path.extension().is_some_and(|e| e == "rs") {
+                    out.push(path);
+                }
+            }
+        }
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut files = Vec::new();
+        walk(&root, &mut files);
+        assert!(files.len() > 10, "found only {} source files", files.len());
+
+        let mut offences = Vec::new();
+        for file in &files {
+            // The audit and this list name every one of them on purpose.
+            if file.ends_with("screenshots.rs") || file.ends_with("icons.rs") {
+                continue;
+            }
+            let text = std::fs::read_to_string(file).expect("read");
+            for (n, line) in text.lines().enumerate() {
+                for (glyph, advice) in MISSING_GLYPHS {
+                    let escape = format!("\\u{{{:04X}}}", *glyph as u32);
+                    if line.contains(*glyph) || line.contains(&escape) {
+                        offences.push(format!(
+                            "{}:{}: {:?} ({})",
+                            file.strip_prefix(&root).unwrap_or(file).display(),
+                            n + 1,
+                            glyph,
+                            advice
+                        ));
+                    }
+                }
+            }
+        }
+        assert!(offences.is_empty(), "{}", offences.join("\n"));
+    }
+
     const ALL_ICONS: &[(Icon, &str)] = &[
         (Icon::Attach,   "attach"),
+        (Icon::Bot,      "bot"),
         (Icon::Bolt,     "bolt"),
         (Icon::Chat,     "chat"),
         (Icon::Check,    "check"),
@@ -176,6 +248,7 @@ mod tests {
         (Icon::Speaker,  "speaker"),
         (Icon::Stop,     "stop"),
         (Icon::Trash,    "trash"),
+        (Icon::User,     "user"),
         (Icon::Warning,  "warning"),
     ];
 
@@ -213,6 +286,7 @@ mod tests {
     fn _icon_table_exhaustiveness(icon: Icon) -> &'static str {
         match icon {
             Icon::Attach   => "attach",
+            Icon::Bot      => "bot",
             Icon::Bolt     => "bolt",
             Icon::Chat     => "chat",
             Icon::Check    => "check",
@@ -239,6 +313,7 @@ mod tests {
             Icon::Speaker  => "speaker",
             Icon::Stop     => "stop",
             Icon::Trash    => "trash",
+            Icon::User     => "user",
             Icon::Warning  => "warning",
         }
     }

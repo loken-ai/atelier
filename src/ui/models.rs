@@ -341,12 +341,15 @@ pub fn render(
                 (ModelSortField::Date, "Date"),
             ] {
                 let selected = models.sort_field == field;
+                // The direction is a word, not an arrow: neither arrow
+                // character is in the bundled fonts and both drew as boxes,
+                // and a sort control whose direction is a box says nothing.
                 let label = if selected {
-                    let arrow = match models.sort_direction {
-                        ModelSortDirection::Asc  => "\u{2191}",
-                        ModelSortDirection::Desc => "\u{2193}",
+                    let direction = match models.sort_direction {
+                        ModelSortDirection::Asc  => "ascending",
+                        ModelSortDirection::Desc => "descending",
                     };
-                    format!("{} {}", base_label, arrow)
+                    format!("{} ({})", base_label, direction)
                 } else {
                     base_label.to_string()
                 };

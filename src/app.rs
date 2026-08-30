@@ -2969,7 +2969,7 @@ impl LLMGuiApp {
 
 Keyboard:
   Enter             - Run command
-  ↑ / ↓             - Recall past commands"#;
+  Up / Down         - Recall past commands"#;
                 self.cli.push_output(CLIOutput {
                     timestamp: crate::timefmt::cli_now(),
                     command: input,

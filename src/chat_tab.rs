@@ -97,37 +97,32 @@ impl ChatTheme {
         }
     }
 
-    /// Avatar badge colors for a role. `error_flag` upgrades the
-    /// system avatar to a red "Error" badge (with a plain U+2715
-    /// multiplication-X glyph rather than the emoji-presentation
-    /// equivalent, matching the chat tab's no-rendering-emojis
-    /// policy) so the user can tell at a glance whether a system
-    /// message is an info notice or a failure.
-    fn avatar(&self, role: &str, error_flag: bool) -> (Color32, &'static str, &'static str) {
+    /// Avatar badge colours and icon for a role. `error_flag`
+    /// upgrades the system avatar to a red "Error" badge so a system
+    /// message reads as a notice or a failure at a glance.
+    ///
+    /// The icon is an SVG, not a character. The geometric shapes
+    /// used here before were chosen to avoid emoji presentation and
+    /// drew as missing-glyph boxes instead, which is worse than the
+    /// problem they were avoiding.
+    fn avatar(&self, role: &str, error_flag: bool) -> (Color32, Icon, &'static str) {
         // (bg, icon, label)
         match role {
             "user" => (
                 theme::tinted(theme::SUCCESS, 180),
-                "\u{25CF}", "You",
+                Icon::User, "You",
             ),
             "system" if error_flag => (
                 theme::tinted(theme::ERROR, 200),
-                // U+2715 LIGHT MULTIPLICATION X — plain symbol, no
-                // emoji presentation in any common font.
-                "\u{2715}", "Error",
+                Icon::Cross, "Error",
             ),
             "system" => (
                 theme::tinted(theme::WARNING, 180),
-                // U+2022 bullet — plain mid-dot, no emoji
-                // presentation. The "System" label already carries
-                // the semantics; the glyph is just visual ballast to
-                // match the other role badges (●, ◆) for layout
-                // consistency.
-                "\u{2022}", "System",
+                Icon::Warning, "System",
             ),
             _ => (
                 theme::tinted(theme::PRIMARY, 180),
-                "\u{25C6}", "AI",
+                Icon::Bot, "AI",
             ),
         }
     }
@@ -990,9 +985,12 @@ fn render_chat_header(
                 } else if let Some(m) = selected_name {
                     ui.label(egui::RichText::new(m).strong());
                     if current_is_loaded {
-                        ui.label("● Loaded in memory");
+                        ui.label(format!("{} Loaded in memory", theme::ICON_FILLED));
                     } else {
-                        ui.label("○ Not loaded — first send will trigger a load");
+                        ui.label(format!(
+                            "{} Not loaded - first send will trigger a load",
+                            theme::ICON_EMPTY
+                        ));
                     }
                     ui.label("(click to switch model)");
                 } else {
@@ -1082,8 +1080,8 @@ fn render_chat_header(
                 let resp = ui.add_enabled(can_clear, clear_btn);
                 // Tooltip enumerates what gets cleared + what doesn't
                 // so users know it's a session-local action, not a
-                // disk-side wipe. Prompt history (Ctrl+\u{2191} /
-                // \u{2193}) survives intentionally so users can recall
+                // disk-side wipe. Prompt history (Ctrl+Up /
+                // Ctrl+Down) survives intentionally so users can recall
                 // and re-send prompts after clearing.
                 //
                 // Build the tooltip inside on_hover_ui so the per-
@@ -1099,7 +1097,7 @@ fn render_chat_header(
                         format!(
                             "Clear {} message{} and {} attached file{}.\n\
                              Saved images on disk and prompt history \
-                             (\u{2191}/\u{2193}) are kept.",
+                             (Ctrl+Up / Ctrl+Down) are kept.",
                             msg_n, if msg_n == 1 { "" } else { "s" },
                             att_n, if att_n == 1 { "" } else { "s" },
                         )
@@ -1816,7 +1814,7 @@ fn render_input_area(
                  Keyboard:\n  \
                    Enter — send\n  \
                    Shift+Enter — newline\n  \
-                   Ctrl+\u{2191} / Ctrl+\u{2193} — recall prompt history\n  \
+                   Ctrl+Up / Ctrl+Down - recall prompt history\n  \
                    Ctrl+L — clear conversation\n  \
                    Esc — cancel in-flight generation"
             };
@@ -1928,7 +1926,7 @@ fn render_message(
         }
         .show(ui, |ui| {
             ui.horizontal(|ui| {
-                ui.label(RichText::new(avatar_icon).size(12.0).color(Color32::WHITE));
+                ui.add(avatar_icon.image(12.0, Color32::WHITE));
                 ui.label(RichText::new(avatar_label).size(11.0).strong().color(Color32::WHITE));
             });
         });
@@ -2414,7 +2412,7 @@ fn render_streaming_message(
         }
         .show(ui, |ui| {
             ui.horizontal(|ui| {
-                ui.label(RichText::new("\u{25C6}").size(12.0).color(Color32::WHITE));
+                ui.add(Icon::Bot.image(12.0, Color32::WHITE));
                 ui.label(RichText::new("AI").size(11.0).strong().color(Color32::WHITE));
             });
         });
@@ -2479,7 +2477,13 @@ fn render_streaming_message(
                 });
                 ui.add_space(4.0);
                 CommonMarkViewer::new().show(ui, md_cache, content);
-                ui.label(RichText::new("\u{2588}").size(13.0).color(theme::PRIMARY));
+                // Painted rather than written: U+2588 FULL BLOCK is not in
+                // the bundled fonts and drew as a box outline, which reads as
+                // a broken character trailing the text it belongs to.
+                let (caret, _) =
+                    ui.allocate_exact_size(egui::vec2(7.0, 14.0), egui::Sense::hover());
+                ui.painter()
+                    .rect_filled(caret.shrink2(egui::vec2(1.0, 1.0)), 1.0, theme::PRIMARY);
             }
         });
     });
@@ -2511,7 +2515,7 @@ fn render_typing_indicator(
         }
         .show(ui, |ui| {
             ui.horizontal(|ui| {
-                ui.label(RichText::new("\u{25C6}").size(12.0).color(Color32::WHITE));
+                ui.add(Icon::Bot.image(12.0, Color32::WHITE));
                 ui.label(RichText::new("AI").size(11.0).strong().color(Color32::WHITE));
             });
         });

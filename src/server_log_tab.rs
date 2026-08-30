@@ -121,9 +121,9 @@ fn render_log_header(
                 // that black light-mode text would be unreadable.
                 let (status_text, status_bg, status_icon) = match &server.status {
                     ServerStatus::NotStarted => {
-                        ("Not Started", Color32::from_rgb(60, 60, 60), "○")
+                        ("Not Started", Color32::from_rgb(60, 60, 60), theme::ICON_EMPTY)
                     }
-                    ServerStatus::Starting => ("Starting", Color32::from_rgb(100, 100, 40), "◆"),
+                    ServerStatus::Starting => ("Starting", Color32::from_rgb(100, 100, 40), theme::ICON_EMPTY),
                     ServerStatus::Running { .. } => {
                         ("Running", Color32::from_rgb(40, 100, 60), theme::ICON_FILLED)
                     }

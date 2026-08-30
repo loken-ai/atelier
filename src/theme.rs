@@ -61,15 +61,16 @@ pub const ACCENT_MEDIA: Color32 = Color32::from_rgb(255, 140, 200);
 // Unicode Icons — cross-platform symbols (no emoji)
 // ============================================================================
 
-// Status / state glyphs — pure-geometric Unicode shapes that render
-// as text in any font (no emoji presentation). Used as inline
-// indicators in status/feature rows (●/○ for active/inactive).
-// The emoji-presenting ⚙ (ICON_GEAR) and ⚠ (ICON_WARNING) were
-// removed when their callers switched to the SVG-backed
-// crate::icons::Icon::{Gear, Warning} variants — render uniformly
-// across systems with or without emoji fonts.
-pub const ICON_FILLED: &str = "\u{25CF}";   // ●  (status: active/enabled)
-pub const ICON_EMPTY: &str = "\u{25CB}";    // ○  (status: inactive/disabled)
+// Status glyphs for the places a dot is built into a formatted
+// string, where an SVG cannot slot in. "Renders as text in any
+// font" was assumed and is false: U+25CF and U+25C6 draw exactly
+// the same pixels as the replacement character in the bundled
+// fonts, so every status row showed a box. These two were measured
+// to resolve - see the glyph audit in screenshots.rs, which is also
+// how to re-measure after a font change. Wherever a standalone icon
+// is drawn, use crate::icons::Icon instead.
+pub const ICON_FILLED: &str = "\u{2022}";   // bullet (status: active/enabled)
+pub const ICON_EMPTY: &str = "\u{25CB}";    // white circle (status: inactive/disabled)
 
 // Dark theme colors
 // ── Runtime-resolved palette ────────────────────────────────────────────────
