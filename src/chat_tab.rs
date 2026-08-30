@@ -128,6 +128,32 @@ impl ChatTheme {
     }
 }
 
+/// Height to keep below the message list for everything the composer draws.
+///
+/// The strip that says a reply is on its way sits between the list and the input row, and it
+/// was not counted: the composer was pushed past the bottom of the window for the whole time
+/// a model was answering, which is the only time anyone is looking. Its height is taken from
+/// the style rather than written down, so a spacing change moves the reservation with it.
+fn chat_input_reserved_height(
+    ui: &egui::Ui,
+    input_rows: usize,
+    has_attachments: bool,
+    is_generating: bool,
+) -> f32 {
+    let spacing = ui.spacing().clone();
+    let generating = if is_generating {
+        // One horizontal row of the spinner's own size, the 4px that follows it, and the gap
+        // the layout puts between that row and the input.
+        spacing.interact_size.y + spacing.item_spacing.y + 4.0
+    } else {
+        0.0
+    };
+    CHAT_INPUT_BASE_CHROME_PX
+        + (input_rows as f32) * CHAT_INPUT_ROW_PX
+        + if has_attachments { CHAT_INPUT_ATTACH_STRIP_PX } else { 0.0 }
+        + generating
+}
+
 /// Bundle of values `render` produces for the caller to consume.
 ///
 /// - `send_clicked`: true when the Send button was clicked this frame.
@@ -461,9 +487,12 @@ pub fn render(
         // (single source of truth in CHAT_INPUT_* constants).
         let input_rows = chat_input_visible_rows(&chat.input);
         let attach_extra = if chat.attached_images.is_empty() { 0.0 } else { CHAT_INPUT_ATTACH_STRIP_PX };
-        let input_height = CHAT_INPUT_BASE_CHROME_PX
-            + (input_rows as f32) * CHAT_INPUT_ROW_PX
-            + attach_extra;
+        let input_height = chat_input_reserved_height(
+            ui,
+            input_rows,
+            attach_extra > 0.0,
+            chat.is_generating,
+        );
         let output_height = (ui.available_height() - input_height).max(60.0);
         egui::ScrollArea::vertical()
             .stick_to_bottom(true)
@@ -2541,4 +2570,36 @@ fn render_typing_indicator(
             });
         });
     });
+
+
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The reservation below the message list must grow while a reply is streaming. It did
+    /// not, so the "Generating..." strip pushed the input row and the Send button past the
+    /// bottom edge of the window - at every window height, for the whole of every answer.
+    #[test]
+    fn the_composer_reserves_room_for_the_generating_strip() {
+        fn reserved(is_generating: bool) -> f32 {
+            let out = std::rc::Rc::new(std::cell::Cell::new(0.0));
+            let sink = out.clone();
+            let mut harness = egui_kittest::Harness::new_ui(move |ui| {
+                sink.set(chat_input_reserved_height(ui, 1, false, is_generating));
+            });
+            harness.run();
+            out.get()
+        }
+        let idle = reserved(false);
+        let streaming = reserved(true);
+        assert!(
+            streaming > idle,
+            "streaming reserves {streaming}, idle reserves {idle}"
+        );
+        // One interactive row plus its spacing, so the gap is real and not a rounding
+        // difference between two ways of adding the same numbers.
+        assert!(streaming - idle >= 16.0, "gap {}", streaming - idle);
+    }
 }
