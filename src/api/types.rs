@@ -690,12 +690,21 @@ pub struct DevicesSummary {
     pub compiled_features: CompiledFeaturesWire,
 }
 
+/// What the server was built with, as it names them.
+///
+/// An open map rather than a field per flag: this was two named booleans, `cuda` and `sycl`,
+/// against a server emitting `cuda`, `opencl`, `image`, `video`, `audio`, `midi` and `energy`.
+/// `sycl` matched nothing, so the second badge was permanently dark whatever the build, and
+/// five flags were never read at all. A hand-copied list of another program's names drifts the
+/// moment that program adds one.
 #[derive(Debug, Clone, Default, serde::Deserialize, serde::Serialize)]
-pub struct CompiledFeaturesWire {
-    #[serde(default)]
-    pub cuda: bool,
-    #[serde(default)]
-    pub sycl: bool,
+#[serde(transparent)]
+pub struct CompiledFeaturesWire(pub std::collections::BTreeMap<String, bool>);
+
+impl CompiledFeaturesWire {
+    pub fn enabled(&self, name: &str) -> bool {
+        self.0.get(name).copied().unwrap_or(false)
+    }
 }
 
 // -- /api/layer_perf -------------------------------------------------------
@@ -767,14 +776,17 @@ mod device_record_tests {
         let payload = serde_json::json!({
             "devices": [],
             "summary": {
-                "compiled_features": { "cuda": true, "sycl": false }
+                "compiled_features": { "cuda": true, "opencl": false, "image": true }
             }
         });
         let resp: DevicesResponse = serde_json::from_value(payload).expect("deserialize");
         assert_eq!(resp.devices.len(), 0);
         let s = resp.summary.expect("summary present");
-        assert!(s.compiled_features.cuda);
-        assert!(!s.compiled_features.sycl);
+        assert!(s.compiled_features.enabled("cuda"));
+        assert!(s.compiled_features.enabled("cuda"));
+        assert!(!s.compiled_features.enabled("opencl"));
+        // A flag the server adds later is carried, not dropped.
+        assert!(s.compiled_features.enabled("image"));
     }
 
     #[test]
@@ -786,7 +798,7 @@ mod device_record_tests {
         // reporting disabled -> JSON null) doesn't break the client.
         let payload = serde_json::json!({
             "devices": [],
-            "summary": { "compiled_features": { "cuda": true, "sycl": false } },
+            "summary": { "compiled_features": { "cuda": true, "opencl": false, "image": true } },
             "energy": {
                 "total_j": 3600.0,
                 "total_wh": 1.0,
