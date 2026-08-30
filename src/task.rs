@@ -91,18 +91,4 @@ pub enum TaskResult {
     CLIDeleteModel(Result<(), String>, String, String),
     /// Model unload completed
     ModelUnloaded(Result<(), String>, String),
-    /// Model topology fetched from server
-    ModelTopologyFetched(Vec<crate::state::ModelTopology>),
-    /// In-flight scheduler snapshot fetched from /api/inflight
-    InflightFetched(crate::api::types::InflightSnapshot),
-    /// Per-device topology fetched from /api/distributed/devices. The
-    /// payload is the full envelope (devices + summary with compile-time
-    /// feature flags); the app layer maps them to state::DeviceInfo +
-    /// state::CompiledFeatures + recomputes Hardware tab totals. Err
-    /// variant drives hardware.error so the user sees connection
-    /// failures instead of just an empty device list.
-    DevicesFetched(Result<crate::api::types::DevicesResponse, String>),
-    /// Per-layer inference metrics fetched from /api/layer_perf. The
-    /// app layer maps the wire records to state::LayerPerformance.
-    LayerPerfFetched(Vec<crate::api::types::LayerPerfRecord>),
 }

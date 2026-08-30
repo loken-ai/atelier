@@ -16,8 +16,7 @@ use crate::config::{ApiType, AppConfig};
 use crate::log_buffer::LogBuffer;
 use crate::settings::{SettingsAction, SettingsState};
 use crate::state::{
-    ActionStatus, CLIOutput, CLIState, ChatMessage, ChatState, ConnectionStatus, HardwareState,
-    LayerDistribution, MediaKind, ModelState, ModelTopology, Section, ServerState, ServerStatus,
+    ActionStatus, CLIOutput, CLIState, ChatMessage, ChatState, ConnectionStatus, MediaKind, ModelState, Section, ServerState, ServerStatus,
 };
 use crate::task::{MediaOutput, TaskResult};
 use crate::theme;
@@ -567,7 +566,6 @@ pub struct LLMGuiApp {
     pub cli: CLIState,
     pub models: ModelState,
     pub server: ServerState,
-    pub hardware: HardwareState,
     pub rt: Runtime,
     pub pending_tasks: Arc<Mutex<Vec<TaskResult>>>,
     pub settings_state: SettingsState,
@@ -593,12 +591,6 @@ pub struct LLMGuiApp {
     pub current_section: Section,
     /// Whether the sidebar is expanded (shows labels)
     pub sidebar_expanded: bool,
-    /// Wall-clock instant of the last auto-refresh of hardware /
-    /// inflight data while the Hardware tab is visible. Throttles
-    /// the periodic fetch so the GUI doesn't hammer /api/inflight
-    /// at frame rate (60 Hz × 2 endpoints = 120 RPS to the server
-    /// for as long as the user keeps the tab open).
-    pub last_hardware_auto_refresh: Option<std::time::Instant>,
     /// Throttle for the per-frame window-size save. Without this,
     /// holding the resize handle would call config.save() at 60 Hz
     /// for the duration of the drag (each frame ticks the rect by
@@ -669,7 +661,6 @@ impl LLMGuiApp {
             cli: CLIState::default(),
             models: ModelState::default(),
             server: ServerState::default(),
-            hardware: HardwareState::default(),
             rt: Runtime::new().expect("Failed to create tokio runtime"),
             pending_tasks: Arc::new(Mutex::new(Vec::new())),
             settings_state,
@@ -683,7 +674,6 @@ impl LLMGuiApp {
             fullscreen_image: None,
             current_section: Section::default(),
             sidebar_expanded,
-            last_hardware_auto_refresh: None,
             last_window_size_save: None,
             toasts: Vec::new(),
             refresh_toast_pending: false,
@@ -721,7 +711,6 @@ impl LLMGuiApp {
         }
 
         app.refresh_models();
-        app.refresh_hardware();
         app
     }
 
@@ -1387,169 +1376,6 @@ impl LLMGuiApp {
             let mut q = tasks.lock().unwrap();
             q.push(TaskResult::ModelsFetched(available, loaded));
             q.push(TaskResult::LorasFetched(loras));
-        });
-    }
-
-    /// Refresh hardware information
-    pub fn refresh_hardware(&mut self) {
-        // The spinner clears on the first result that lands. Each fetch
-        // below is independent; we don't gate the spinner on all three.
-        self.hardware.is_loading = false;
-
-        // Fetch model topology from server (async)
-        self.fetch_model_topology();
-        // Fetch in-flight scheduler snapshot
-        self.fetch_inflight();
-        // Fetch per-device topology so the "Devices" stat card shows real
-        // counts instead of the default 0.
-        self.fetch_distributed_devices();
-        // Fetch per-layer perf metrics (populated by the server's
-        // global LayerPerformanceTracker during forward passes).
-        self.fetch_layer_performance();
-    }
-
-    /// Fetch /api/inflight for the Hardware tab's scheduler panel.
-    fn fetch_inflight(&mut self) {
-        let client = self.get_client();
-        let tasks = self.pending_tasks.clone();
-        self.rt.spawn(async move {
-            match client.inflight().await {
-                Ok(snap) => {
-                    tasks.lock().unwrap().push(TaskResult::InflightFetched(snap));
-                }
-                Err(e) => {
-                    // Don't push an Error TaskResult — the Hardware
-                    // tab's scheduler panel is best-effort and the
-                    // existing /api/tags + /api/distributed/devices
-                    // failures already drive the top-bar
-                    // connection_status. Log to the in-app buffer
-                    // so the user can correlate via the Server Log
-                    // tab if the panel goes stale unexpectedly.
-                    tracing::warn!("/api/inflight: {e}");
-                }
-            }
-        });
-    }
-
-    /// Fetch /api/distributed/devices so the Hardware tab's "Devices"
-    /// stat reflects what the server actually detected (CUDA, Arc/OpenCL,
-    /// CPU). Previously the state.hardware.devices Vec was never
-    /// populated, so the card stuck at 0.
-    fn fetch_distributed_devices(&mut self) {
-        let client = self.get_client();
-        let tasks = self.pending_tasks.clone();
-        self.rt.spawn(async move {
-            let result = client.distributed_devices().await
-                .map_err(|e| format!("/api/distributed/devices: {e}"));
-            tasks.lock().unwrap().push(TaskResult::DevicesFetched(result));
-        });
-    }
-
-    /// Fetch /api/layer_perf so the Hardware tab's per-layer panel can
-    /// reflect actual measured timing from the server. Empty until a
-    /// model has run; that's expected and the panel handles it.
-    fn fetch_layer_performance(&mut self) {
-        let client = self.get_client();
-        let tasks = self.pending_tasks.clone();
-        self.rt.spawn(async move {
-            match client.layer_performance().await {
-                Ok(resp) => {
-                    tasks.lock().unwrap().push(TaskResult::LayerPerfFetched(resp.layers));
-                }
-                Err(e) => {
-                    // Same rationale as fetch_inflight: best-effort
-                    // panel data, don't pile errors into the chat or
-                    // top bar — log to the in-app buffer so the user
-                    // can spot the cause via the Server Log tab.
-                    tracing::warn!("/api/layer_perf: {e}");
-                }
-            }
-        });
-    }
-
-    /// Fetch model topology from server
-    fn fetch_model_topology(&mut self) {
-        let client = self.get_client();
-        let tasks = self.pending_tasks.clone();
-
-        self.rt.spawn(async move {
-            match client.list_loaded_models().await {
-                Ok(resp) => {
-                    // Convert to ModelTopology using the new layer_distribution field
-                    let topologies: Vec<ModelTopology> = resp
-                        .models
-                        .into_iter()
-                        .map(|m| {
-                            let num_layers = m.num_layers.unwrap_or(0);
-                            let size = m.size_bytes.unwrap_or(0);
-
-                            // Convert API layer_distribution to GUI LayerDistribution
-                            let layer_dist = m
-                                .layer_distribution
-                                .map(|dists| {
-                                    dists
-                                        .into_iter()
-                                        .map(|d| LayerDistribution {
-                                            location: "LOCAL".to_string(),
-                                            device_type: d.device_type,
-                                            device_id: d.device_id,
-                                            layer_range: (d.layer_start, d.layer_end),
-                                            memory_bytes: d.memory_bytes,
-                                        })
-                                        .collect()
-                                })
-                                .unwrap_or_else(|| {
-                                    // Fallback if no layer_distribution provided
-                                    let (device_type_str, device_id_num) = if let Some(ref dev) =
-                                        m.device
-                                    {
-                                        let parts: Vec<&str> = dev.split_whitespace().collect();
-                                        let d_type = parts.first().unwrap_or(&"CPU").to_string();
-                                        let d_id = parts
-                                            .get(1)
-                                            .and_then(|s| s.parse::<usize>().ok())
-                                            .unwrap_or(0);
-                                        (d_type, d_id)
-                                    } else {
-                                        ("CPU".to_string(), 0)
-                                    };
-                                    vec![LayerDistribution {
-                                        location: "LOCAL".to_string(),
-                                        device_type: device_type_str,
-                                        device_id: device_id_num,
-                                        layer_range: (
-                                            0,
-                                            if num_layers > 0 { num_layers - 1 } else { 0 },
-                                        ),
-                                        memory_bytes: size,
-                                    }]
-                                });
-
-                            ModelTopology {
-                                model_id: m.model,
-                                size_bytes: size,
-                                total_layers: num_layers,
-                                layer_distribution: layer_dist,
-                            }
-                        })
-                        .collect();
-
-                    tasks
-                        .lock()
-                        .unwrap()
-                        .push(TaskResult::ModelTopologyFetched(topologies));
-                }
-                Err(e) => {
-                    // Log to the in-app buffer so a stale Models
-                    // panel in the Hardware tab correlates with a
-                    // Server Log entry instead of leaving the user
-                    // guessing. Matches the pattern from
-                    // fetch_inflight / fetch_layer_performance —
-                    // best-effort fetch, log-only, no error
-                    // breadcrumb in chat or top-bar.
-                    tracing::warn!("/api/ps (model topology): {e}");
-                }
-            }
         });
     }
 
@@ -2507,7 +2333,6 @@ impl LLMGuiApp {
                         self.models.action_status = ActionStatus::Idle;
                         self.toast(ToastSeverity::Success, format!("Model {} loaded", model_name));
                         // Refresh hardware topology after model load
-                        self.refresh_hardware();
                     }
                     Err(e) => {
                         error!("Failed to load model '{}': {}", model_name, e);
@@ -2762,7 +2587,6 @@ impl LLMGuiApp {
                                 last.in_progress = false;
                             }
                             // Refresh hardware topology after model load
-                            self.refresh_hardware();
                         }
                         Err(e) => {
                             self.models.action_status = ActionStatus::Idle;
@@ -2787,7 +2611,6 @@ impl LLMGuiApp {
                             }
                             self.refresh_models();
                             // Refresh hardware topology after model pull
-                            self.refresh_hardware();
                         }
                         Err(e) => {
                             self.models.action_status = ActionStatus::Idle;
@@ -2812,7 +2635,6 @@ impl LLMGuiApp {
                             }
                             self.refresh_models();
                             // Refresh hardware topology after model delete
-                            self.refresh_hardware();
                         }
                         Err(e) => {
                             self.models.action_status = ActionStatus::Idle;
@@ -2833,95 +2655,12 @@ impl LLMGuiApp {
                             self.models.action_status = ActionStatus::Idle;
                             self.toast(ToastSeverity::Success, format!("Model {} unloaded", model_name));
                             // Refresh hardware topology after model unload
-                            self.refresh_hardware();
                         }
                         Err(e) => {
                             self.models.action_status = ActionStatus::Idle;
                             self.toast(ToastSeverity::Error, format!("Failed to unload {}: {}", model_name, e));
                         }
                     }
-                }
-                TaskResult::ModelTopologyFetched(topologies) => {
-                    // Update model topologies in hardware state
-                    self.hardware.model_topologies = topologies;
-                }
-                TaskResult::InflightFetched(snap) => {
-                    self.hardware.inflight = Some(snap);
-                }
-                TaskResult::LayerPerfFetched(records) => {
-                    self.hardware.layer_performance = records.into_iter().map(|r| {
-                        crate::state::LayerPerformance {
-                            layer_idx: r.layer_idx,
-                            device_type: r.device_type,
-                            model_name: r.model_name,
-                            token_count: r.token_count,
-                            avg_ms_per_token: r.avg_ms_per_token,
-                            tokens_per_second: r.tokens_per_second,
-                            early_exit_count: r.early_exit_count,
-                        }
-                    }).collect();
-                }
-                TaskResult::DevicesFetched(Err(e)) => {
-                    error!("Hardware devices fetch failed: {e}");
-                    self.hardware.error = Some(e);
-                    self.hardware.last_refresh = Some(crate::timefmt::cli_now());
-                }
-                TaskResult::DevicesFetched(Ok(resp)) => {
-                    // Clear any prior fetch error since we got a real
-                    // payload this time.
-                    self.hardware.error = None;
-                    // Convert wire DeviceRecord -> state DeviceInfo and
-                    // recompute totals. local_devices == devices for the
-                    // single-node case (no remote_servers branch yet).
-                    let records = &resp.devices;
-                    let infos: Vec<crate::state::DeviceInfo> = records.iter().map(|r| {
-                        let avail = r.status == "available";
-                        // Prefer the live NVML free_bytes when the server
-                        // could provide it (CUDA path), else fall back to
-                        // the static usable_memory_gb (post-OS-reserve
-                        // estimate) so non-CUDA devices still display a
-                        // sensible upper bound.
-                        let available_memory_bytes = r.free_bytes
-                            .unwrap_or((r.usable_memory_gb * 1024.0 * 1024.0 * 1024.0) as u64);
-                        crate::state::DeviceInfo {
-                            location: "LOCAL".to_string(),
-                            device_type: r.kind.clone(),
-                            device_id: r.id,
-                            name: r.name.clone(),
-                            memory_bytes: r.memory_bytes,
-                            available_memory_bytes,
-                            status: r.status.clone(),
-                            priority: r.priority,
-                            available: avail,
-                            unavailable_reason: r.reason.clone(),
-                            unavailable_suggestion: r.suggestion.clone(),
-                            utilization_gpu_percent: r.utilization_gpu_percent,
-                            temperature_c: r.temperature_c,
-                            power_watts: r.power_watts,
-                            power_limit_watts: r.power_limit_watts,
-                        }
-                    }).collect();
-                    self.hardware.total_memory_gb = infos.iter().map(|d| d.memory_gb()).sum();
-                    self.hardware.usable_memory_gb = records.iter().map(|r| r.usable_memory_gb as f32).sum();
-                    self.hardware.local_devices = infos.clone();
-                    self.hardware.devices = infos;
-                    // Wire the summary's compile-time feature flags so
-                    // the Hardware tab's CUDA/SYCL chips reflect what
-                    // the running binary supports instead of always
-                    // displaying the default false.
-                    if let Some(ref s) = resp.summary {
-                        self.hardware.compiled_features = crate::state::CompiledFeatures {
-                            cuda: s.compiled_features.cuda,
-                            sycl: s.compiled_features.sycl,
-                        };
-                    }
-                    // Cumulative session energy (None when the server has
-                    // energy reporting disabled) — drives the Energy card.
-                    self.hardware.energy = resp.energy.clone();
-                    // The Hardware tab's header shows 'Last: <hh:mm:ss>'
-                    // when this is populated — without this assignment
-                    // the timestamp never appeared after a refresh.
-                    self.hardware.last_refresh = Some(crate::timefmt::cli_now());
                 }
             }
         }
@@ -3072,7 +2811,6 @@ impl LLMGuiApp {
                         ..Default::default()
                     });
                     // Refresh hardware topology after model unload
-                    self.refresh_hardware();
                 } else {
                     self.cli.push_output(CLIOutput {
                         timestamp: crate::timefmt::cli_now(),
@@ -3343,46 +3081,6 @@ impl eframe::App for LLMGuiApp {
         // that arrive mid-session without requiring a manual click.
         // 2s is a balance: tighter is wasted RPS, looser lags behind
         // request bursts (which often complete in < 1s).
-        if self.current_section == Section::Hardware {
-            self.hardware.refresh_layer_performance();
-            let needs_refresh = self
-                .last_hardware_auto_refresh
-                .is_none_or(|t| t.elapsed() >= std::time::Duration::from_secs(2));
-            if needs_refresh {
-                self.fetch_inflight();
-                self.fetch_model_topology();
-                // Auto-refresh devices + layer_perf too so the Hardware
-                // tab's per-device free-memory column and per-layer
-                // perf panel update live during inference, not just on
-                // manual Refresh click. /api/distributed/devices is
-                // ~300 B and /api/layer_perf is ~empty when idle, so
-                // the 2 s cadence cost is negligible.
-                self.fetch_distributed_devices();
-                self.fetch_layer_performance();
-                self.last_hardware_auto_refresh = Some(std::time::Instant::now());
-            }
-            // Schedule the NEXT wake-up at 200 ms instead of spinning
-            // at 60 Hz. The previous unconditional ctx.request_repaint()
-            // forced a frame every ~16 ms just to check whether the
-            // 2 s throttle had elapsed — wasting battery / CPU on a
-            // tab the user often just leaves open in the background.
-            // 200 ms is a compromise: the throttle still fires roughly
-            // every 2 s (10 wakes between fetches), but the
-            // fetch_inflight / fetch_distributed_devices /
-            // fetch_layer_performance worker tasks (which DON'T call
-            // request_repaint themselves) get their results surfaced
-            // within at most 200 ms of completion instead of waiting
-            // out the full 2 s window. User input events still wake
-            // egui immediately, independent of this scheduled tick.
-            ctx.request_repaint_after(std::time::Duration::from_millis(200));
-        } else if self.last_hardware_auto_refresh.is_some() {
-            // Clear the throttle when navigating away — re-entry then
-            // fires an immediate refresh via unwrap_or(true) above
-            // instead of waiting up to 2s for the throttle window to
-            // expire on stale data the user may have come back to
-            // check on.
-            self.last_hardware_auto_refresh = None;
-        }
 
         // Force repaints while any tokio task is in flight. The async
         // workers (refresh_models, load/unload/delete, pull, list-
@@ -3429,10 +3127,9 @@ impl eframe::App for LLMGuiApp {
                 (Num1, Section::Chat),
                 (Num2, Section::Terminal),
                 (Num3, Section::Models),
-                (Num4, Section::Hardware),
-                (Num5, Section::Settings),
-                (Num6, Section::MediaStudio),
-                (Num7, Section::ServerLog),
+                (Num4, Section::Settings),
+                (Num5, Section::MediaStudio),
+                (Num6, Section::ServerLog),
             ] {
                 if i.key_pressed(key) {
                     return Some(section);
@@ -3460,30 +3157,17 @@ impl eframe::App for LLMGuiApp {
         // here is bounded (loaded count is small, gpu count single
         // digit), so the first formatted call's capacity backs every
         // subsequent frame without reallocation.
-        // Top-bar metrics: rebuild only when the source counts change.
-        // The CUDA-device count walks self.hardware.devices but the
-        // loop is short (handful of devices) and avoiding the per-
-        // frame String alloc + write!() pair matters more than the
-        // few-nanosecond iter.
-        let gpu_count = self
-            .hardware
-            .devices
-            .iter()
-            .filter(|d| d.available && d.device_type.eq_ignore_ascii_case("cuda"))
-            .count();
+        // Top-bar metrics: rebuild only when the count changes. The device count that used
+        // to sit here was fed by the hardware tab's own polling; with that gone it would
+        // have read zero for ever, which is worse than not showing it. `atlas` reports the
+        // devices, and it reports every node rather than this one.
         let loaded = self.models.loaded_models.len();
-        let metrics_inputs = (loaded, gpu_count);
+        let metrics_inputs = (loaded, 0);
         if metrics_inputs != self.top_bar_metrics_inputs {
             use std::fmt::Write;
             self.top_bar_metrics_cache.clear();
             if loaded > 0 {
                 let _ = write!(self.top_bar_metrics_cache, "{} loaded", loaded);
-            }
-            if gpu_count > 0 {
-                if !self.top_bar_metrics_cache.is_empty() {
-                    self.top_bar_metrics_cache.push_str(" \u{00B7} ");
-                }
-                let _ = write!(self.top_bar_metrics_cache, "{} GPU", gpu_count);
             }
             self.top_bar_metrics_inputs = metrics_inputs;
         }
@@ -3509,7 +3193,6 @@ impl eframe::App for LLMGuiApp {
             // Arm the completion toast for this explicit refresh.
             self.refresh_toast_pending = true;
             self.refresh_models();
-            self.refresh_hardware();
         }
         if top_out.theme_toggle_clicked {
             // Toggle dark ↔ light and re-apply the matching egui
@@ -3755,11 +3438,6 @@ impl eframe::App for LLMGuiApp {
                         }
                     }
                 }
-                Section::Hardware => {
-                    if crate::hardware_tab::render(ui, &mut self.hardware, &self.config.server_url) {
-                        self.refresh_hardware();
-                    }
-                }
                 Section::Settings => {
                     let config_before = self.config.clone();
                     let actions = crate::ui::settings::render(
@@ -3820,7 +3498,6 @@ impl eframe::App for LLMGuiApp {
                                 format!("Connecting to {}", self.config.server_url),
                             );
                             self.refresh_models();
-                            self.refresh_hardware();
                         }
                     }
                 }

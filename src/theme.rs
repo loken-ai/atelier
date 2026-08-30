@@ -47,8 +47,6 @@ pub const ACCENT_TERMINAL: Color32 = Color32::from_rgb(100, 255, 140);
 /// Models section accent (orange)
 pub const ACCENT_MODELS: Color32 = Color32::from_rgb(255, 180, 100);
 
-/// Hardware section accent (purple)
-pub const ACCENT_HARDWARE: Color32 = Color32::from_rgb(200, 150, 255);
 
 /// Settings section accent (neutral)
 pub const ACCENT_SETTINGS: Color32 = Color32::from_rgb(160, 160, 175);
@@ -428,7 +426,6 @@ mod tests {
         ("ACCENT_CHAT",     ACCENT_CHAT),
         ("ACCENT_TERMINAL", ACCENT_TERMINAL),
         ("ACCENT_MODELS",   ACCENT_MODELS),
-        ("ACCENT_HARDWARE", ACCENT_HARDWARE),
         ("ACCENT_SETTINGS", ACCENT_SETTINGS),
         ("ACCENT_LOGS",     ACCENT_LOGS),
         ("ACCENT_MEDIA",    ACCENT_MEDIA),

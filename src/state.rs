@@ -11,19 +11,6 @@ use crate::api::ModelInfo;
 
 
 
-/// Layer performance metrics. Populated by app.rs from
-/// /api/layer_perf on each Hardware-tab refresh; the wire shape
-/// lives in crate::api::types::LayerPerfRecord.
-#[derive(Debug, Clone)]
-pub struct LayerPerformance {
-    pub layer_idx: usize,
-    pub device_type: String,
-    pub model_name: String,
-    pub token_count: usize,
-    pub avg_ms_per_token: f64,
-    pub tokens_per_second: f64,
-    pub early_exit_count: usize,
-}
 
 // (Legacy `Tab` enum removed — superseded by Section navigation in
 // state.rs. The two remaining references in app.rs (current_tab field
@@ -36,7 +23,6 @@ pub enum Section {
     Chat,
     Terminal,
     Models,
-    Hardware,
     Settings,
     ServerLog,
     /// Media Studio — generate every media modality (image, music,
@@ -2184,194 +2170,15 @@ impl ServerState {
 // Hardware State
 // ============================================================================
 
-/// Device information for hardware topology
-#[derive(Debug, Clone)]
-pub struct DeviceInfo {
-    /// Location identifier (LOCAL or remote server ID)
-    #[allow(dead_code)]
-    pub location: String,
-    /// Device type (CUDA, CPU, Intel Arc, etc.)
-    pub device_type: String,
-    /// Device ID
-    pub device_id: usize,
-    /// Device name
-    pub name: String,
-    /// Total memory in bytes
-    pub memory_bytes: u64,
-    /// Available (free) memory in bytes. For CUDA devices the server
-    /// queries NVML at request time so this is live VRAM (refreshed
-    /// every 2 s by the Hardware tab's auto-refresh loop). For
-    /// non-CUDA devices it's the static post-reserve estimate
-    /// (usable_memory_gb) since NVML doesn't apply.
-    pub available_memory_bytes: u64,
-    /// Status string ("available" / "unavailable") from the server.
-    pub status: String,
-    /// Priority (higher = preferred). Surfaced in the Hardware tab's
-    /// device-status hover tooltip ("available (priority N)").
-    pub priority: u8,
-    /// Whether device is available
-    pub available: bool,
-    /// Human-readable explanation when the device is unavailable
-    /// (e.g. "BackendNotCompiled"). None when available or unset.
-    pub unavailable_reason: Option<String>,
-    /// Suggested remediation when unavailable (e.g. "Build with
-    /// --features cuda"). None when available or unset.
-    pub unavailable_suggestion: Option<String>,
-    /// Live GPU compute util 0-100 (NVML). None for non-CUDA / unknown.
-    pub utilization_gpu_percent: Option<f32>,
-    /// Live GPU core temperature in °C. None for non-CUDA / unknown.
-    pub temperature_c: Option<f32>,
-    /// Live power draw in watts. None for non-CUDA / unknown.
-    pub power_watts: Option<f32>,
-    /// Enforced power limit (TDP) in watts. None for non-CUDA / unknown.
-    pub power_limit_watts: Option<f32>,
-}
 
-impl DeviceInfo {
-    /// Get total memory in GB
-    pub fn memory_gb(&self) -> f32 {
-        self.memory_bytes as f32 / (1024.0 * 1024.0 * 1024.0)
-    }
 
-    /// Get available memory in GB
-    pub fn available_memory_gb(&self) -> f32 {
-        self.available_memory_bytes as f32 / (1024.0 * 1024.0 * 1024.0)
-    }
 
-    /// Get memory usage percentage
-    pub fn memory_usage_percent(&self) -> f32 {
-        if self.memory_bytes == 0 {
-            0.0
-        } else {
-            ((self.memory_bytes - self.available_memory_bytes) as f32 / self.memory_bytes as f32)
-                * 100.0
-        }
-    }
-}
 
-/// Layer distribution for a loaded model
-#[derive(Debug, Clone)]
-pub struct LayerDistribution {
-    /// Device location
-    pub location: String,
-    /// Device type
-    pub device_type: String,
-    /// Device ID
-    pub device_id: usize,
-    /// Layer range (start, end inclusive)
-    pub layer_range: (u32, u32),
-    /// Memory used in bytes
-    pub memory_bytes: u64,
-}
 
-impl LayerDistribution {
-    /// Get memory in GB
-    pub fn memory_gb(&self) -> f32 {
-        self.memory_bytes as f32 / (1024.0 * 1024.0 * 1024.0)
-    }
-}
 
-/// Loaded model with topology information
-#[derive(Debug, Clone)]
-pub struct ModelTopology {
-    /// Model ID/name
-    pub model_id: String,
-    /// Model size in bytes
-    pub size_bytes: u64,
-    /// Total number of layers
-    pub total_layers: u32,
-    /// Layer distribution across devices
-    pub layer_distribution: Vec<LayerDistribution>,
-}
 
-impl ModelTopology {
-    /// Get size in GB
-    pub fn size_gb(&self) -> f32 {
-        self.size_bytes as f32 / (1024.0 * 1024.0 * 1024.0)
-    }
-}
 
-/// Remote server information
-#[derive(Debug, Clone)]
-pub struct RemoteServerInfo {
-    /// Server ID
-    pub server_id: String,
-    /// Endpoint (host:port)
-    pub endpoint: String,
-    /// Status (Online, Degraded, Offline)
-    pub status: String,
-    /// Latency in ms
-    pub latency_ms: f64,
-    /// Devices on this server
-    pub devices: Vec<DeviceInfo>,
-}
 
-/// Compiled features status
-#[derive(Debug, Clone, Default)]
-pub struct CompiledFeatures {
-    pub cuda: bool,
-    pub sycl: bool,
-}
-
-/// Hardware tab state
-#[derive(Debug, Clone, Default)]
-pub struct HardwareState {
-    /// All devices (local + remote)
-    pub devices: Vec<DeviceInfo>,
-    /// Local devices only
-    pub local_devices: Vec<DeviceInfo>,
-    /// Remote servers with their devices
-    pub remote_servers: Vec<RemoteServerInfo>,
-    /// Loaded models with topology
-    pub model_topologies: Vec<ModelTopology>,
-    /// Layer performance metrics (real-time during inference)
-    pub layer_performance: Vec<LayerPerformance>,
-    /// Compiled features
-    pub compiled_features: CompiledFeatures,
-    /// Total memory across all devices
-    pub total_memory_gb: f32,
-    /// Usable memory for models
-    pub usable_memory_gb: f32,
-    /// Whether data is being fetched
-    pub is_loading: bool,
-    /// Error message if any
-    pub error: Option<String>,
-    /// Last refresh time
-    pub last_refresh: Option<String>,
-    /// In-flight + queued request snapshot (Phase 9 — polled from /api/inflight)
-    pub inflight: Option<crate::api::types::InflightSnapshot>,
-    /// Cumulative session energy (from /api/distributed/devices `energy`
-    /// field). `None` when the server has energy reporting disabled — the
-    /// Energy card then shows a "measurement off" hint.
-    pub energy: Option<crate::api::types::EnergySnapshotWire>,
-}
-
-impl HardwareState {
-    /// Get total device count
-    pub fn total_device_count(&self) -> usize {
-        self.devices.len()
-    }
-
-    /// Get available device count
-    pub fn available_device_count(&self) -> usize {
-        self.devices.iter().filter(|d| d.available).count()
-    }
-
-    /// Check if distributed mode
-    pub fn is_distributed(&self) -> bool {
-        !self.remote_servers.is_empty()
-    }
-
-    /// No-op: layer_performance is refreshed by App::fetch_layer_performance
-    /// against /api/layer_perf. Kept as a stable hook for the hardware tab's
-    /// refresh button so it can request a refresh without knowing the
-    /// network plumbing details.
-    pub fn refresh_layer_performance(&mut self) {
-        // The HTTP fetch happens in app.rs::refresh_hardware (which
-        // includes this) — this method just exists so the hardware
-        // tab's local refresh button compiles.
-    }
-}
 
 #[cfg(test)]
 // Tests mutate individual ChatState fields after constructing
@@ -3140,86 +2947,6 @@ mod select_best_model_tests {
         };
         s.select_best_model();
         assert_eq!(s.selected_model.as_deref(), Some("loaded-big"));
-    }
-}
-
-#[cfg(test)]
-mod device_info_memory_tests {
-    use super::*;
-
-    fn dev(memory_bytes: u64, available_memory_bytes: u64) -> DeviceInfo {
-        DeviceInfo {
-            location: String::new(),
-            device_type: String::new(),
-            device_id: 0,
-            name: String::new(),
-            memory_bytes,
-            available_memory_bytes,
-            status: String::new(),
-            priority: 0,
-            available: true,
-            unavailable_reason: None,
-            unavailable_suggestion: None,
-            utilization_gpu_percent: None,
-            temperature_c: None,
-            power_watts: None,
-            power_limit_watts: None,
-        }
-    }
-
-    #[test]
-    fn memory_gb_uses_binary_gb_not_decimal() {
-        // GB here is the binary 1024^3 (matches nvidia-smi convention).
-        // A decimal-GB silent change would shift Hardware-tab chips
-        // by ~7.4% — visible to anyone reading the gauge against
-        // nvidia-smi side-by-side.
-        let one_gb = 1024_u64.pow(3);
-        let d = dev(one_gb, one_gb / 2);
-        assert!((d.memory_gb()           - 1.0).abs() < 1e-6);
-        assert!((d.available_memory_gb() - 0.5).abs() < 1e-6);
-    }
-
-    #[test]
-    fn memory_usage_percent_handles_zero_total_without_panic() {
-        // memory_bytes==0 (e.g. CPU device with unknown ram) would
-        // divide by zero — pin the explicit 0.0 guard so a future
-        // simplification doesn't reintroduce the NaN that would
-        // render as "NaN%" in the Hardware tab.
-        let d = dev(0, 0);
-        assert_eq!(d.memory_usage_percent(), 0.0);
-    }
-
-    #[test]
-    fn memory_usage_percent_reflects_used_fraction() {
-        // 8 GiB total, 6 GiB free → 25% used.
-        let total = 8 * 1024_u64.pow(3);
-        let free  = 6 * 1024_u64.pow(3);
-        let d = dev(total, free);
-        let pct = d.memory_usage_percent();
-        assert!((pct - 25.0).abs() < 1e-4, "got {pct}");
-    }
-
-    #[test]
-    fn layer_distribution_memory_gb_uses_binary_gb() {
-        let ld = LayerDistribution {
-            location: String::new(),
-            device_type: String::new(),
-            device_id: 0,
-            layer_range: (0, 31),
-            memory_bytes: 2 * 1024_u64.pow(3),
-        };
-        assert!((ld.memory_gb() - 2.0).abs() < 1e-6);
-    }
-
-    #[test]
-    fn model_topology_size_gb_uses_binary_gb() {
-        let mt = ModelTopology {
-            model_id: "x".into(),
-            size_bytes: 4 * 1024_u64.pow(3),
-            total_layers: 32,
-            layer_distribution: vec![],
-        };
-        assert!((mt.size_gb() - 4.0).abs() < 1e-6);
     }
 }
 

@@ -21,7 +21,6 @@ use eframe::egui;
 pub enum Icon {
     Attach,
     Bolt,
-    Chart,
     Chat,
     Check,
     Copy,
@@ -46,7 +45,6 @@ pub enum Icon {
     Server,
     Speaker,
     Stop,
-    Thermometer,
     Trash,
     Warning,
 }
@@ -57,7 +55,6 @@ impl Icon {
         match self {
             Self::Attach   => include_bytes!("icons/attach.svg"),
             Self::Bolt     => include_bytes!("icons/bolt.svg"),
-            Self::Chart    => include_bytes!("icons/chart.svg"),
             Self::Chat     => include_bytes!("icons/chat.svg"),
             Self::Check    => include_bytes!("icons/check.svg"),
             Self::Copy     => include_bytes!("icons/copy.svg"),
@@ -82,7 +79,6 @@ impl Icon {
             Self::Server   => include_bytes!("icons/server.svg"),
             Self::Speaker  => include_bytes!("icons/speaker.svg"),
             Self::Stop     => include_bytes!("icons/stop.svg"),
-            Self::Thermometer => include_bytes!("icons/thermometer.svg"),
             Self::Trash    => include_bytes!("icons/trash.svg"),
             Self::Warning  => include_bytes!("icons/warning.svg"),
         }
@@ -95,7 +91,6 @@ impl Icon {
         match self {
             Self::Attach   => "bytes://icons/attach.svg",
             Self::Bolt     => "bytes://icons/bolt.svg",
-            Self::Chart    => "bytes://icons/chart.svg",
             Self::Chat     => "bytes://icons/chat.svg",
             Self::Check    => "bytes://icons/check.svg",
             Self::Copy     => "bytes://icons/copy.svg",
@@ -120,7 +115,6 @@ impl Icon {
             Self::Server   => "bytes://icons/server.svg",
             Self::Speaker  => "bytes://icons/speaker.svg",
             Self::Stop     => "bytes://icons/stop.svg",
-            Self::Thermometer => "bytes://icons/thermometer.svg",
             Self::Trash    => "bytes://icons/trash.svg",
             Self::Warning  => "bytes://icons/warning.svg",
         }
@@ -157,7 +151,6 @@ mod tests {
     const ALL_ICONS: &[(Icon, &str)] = &[
         (Icon::Attach,   "attach"),
         (Icon::Bolt,     "bolt"),
-        (Icon::Chart,    "chart"),
         (Icon::Chat,     "chat"),
         (Icon::Check,    "check"),
         (Icon::Copy,     "copy"),
@@ -182,7 +175,6 @@ mod tests {
         (Icon::Server,   "server"),
         (Icon::Speaker,  "speaker"),
         (Icon::Stop,     "stop"),
-        (Icon::Thermometer, "thermometer"),
         (Icon::Trash,    "trash"),
         (Icon::Warning,  "warning"),
     ];
@@ -222,7 +214,6 @@ mod tests {
         match icon {
             Icon::Attach   => "attach",
             Icon::Bolt     => "bolt",
-            Icon::Chart    => "chart",
             Icon::Chat     => "chat",
             Icon::Check    => "check",
             Icon::Copy     => "copy",
@@ -247,7 +238,6 @@ mod tests {
             Icon::Server   => "server",
             Icon::Speaker  => "speaker",
             Icon::Stop     => "stop",
-            Icon::Thermometer => "thermometer",
             Icon::Trash    => "trash",
             Icon::Warning  => "warning",
         }

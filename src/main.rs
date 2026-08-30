@@ -20,7 +20,6 @@ mod cli_tab;
 mod config;
 mod config_editor;
 mod dialog;
-mod hardware_tab;
 mod icons;
 mod image_viewer;
 mod log_buffer;

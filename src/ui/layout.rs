@@ -47,7 +47,6 @@ const NAV_ITEMS: &[NavItem] = &[
     NavItem { icon: NavIcon::Svg(Icon::Chat),    label: "Chat",     tip: "Talk to a loaded model — text, vision, image-gen, TTS / ASR.", section: Section::Chat,     accent: theme::ACCENT_CHAT },
     NavItem { icon: NavIcon::Text(">_"),         label: "Terminal", tip: "REPL for model commands: list / load / unload / pull / ps.",   section: Section::Terminal, accent: theme::ACCENT_TERMINAL },
     NavItem { icon: NavIcon::Svg(Icon::Package), label: "Models",   tip: "Browse, install, load, and delete local models.",              section: Section::Models,   accent: theme::ACCENT_MODELS },
-    NavItem { icon: NavIcon::Svg(Icon::Chart),   label: "Hardware", tip: "GPU / CPU devices, loaded models, layer performance.",         section: Section::Hardware, accent: theme::ACCENT_HARDWARE },
     NavItem { icon: NavIcon::Svg(Icon::Gear),    label: "Settings", tip: "Server URL, API profiles, theme, config.toml editor.",         section: Section::Settings, accent: theme::ACCENT_SETTINGS },
     NavItem { icon: NavIcon::Svg(Icon::Bolt),    label: "Studio",   tip: "Media Studio — generate images, music, SFX, MIDI, video, speech.", section: Section::MediaStudio, accent: theme::ACCENT_MEDIA },
     NavItem { icon: NavIcon::Svg(Icon::Server),  label: "Logs",     tip: "Live server log stream with level + search filters.",          section: Section::ServerLog, accent: theme::ACCENT_LOGS },
@@ -59,7 +58,6 @@ pub fn section_accent(section: Section) -> Color32 {
         Section::Chat => theme::ACCENT_CHAT,
         Section::Terminal => theme::ACCENT_TERMINAL,
         Section::Models => theme::ACCENT_MODELS,
-        Section::Hardware => theme::ACCENT_HARDWARE,
         Section::Settings => theme::ACCENT_SETTINGS,
         Section::ServerLog => theme::ACCENT_LOGS,
         Section::MediaStudio => theme::ACCENT_MEDIA,
@@ -437,7 +435,6 @@ mod tests {
         assert_eq!(section_accent(Section::Chat),      theme::ACCENT_CHAT);
         assert_eq!(section_accent(Section::Terminal),  theme::ACCENT_TERMINAL);
         assert_eq!(section_accent(Section::Models),    theme::ACCENT_MODELS);
-        assert_eq!(section_accent(Section::Hardware),  theme::ACCENT_HARDWARE);
         assert_eq!(section_accent(Section::Settings),  theme::ACCENT_SETTINGS);
         assert_eq!(section_accent(Section::ServerLog), theme::ACCENT_LOGS);
         assert_eq!(section_accent(Section::MediaStudio), theme::ACCENT_MEDIA);
@@ -453,7 +450,6 @@ mod tests {
             Section::Chat,
             Section::Terminal,
             Section::Models,
-            Section::Hardware,
             Section::Settings,
             Section::ServerLog,
             Section::MediaStudio,
@@ -464,7 +460,7 @@ mod tests {
             (c.r(), c.g(), c.b())
         })
         .collect();
-        assert_eq!(accents.len(), 7, "every section must yield a distinct accent");
+        assert_eq!(accents.len(), 6, "every section must yield a distinct accent");
     }
 
     // ── classify_top_bar_status ───────────────────────────────────
