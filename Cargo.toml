@@ -55,7 +55,7 @@ eframe = { version = "0.35", default-features = false, features = ["glow", "defa
 uuid = { version = "1.0", features = ["v4"] }
 # Headless egui harness reading the AccessKit tree: drives the Media Studio panels
 # so a broken kind or arm is caught without a display server.
-egui_kittest = "0.35.0"
+egui_kittest = { version = "0.35.0", features = ["wgpu", "snapshot"] }
 
 [features]
 # In-process audio output, on by default: it is what makes playback behave the same

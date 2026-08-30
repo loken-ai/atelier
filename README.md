@@ -10,6 +10,14 @@ cargo build --release      # target/release/atelier
 It talks to the server over HTTP and holds no model itself, so it runs on a laptop while the
 work happens on the box with the cards.
 
+![Chat](docs/img/gui-chat.png)
+
+![Media Studio](docs/img/gui-media.png)
+
+Both images are rendered by the test suite from state written in `src/screenshots.rs`, so they
+show the current layout and can show no real address, path or prompt. Regenerate them with
+`cargo test --release screenshots -- --ignored`.
+
 ## What is in it
 
 - **Chat**, with streaming, image attachments for vision models, and speech in through the

@@ -25,6 +25,8 @@ mod image_viewer;
 mod log_buffer;
 mod media_tab;
 mod modality;
+#[cfg(test)]
+mod screenshots;
 mod server_log_tab;
 mod settings;
 mod state;
