@@ -14,7 +14,9 @@ work happens on the box with the cards.
 
 ![Media Studio](docs/img/atelier-media.png)
 
-Both images are rendered by the test suite from state written in `src/screenshots.rs`, so they
+![Models](docs/img/atelier-models.png)
+
+The images are rendered by the test suite from state written in `src/screenshots.rs`, so they
 show the current layout and can show no real address, path or prompt. Regenerate them with
 `cargo test --release screenshots -- --ignored`.
 

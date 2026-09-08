@@ -6,10 +6,8 @@
 //! caps, TTS presets, image-size presets), and the small pure
 //! formatters/parsers the chat tab and app layer share.
 
-use eframe::egui;
 
 use crate::state::MessageTiming;
-use crate::theme;
 
 // ── Model modality detection ──
 //
@@ -256,26 +254,6 @@ pub(crate) fn truncate_with_ellipsis(s: &str, max_bytes: usize) -> std::borrow::
         safe -= 1;
     }
     std::borrow::Cow::Owned(format!("{}...", &s[..safe]))
-}
-
-/// Header badge colour for a non-Text modality. Five semantic
-/// colours so users learn at a glance whether a model is text/vision
-/// (blue = neutral), image-gen (green = generative output), video-gen
-/// (red = not-yet-runnable warning), or audio in/out (amber = active
-/// audio path).
-///
-/// Text intentionally maps to PRIMARY too even though the caller
-/// already short-circuits on Text — keeping it in the match makes
-/// the table exhaustive so a new Self::* variant added to
-/// ModelModality forces a decision here at compile time.
-pub(crate) fn modality_badge_color(modality: ModelModality) -> egui::Color32 {
-    match modality {
-        ModelModality::Vision   => theme::accent(),
-        ModelModality::ImageGen => theme::success(),
-        ModelModality::VideoGen => theme::error(),
-        ModelModality::AudioTts | ModelModality::AudioAsr => theme::warning(),
-        ModelModality::Text     => theme::accent(),
-    }
 }
 
 // Chat input layout constants — shared between render's output-area
@@ -1565,45 +1543,6 @@ mod tests {
         // occupies bytes 0-1; safe=0 → "" + "..." = "...").
         let s = truncate_with_ellipsis("ñañañañañañaña", 4);
         assert_eq!(s, "...", "should clamp to empty prefix + ellipsis");
-    }
-
-    // ── modality_badge_color ──
-
-    #[test]
-    fn modality_badge_color_uses_semantic_palette() {
-        // Pin the documented semantic mapping. Drift here would
-        // change the visual signal users learn ("green = image
-        // gen") without any compile error.
-        assert_eq!(modality_badge_color(ModelModality::Vision),   theme::accent());
-        assert_eq!(modality_badge_color(ModelModality::ImageGen), theme::success());
-        assert_eq!(modality_badge_color(ModelModality::VideoGen), theme::error());
-        assert_eq!(modality_badge_color(ModelModality::AudioTts), theme::warning());
-        assert_eq!(modality_badge_color(ModelModality::AudioAsr), theme::warning());
-        // Text falls through to PRIMARY — callers short-circuit on
-        // Text but the function itself must be safe to call.
-        assert_eq!(modality_badge_color(ModelModality::Text),     theme::accent());
-    }
-
-    #[test]
-    fn modality_badge_color_video_gen_uses_warning_red_not_green() {
-        // Sanity: VideoGen must NOT be SUCCESS (would suggest it
-        // works) — pin it explicitly so a future refactor can't
-        // silently flip the signal.
-        assert_ne!(modality_badge_color(ModelModality::VideoGen), theme::success());
-        assert_eq!(modality_badge_color(ModelModality::VideoGen), theme::error(),
-            "VideoGen should signal 'not yet runnable' in red");
-    }
-
-    #[test]
-    fn modality_badge_color_audio_tts_and_asr_share_warning_amber() {
-        // Both audio modalities use the same amber — they're both
-        // "active audio path, not the default text response". Pin
-        // this so future split (one amber, one different) is an
-        // explicit decision, not silent drift.
-        assert_eq!(
-            modality_badge_color(ModelModality::AudioTts),
-            modality_badge_color(ModelModality::AudioAsr),
-        );
     }
 
     // ── ModelModality::label / input_hint ──

@@ -121,6 +121,13 @@ fn media_studio() {
     });
 }
 
+/// The model list with one model loaded, and the import panel under it.
+#[test]
+#[ignore = "writes docs/img and needs a graphics adapter"]
+fn models() {
+    shoot("atelier-models", Section::Models, |_| {});
+}
+
 /// Which of the literal glyphs the source uses actually resolve in the bundled fonts. A
 /// missing glyph draws as a box, which is what the SVG icons exist to prevent, so this
 /// renders each one and reports the ones that came out identical to the replacement
