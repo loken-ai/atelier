@@ -16,6 +16,8 @@ work happens on the box with the cards.
 
 ![Models](docs/img/atelier-models.png)
 
+![Server logs](docs/img/atelier-logs.png)
+
 The images are rendered by the test suite from state written in `src/screenshots.rs`, so they
 show the current layout and can show no real address, path or prompt. Regenerate them with
 `cargo test --release screenshots -- --ignored`.

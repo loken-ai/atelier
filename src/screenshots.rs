@@ -20,7 +20,7 @@ use egui_kittest::Harness;
 use crate::api::types::ModelInfo;
 use crate::app::{Args, LLMGuiApp};
 use crate::config::AppConfig;
-use crate::log_buffer::LogBuffer;
+use crate::log_buffer::{LogBuffer, LogEntry, LogLevel};
 use crate::state::{ChatMessage, MessageTiming, Section};
 
 const OUT: &str = "docs/img";
@@ -126,6 +126,29 @@ fn media_studio() {
 #[ignore = "writes docs/img and needs a graphics adapter"]
 fn models() {
     shoot("atelier-models", Section::Models, |_| {});
+}
+
+/// The server log with a line of every level, one of them a warning and one an error.
+#[test]
+#[ignore = "writes docs/img and needs a graphics adapter"]
+fn logs() {
+    shoot("atelier-logs", Section::ServerLog, |app| {
+        let lines: [(LogLevel, &str, &str, &str); 8] = [
+            (LogLevel::Info, "14:02:03.118", "atelier::api", "GET /api/tags 200 in 12 ms"),
+            (LogLevel::Info, "14:02:03.402", "atelier::models", "3 models listed, 1 loaded"),
+            (LogLevel::Debug, "14:02:11.204", "atelier::chat", "streaming reply from qwen3:8b"),
+            (LogLevel::Trace, "14:02:11.219", "atelier::api", "chunk 1 of the reply, 24 bytes"),
+            (LogLevel::Info, "14:02:12.480", "atelier::chat", "reply complete: 184 tokens in 1.2 s"),
+            (LogLevel::Warn, "14:02:40.011", "atelier::models", "z-image is not loaded; the first render will load it"),
+            (LogLevel::Error, "14:03:02.377", "atelier::api", "POST /v1/images/generations 503: no free device"),
+            (LogLevel::Info, "14:03:05.000", "atelier::media", "render cancelled by the user"),
+        ];
+        for (level, at, target, message) in lines {
+            let mut entry = LogEntry::new(level, target.into(), message.into());
+            entry.timestamp = at.into();
+            app.log_buffer.push(entry);
+        }
+    });
 }
 
 /// Which of the literal glyphs the source uses actually resolve in the bundled fonts. A
