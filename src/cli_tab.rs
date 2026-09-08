@@ -1,174 +1,109 @@
 //! CLI Tab Rendering
 //!
-//! UI rendering for the CLI command interface.
-//! Theme-aware: adapts to dark and light modes using theme constants.
+//! A chrome row naming the commands, the output behind the glass of a
+//! screen, the input in a well. An entry is a row with a stripe when it
+//! failed or is still running.
 
 use eframe::egui;
-use egui::{Color32, RichText, CornerRadius, Stroke};
 
 use crate::state::{CLIOutput, CLIState, ModelState};
-use crate::theme;
+use crate::theme::{self, text};
+use crate::ui::widgets;
+
+/// Height kept under the output for the input well, and the least height
+/// the output keeps.
+const CLI_INPUT_RESERVE: f32 = 72.0;
+const CLI_OUTPUT_MIN_H: f32 = 60.0;
+/// Space above the empty state.
+const EMPTY_TOP: f32 = 20.0;
+/// Width of the command column in the help list.
+const HELP_CMD_W: f32 = 160.0;
+/// Point size of the prompt mark in the chrome row.
+const MARK_PT: f32 = 16.0;
+/// Padding inside an entry.
+const ROW_PAD_X: i8 = 12;
+const ROW_PAD_Y: i8 = 6;
+
+/// The commands the chrome row names.
+const COMMANDS: [&str; 5] = ["list", "load", "unload", "pull", "ps"];
 
 /// Render the CLI tab content
 pub fn render(ui: &mut egui::Ui, cli: &mut CLIState, _models: &ModelState) {
-    let text_primary = theme::ink();
-    let text_secondary = theme::ink_dim();
-    let text_muted = theme::ink_dim();
-    let surface = theme::panel();
-    let surface_elevated = theme::raised();
-    let border = theme::border();
-
     ui.with_layout(egui::Layout::top_down(egui::Align::LEFT), |ui| {
-        // Header card
-        render_cli_header(ui, text_primary, text_secondary, surface, border);
-
-        ui.add_space(12.0);
-
-        // CLI output area
-        let output_height = (ui.available_height() - 60.0).max(60.0);
-        egui::ScrollArea::vertical()
-            .stick_to_bottom(true)
-            .max_height(output_height)
-            .show(ui, |ui| {
-                ui.set_width(ui.available_width());
-
-                if cli.outputs.is_empty() {
-                    ui.add_space(20.0);
-                    ui.label(RichText::new("No commands executed yet.").color(text_muted));
-                    ui.add_space(10.0);
-                    ui.label(RichText::new("Available commands:").strong().color(text_primary));
-                    let cmds = [
-                        ("list",           "List available models"),
-                        ("loaded",         "List loaded models"),
-                        ("load <model>",   "Load a model"),
-                        ("unload <model>", "Unload a model"),
-                        ("pull <model>",   "Pull/download a model"),
-                        ("delete <model>", "Delete a model"),
-                        ("ps",             "Show server status"),
-                        ("clear",          "Clear output"),
-                        ("help",           "Show this list (also rendered after `help`)"),
-                    ];
-                    for (cmd, desc) in cmds {
-                        ui.horizontal(|ui| {
-                            ui.label(RichText::new(format!("  {:<18}", cmd)).size(12.0).color(theme::accent()).monospace());
-                            ui.label(RichText::new(desc).size(12.0).color(text_secondary));
-                        });
-                    }
-                    ui.add_space(8.0);
-                    ui.label(
-                        RichText::new("Press Up / Down to recall past commands.")
-                            .size(11.0)
-                            .italics()
-                            .color(text_muted),
-                    );
-                } else {
-                    for output in &cli.outputs {
-                        render_output(ui, output, text_primary, text_muted, surface, surface_elevated, border);
-                        ui.add_space(4.0);
-                    }
-                }
-            });
-
-        ui.add_space(8.0);
-
-        // CLI input area
-        render_input_area(ui, cli, surface, border);
-    });
-}
-
-/// Render CLI header
-fn render_cli_header(
-    ui: &mut egui::Ui,
-    text_primary: Color32,
-    text_secondary: Color32,
-    surface: Color32,
-    border: Color32,
-) {
-    egui::Frame {
-        inner_margin: egui::Margin::symmetric(14, 10),
-        corner_radius: CornerRadius::same(8),
-        fill: surface,
-        stroke: Stroke::new(1.0, border),
-        shadow: egui::epaint::Shadow {
-            offset: [0, 1],
-            blur: 3,
-            spread: 0,
-            color: Color32::from_black_alpha(if theme::is_dark() { 30 } else { 8 }),
-        },
-        ..Default::default()
-    }
-    .show(ui, |ui| {
-        ui.horizontal_wrapped(|ui| {
-            ui.label(RichText::new(">_").size(16.0).color(text_primary).monospace());
-            ui.label(RichText::new("Terminal").size(15.0).strong().color(text_primary));
-
-            ui.separator();
-
-            ui.label(RichText::new("Commands:").size(11.0).color(text_secondary));
-
-            let badge_bg = theme::raised();
-            for cmd in ["list", "load", "unload", "pull", "ps"] {
-                egui::Frame {
-                    inner_margin: egui::Margin::symmetric(6, 2),
-                    corner_radius: CornerRadius::same(3),
-                    fill: badge_bg,
-                    ..Default::default()
-                }
-                .show(ui, |ui| {
-                    ui.label(RichText::new(cmd).size(10.0).color(theme::accent()).monospace());
-                });
+        widgets::chrome_row(ui, |ui| {
+            ui.label(egui::RichText::new(">_").size(MARK_PT).monospace().color(theme::ink_dim()));
+            ui.label(text::title("Terminal"));
+            ui.add_space(widgets::GAP_WIDGETS);
+            ui.label(text::label("COMMANDS"));
+            for cmd in COMMANDS {
+                ui.label(text::readout(cmd));
             }
         });
+        ui.add_space(widgets::GAP_WIDGETS);
+
+        // The output follows its tail: new lines are appended, and the screen
+        // fills the height, so there is no void above.
+        let output_height = (ui.available_height() - CLI_INPUT_RESERVE - 2.0 * widgets::SECTION_PADDING)
+            .max(CLI_OUTPUT_MIN_H);
+        widgets::screen_well(ui, |ui| {
+            egui::ScrollArea::vertical()
+                .stick_to_bottom(true)
+                .max_height(output_height)
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    ui.set_width(ui.available_width());
+                    if cli.outputs.is_empty() {
+                        ui.add_space(EMPTY_TOP);
+                        ui.label(text::note("No commands executed yet."));
+                        ui.add_space(widgets::GAP_WIDGETS);
+                        ui.label(text::label("AVAILABLE COMMANDS"));
+                        let cmds = [
+                            ("list", "List available models"),
+                            ("loaded", "List loaded models"),
+                            ("load <model>", "Load a model"),
+                            ("unload <model>", "Unload a model"),
+                            ("pull <model>", "Pull/download a model"),
+                            ("delete <model>", "Delete a model"),
+                            ("ps", "Show server status"),
+                            ("clear", "Clear output"),
+                            ("help", "Show this list (also rendered after `help`)"),
+                        ];
+                        for (cmd, desc) in cmds {
+                            ui.horizontal(|ui| {
+                                widgets::fixed_label(ui, HELP_CMD_W, text::mono(cmd).color(theme::accent()));
+                                ui.label(text::note(desc));
+                            });
+                        }
+                        ui.add_space(widgets::GAP_WIDGETS);
+                        widgets::caption_row(ui, "Press Up / Down to recall past commands.");
+                    } else {
+                        for output in &cli.outputs {
+                            render_output(ui, output);
+                            ui.add_space(widgets::GAP_LABEL);
+                        }
+                    }
+                });
+        });
+        ui.add_space(widgets::GAP_WIDGETS);
+
+        render_input_area(ui, cli);
     });
 }
 
-/// Render input area
-fn render_input_area(
-    ui: &mut egui::Ui,
-    cli: &mut CLIState,
-    surface: Color32,
-    border: Color32,
-) {
-    egui::Frame {
-        inner_margin: egui::Margin::symmetric(12, 10),
-        corner_radius: CornerRadius::same(8),
-        fill: surface,
-        stroke: Stroke::new(1.0, border),
-        shadow: egui::epaint::Shadow {
-            offset: [0, -1],
-            blur: 3,
-            spread: 0,
-            color: Color32::from_black_alpha(if theme::is_dark() { 20 } else { 6 }),
-        },
-        ..Default::default()
-    }
-    .show(ui, |ui| {
+/// The input: a prompt mark and the field, on a well.
+fn render_input_area(ui: &mut egui::Ui, cli: &mut CLIState) {
+    widgets::well(ui, |ui| {
         ui.horizontal(|ui| {
-            // Terminal prompt badge
-            egui::Frame {
-                inner_margin: egui::Margin::symmetric(8, 4),
-                corner_radius: CornerRadius::same(3),
-                fill: theme::accent(),
-                ..Default::default()
-            }
-            .show(ui, |ui| {
-                ui.label(RichText::new("$").size(13.0).strong().color(Color32::WHITE).monospace());
-            });
-
-            ui.add_space(6.0);
-
+            ui.label(text::mono("$").color(theme::accent()));
             let response = ui.add(
                 egui::TextEdit::singleline(&mut cli.input)
+                    .frame(egui::Frame::NONE)
                     .desired_width(ui.available_width())
                     .hint_text("Enter command...  (Up/Down for history)")
                     .id_salt("cli_input"),
             );
-
-            // Only auto-focus when nothing else holds focus. Previously
-            // this fired unconditionally every frame, which stole focus
-            // back from clicks on the CLI output area — making it
-            // impossible to drag-select output text to copy. Matches the
-            // pattern used in chat_tab.
+            // Focus is taken only when nothing else holds it, so the output
+            // stays selectable for copying.
             if ui.ctx().memory(egui::Memory::focused).is_none() {
                 response.request_focus();
             }
@@ -176,81 +111,40 @@ fn render_input_area(
     });
 }
 
-/// Render a single CLI output. Wide signature carries the theme palette
-/// (dark + 4 colours) plus the output content; refactoring to a Theme
-/// struct adds a borrow without simplifying the call sites.
-#[allow(clippy::too_many_arguments)]
-fn render_output(
-    ui: &mut egui::Ui,
-    output: &CLIOutput,
-    text_primary: Color32,
-    text_muted: Color32,
-    surface: Color32,
-    surface_elevated: Color32,
-    border: Color32,
-) {
-    let (stroke_color, output_color) = if output.is_error {
-        (theme::error(), theme::error())
+/// One entry: the timestamp, the prompt and the command on a line, the output
+/// under it, a stripe in the error colour when it failed and in the accent
+/// while it runs.
+fn render_output(ui: &mut egui::Ui, output: &CLIOutput) {
+    let tint = if output.is_error {
+        Some(theme::error())
     } else if output.in_progress {
-        (theme::accent(), theme::accent())
+        Some(theme::accent())
     } else {
-        (border, text_primary)
+        None
     };
-
-    // Subtle fill tint for errors/progress
-    let fill = if output.is_error {
-        theme::tinted(theme::error(), if theme::is_dark() { 15 } else { 8 })
-    } else if output.in_progress {
-        theme::tinted(theme::accent(), if theme::is_dark() { 15 } else { 8 })
-    } else {
-        surface
-    };
-
-    egui::Frame {
-        inner_margin: egui::Margin::symmetric(12, 10),
-        corner_radius: CornerRadius::same(6),
-        fill,
-        stroke: Stroke::new(1.0, stroke_color),
-        ..Default::default()
-    }
-    .show(ui, |ui| {
-        ui.set_width(ui.available_width());
-
-        // Command header
-        ui.horizontal(|ui| {
-            // Timestamp badge
-            egui::Frame {
-                inner_margin: egui::Margin::symmetric(6, 2),
-                corner_radius: CornerRadius::same(3),
-                fill: surface_elevated,
-                ..Default::default()
-            }
-            .show(ui, |ui| {
-                ui.label(RichText::new(&output.timestamp).size(10.0).color(text_muted));
+    let row = egui::Frame::NONE
+        .inner_margin(egui::Margin::symmetric(ROW_PAD_X, ROW_PAD_Y))
+        .show(ui, |ui| {
+            ui.set_min_width(ui.available_width());
+            ui.horizontal(|ui| {
+                ui.label(text::readout(&output.timestamp));
+                ui.label(text::mono("$").color(theme::accent()));
+                ui.label(text::mono(&output.command));
+                if output.in_progress {
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.label(text::label("RUNNING"));
+                        widgets::lamp_inline(ui, true, theme::accent());
+                    });
+                }
             });
-
-            ui.add_space(6.0);
-            ui.label(RichText::new("$").size(13.0).color(theme::accent()).monospace());
-            ui.label(RichText::new(&output.command).size(13.0).strong().color(text_primary).monospace());
-
-            if output.in_progress {
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.spinner();
-                    ui.label(RichText::new("Running...").size(11.0).color(theme::accent()));
-                });
-            }
+            ui.add_space(widgets::GAP_LABEL);
+            // Selectable, so an entry can be copied.
+            let ink = if output.is_error { theme::error() } else { theme::ink() };
+            ui.add(egui::Label::new(text::mono(&output.output).color(ink)).selectable(true));
         });
-
-        ui.add_space(6.0);
-
-        // Output text — selectable so users can drag-select + Ctrl+C
-        // to copy individual entries (a CLI tab where you can't copy
-        // the output is half useless).
-        ui.add(
-            egui::Label::new(RichText::new(&output.output).size(12.0).color(output_color))
-                .selectable(true),
-        );
-    });
+    if let Some(tint) = tint {
+        widgets::stripe(ui, row.response.rect, tint);
+    }
 }
 
 /// CLI command types and parsing
