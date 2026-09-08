@@ -263,8 +263,10 @@ pub fn visuals_for(p: &Palette) -> egui::Visuals {
     v
 }
 
-/// The spacing of one skin: an 8 px grid, 24 px controls, one form width.
+/// The spacing and the type scale of one skin: an 8 px grid, 24 px controls,
+/// one form width, five text styles.
 pub fn style_for(_p: &Palette, style: &mut egui::Style) {
+    style.text_styles = text::styles();
     style.spacing.item_spacing = egui::vec2(GAP_WIDGETS, GAP_LABEL);
     style.spacing.button_padding = egui::vec2(GAP_WIDGETS, GAP_LABEL);
     style.spacing.interact_size.y = CONTROL_H;
@@ -273,6 +275,72 @@ pub fn style_for(_p: &Palette, style: &mut egui::Style) {
     style.spacing.slider_rail_height = SLIDER_RAIL_H;
     style.spacing.window_margin = egui::Margin::same(PANEL_PADDING);
     style.spacing.menu_margin = egui::Margin::same(PANEL_PADDING);
+}
+
+/// The type scale. Five sizes and a weight each; the colour is the palette's.
+// The whole scale is read once the views are on it (src/ui/widgets.rs, the view modules).
+#[allow(dead_code)]
+pub mod text {
+    use super::palette;
+    use eframe::egui::{FontFamily, FontId, RichText, TextStyle};
+    use std::collections::BTreeMap;
+
+    /// A label over or beside a control: capitals, dim. Callers pass capitals.
+    pub const LABEL_PT: f32 = 10.0;
+    /// A value, a button, a name: the reading size of a control.
+    pub const VALUE_PT: f32 = 12.0;
+    /// A section title: capitals in the accent.
+    pub const SECTION_PT: f32 = 11.0;
+    /// Body prose.
+    pub const BODY_PT: f32 = 13.0;
+    /// The title in a chrome row.
+    pub const TITLE_PT: f32 = 14.0;
+    /// Monospace readouts.
+    pub const MONO_PT: f32 = 12.0;
+    /// A dim monospace readout in a chrome tail.
+    pub const READOUT_PT: f32 = 10.0;
+    /// Prose under a control, and its line pitch.
+    pub const CAPTION_PT: f32 = 8.5;
+    pub const CAPTION_PITCH: f32 = 10.5;
+    /// Tracked capitals over a hairline, and their letter spacing.
+    pub const HEADING_PT: f32 = 9.5;
+    pub const TRACKING: f32 = 1.5;
+    /// The icon of an empty state.
+    pub const EMPTY_STATE_ICON_PT: f32 = 32.0;
+
+    /// egui's named styles on the same scale.
+    pub fn styles() -> BTreeMap<TextStyle, FontId> {
+        [
+            (TextStyle::Body, FontId::new(BODY_PT, FontFamily::Proportional)),
+            (TextStyle::Button, FontId::new(VALUE_PT, FontFamily::Proportional)),
+            (TextStyle::Heading, FontId::new(TITLE_PT, FontFamily::Proportional)),
+            (TextStyle::Monospace, FontId::new(MONO_PT, FontFamily::Monospace)),
+            (TextStyle::Small, FontId::new(LABEL_PT, FontFamily::Proportional)),
+        ]
+        .into()
+    }
+
+    pub fn label(caps: &str) -> RichText {
+        RichText::new(caps).size(LABEL_PT).color(palette().ink_dim)
+    }
+    pub fn value(s: &str) -> RichText {
+        RichText::new(s).size(VALUE_PT).strong().color(palette().ink)
+    }
+    pub fn section(caps: &str) -> RichText {
+        RichText::new(caps).size(SECTION_PT).strong().color(palette().accent)
+    }
+    pub fn title(s: &str) -> RichText {
+        RichText::new(s).size(TITLE_PT).strong().color(palette().ink)
+    }
+    pub fn note(s: &str) -> RichText {
+        RichText::new(s).size(VALUE_PT).color(palette().ink_dim)
+    }
+    pub fn mono(s: &str) -> RichText {
+        RichText::new(s).monospace().size(MONO_PT).color(palette().ink)
+    }
+    pub fn readout(s: &str) -> RichText {
+        RichText::new(s).monospace().size(READOUT_PT).color(palette().ink_dim)
+    }
 }
 
 #[cfg(test)]
@@ -477,6 +545,7 @@ mod tests {
         assert_eq!(ctx.global_style().visuals.panel_fill, LIGHT.panel);
         assert_eq!(ctx.global_style().visuals.extreme_bg_color, LIGHT.well);
         assert_eq!(ctx.global_style().spacing.interact_size.y, CONTROL_H);
+        assert_eq!(ctx.global_style().text_styles[&egui::TextStyle::Body].size, text::BODY_PT);
         apply(&ctx, true);
         assert!(is_dark());
         assert_eq!(ctx.global_style().visuals.panel_fill, DARK.panel);

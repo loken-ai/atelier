@@ -12,13 +12,16 @@
 //! ```
 
 use eframe::egui::{self, Color32, RichText, CornerRadius, Stroke, Vec2};
-use crate::theme;
+use crate::theme::{self, text};
 use crate::state::Section;
 use crate::icons::Icon;
 
 /// Sidebar width (icon + label when expanded)
 const SIDEBAR_WIDTH: f32 = 56.0;
 const SIDEBAR_WIDTH_EXPANDED: f32 = 160.0;
+
+/// Point size of a navigation icon or glyph.
+const NAV_ICON_PT: f32 = 16.0;
 
 /// Sidebar navigation item. `icon` is an Icon variant rather than an emoji
 /// character. Terminal keeps a text glyph (">_"), which is a command-prompt
@@ -103,7 +106,7 @@ pub fn top_bar(
 
                 // App title. It named the server before, which is the one thing this
                 // window is not: it holds no model and can point at any backend.
-                ui.label(RichText::new("Atelier").size(16.0).strong().color(text_primary));
+                ui.label(text::title("Atelier"));
                 ui.add_space(16.0);
 
                 // Server status dot + label. The short_status text
@@ -119,7 +122,7 @@ pub fn top_bar(
                     .horizontal(|ui| {
                         let (dot_rect, _) = ui.allocate_exact_size(Vec2::new(8.0, 8.0), egui::Sense::hover());
                         ui.painter().circle_filled(dot_rect.center(), 4.0, status_color);
-                        ui.label(RichText::new(short_status).size(12.0).color(text_secondary));
+                        ui.label(text::note(short_status));
                     })
                     .response;
                 group_resp.on_hover_text(connection_detail);
@@ -145,8 +148,7 @@ pub fn top_bar(
                     let lbl = ui.add(
                         egui::Label::new(
                             RichText::new(display_name.as_ref())
-                                .size(12.0)
-                                .strong()
+                                .size(text::VALUE_PT).strong()
                                 .color(text_primary),
                         )
                         .sense(egui::Sense::hover()),
@@ -155,7 +157,7 @@ pub fn top_bar(
                         lbl.on_hover_text(model);
                     }
                 } else {
-                    ui.label(RichText::new("No model selected").size(12.0).color(text_secondary));
+                    ui.label(text::note("No model selected"));
                 }
 
                 ui.add_space(12.0);
@@ -164,7 +166,7 @@ pub fn top_bar(
 
                 // Metrics
                 if !metrics_text.is_empty() {
-                    ui.label(RichText::new(metrics_text).size(11.0).color(text_secondary));
+                    ui.label(text::note(metrics_text));
                 }
 
                 // Right side
@@ -182,7 +184,7 @@ pub fn top_bar(
                     if refreshing {
                         let btn = egui::Button::image_and_text(
                             Icon::Refresh.image(13.0, Color32::WHITE),
-                            RichText::new("Refresh").size(12.0).color(Color32::WHITE),
+                            text::value("Refresh").color(theme::on_accent()),
                         )
                         .fill(theme::accent())
                         .corner_radius(CornerRadius::same(4));
@@ -193,7 +195,7 @@ pub fn top_bar(
                     } else {
                         let btn = egui::Button::image_and_text(
                             Icon::Refresh.image(13.0, Color32::WHITE),
-                            RichText::new("Refresh").size(12.0).color(Color32::WHITE),
+                            text::value("Refresh").color(theme::on_accent()),
                         )
                         .fill(theme::accent())
                         .corner_radius(CornerRadius::same(4));
@@ -215,7 +217,7 @@ pub fn top_bar(
                     };
                     let theme_btn = egui::Button::image_and_text(
                         Icon::Palette.image(13.0, text_secondary),
-                        RichText::new(theme_label).size(12.0).color(text_secondary),
+                        text::note(theme_label),
                     )
                     .fill(theme::raised())
                     .stroke(Stroke::new(1.0, bar_border))
@@ -270,7 +272,7 @@ pub fn sidebar(
             } else {
                 ("\u{00BB}", "Expand sidebar to show labels")
             };
-            let toggle = egui::Button::new(RichText::new(glyph).size(16.0).color(toggle_color))
+            let toggle = egui::Button::new(RichText::new(glyph).size(NAV_ICON_PT).color(toggle_color))
                 .fill(Color32::TRANSPARENT)
                 .min_size(Vec2::new(ui.available_width(), 24.0));
             if ui.add(toggle).on_hover_text(tip).clicked() {
@@ -331,12 +333,12 @@ fn render_nav_item(
             // fallback ("Terminal" → ">_") keeps the same RichText
             // path it had before the conversion.
             match icon {
-                NavIcon::Svg(ic)   => { ic.show(ui, 16.0, text_color); }
-                NavIcon::Text(s)   => { ui.label(RichText::new(*s).size(16.0).color(text_color)); }
+                NavIcon::Svg(ic)   => { ic.show(ui, NAV_ICON_PT, text_color); }
+                NavIcon::Text(s)   => { ui.label(RichText::new(*s).size(NAV_ICON_PT).color(text_color)); }
             }
             if sidebar_expanded {
                 ui.add_space(6.0);
-                ui.label(RichText::new(label).size(13.0).color(text_color));
+                ui.label(text::value(label).color(text_color));
             }
         });
     });

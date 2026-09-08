@@ -622,7 +622,6 @@ impl LLMGuiApp {
         theme::apply(&cc.egui_ctx, config.dark_theme);
 
         // Configure fonts for Unicode emoji and icons support
-        configure_fonts(&cc.egui_ctx);
 
         // Image loaders are installed in main.rs before LLMGuiApp::new
         // is called — no need to install them again here. Removing the
@@ -3673,28 +3672,6 @@ fn insert_option_field(
 }
 
 /// Configure fonts to support Unicode emoji and icons
-fn configure_fonts(ctx: &egui::Context) {
-    // egui's default fonts already support Unicode emoji and icons
-    // This function is here for future customization if needed
-    // The default font settings in egui handle emoji rendering well enough
-    // for our use case (terminal/status icons)
-
-    // Configure text styles for consistent sizing
-    let mut style = (*ctx.global_style()).clone();
-
-    // Ensure text is readable with proper sizing
-    style.text_styles = [
-        (egui::TextStyle::Body, egui::FontId::proportional(14.0)),
-        (egui::TextStyle::Button, egui::FontId::proportional(14.0)),
-        (egui::TextStyle::Heading, egui::FontId::proportional(18.0)),
-        (egui::TextStyle::Monospace, egui::FontId::monospace(12.0)),
-        (egui::TextStyle::Small, egui::FontId::proportional(12.0)),
-    ]
-    .into();
-
-    ctx.set_global_style(style);
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

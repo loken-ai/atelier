@@ -14,7 +14,7 @@
 //!     .show(ui, 0);
 //! ```
 
-use eframe::egui::{self, Color32, Pos2, Rect, RichText, Sense, Stroke, Ui, Vec2};
+use eframe::egui::{self, Color32, Pos2, Rect, Sense, Stroke, Ui, Vec2};
 use crate::theme;
 
 // ── Spacing constants ──────────────────────────────────────────────
@@ -230,7 +230,7 @@ pub fn section_header(ui: &mut Ui, label: &str, accent: Color32) {
     let response = ui.horizontal(|ui| {
         let (bar_rect, _) = ui.allocate_exact_size(Vec2::new(4.0, 18.0), Sense::hover());
         ui.painter().rect_filled(bar_rect, 2u8, accent);
-        ui.label(RichText::new(label).color(accent).strong().size(12.0));
+        ui.label(theme::text::section(label).color(accent));
     });
     // Subtle tinted background behind header row
     let header_rect = response.response.rect;
