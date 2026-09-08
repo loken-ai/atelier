@@ -1,8 +1,8 @@
 //! The screenshots the documentation shows, drawn by running the application.
 //!
-//! `cargo test --release screenshots -- --ignored` writes them under `docs/img/`. Ignored by
-//! default: they write files and need a graphics adapter, where the rest of the suite runs
-//! anywhere.
+//! `cargo test --release screenshots -- --ignored` writes them under `docs/img/`, and the
+//! light renders under `target/light/`. Ignored by default: they write files and need a
+//! graphics adapter, where the rest of the suite runs anywhere.
 //!
 //! The harness drives the real `eframe::App`, so a shot contains the window as it is built -
 //! the top bar, the sidebar, the tab strip and the panel - rather than one panel rendered on
@@ -11,7 +11,7 @@
 //!
 //! The state is overwritten after construction. `AppConfig::load` reads the developer's own
 //! configuration off disk, and a screenshot must not depend on it, nor carry a server address
-//! someone happens to have saved.
+//! someone happens to have saved, nor the models of a server that happens to be running.
 
 #![cfg(test)]
 
@@ -25,6 +25,20 @@ use crate::state::{ChatMessage, MessageTiming, Section};
 
 const OUT: &str = "docs/img";
 const WINDOW: (f32, f32) = (1280.0, 860.0);
+
+/// Where the application is pointed while it is photographed: the discard port, which
+/// refuses at once. The machine that renders the documentation may well run a server, and
+/// the first refresh would otherwise replace the fixture models with the real list before
+/// the sixth frame.
+const NO_SERVER: &str = "http://127.0.0.1:9";
+
+/// One headless renderer at a time. The software adapter is not safe under two threads
+/// creating and rendering harnesses at once, and the test binary runs its tests in
+/// parallel; every test here holds this for its duration.
+fn render_lock() -> std::sync::MutexGuard<'static, ()> {
+    static RENDER: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    RENDER.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
 
 fn model(name: &str, size: &str, family: &str, caps: &[&str]) -> ModelInfo {
     ModelInfo {
@@ -57,8 +71,13 @@ fn shoot_skin(
     let mut harness = Harness::builder()
         .with_size(egui::vec2(WINDOW.0, WINDOW.1))
         .build_eframe(move |cc| {
-            let mut app = LLMGuiApp::new(cc, Args { model: None, server: None }, LogBuffer::new(256));
+            let mut app = LLMGuiApp::new(
+                cc,
+                Args { model: None, server: Some(NO_SERVER.to_string()) },
+                LogBuffer::new(256),
+            );
             app.config = AppConfig::default();
+            app.config.server_url = NO_SERVER.to_string();
             app.config.dark_theme = dark;
             crate::theme::apply(&cc.egui_ctx, dark);
             app.current_section = section;
@@ -80,6 +99,10 @@ fn shoot_skin(
     // A fixed number of steps, never `run`: a panel with a spinner asks for another frame
     // forever, and `run` gives up rather than returning one to photograph.
     harness.run_steps(6);
+    // The startup load of the configured model was refused by the discard port; its toast
+    // is a fact about this machine, not about the view, so it is dropped before the frame.
+    harness.state_mut().toasts.clear();
+    harness.run_steps(1);
     std::fs::create_dir_all(out).unwrap_or_else(|e| panic!("create {out}: {e}"));
     harness
         .render()
@@ -91,8 +114,6 @@ fn shoot_skin(
 /// Every documented view on the light skin, into target/light. The light
 /// palette has to carry the same surfaces as the dark one, and this is how
 /// to look at it.
-#[test]
-#[ignore = "writes target/light and needs a graphics adapter"]
 fn light_skin() {
     shoot_skin(LIGHT_OUT, "atelier-chat", false, Section::Chat, |app| {
         app.chat.messages.push_back(ChatMessage {
@@ -117,10 +138,22 @@ fn light_skin() {
     shoot_skin(LIGHT_OUT, "atelier-settings", false, Section::Settings, |_| {});
 }
 
+/// Every documented view, then the light renders. One test rather than one per view: the
+/// skin is one process-wide value, and two shots on parallel threads would photograph each
+/// other's skin.
+#[test]
+#[ignore = "writes docs/img and target/light, needs a graphics adapter"]
+fn documentation() {
+    let _renderer = render_lock();
+    chat();
+    media_studio();
+    models();
+    logs();
+    light_skin();
+}
+
 /// A conversation mid-answer. An empty chat shows the placeholder and none of what the tab is
 /// for, so the fixture is a exchange with a reply still streaming.
-#[test]
-#[ignore = "writes docs/img and needs a graphics adapter"]
 fn chat() {
     shoot("atelier-chat", Section::Chat, |app| {
         app.chat.messages.push_back(ChatMessage {
@@ -157,8 +190,6 @@ fn chat() {
 }
 
 /// Media Studio on the image panel, with a prompt and the controls a render actually uses.
-#[test]
-#[ignore = "writes docs/img and needs a graphics adapter"]
 fn media_studio() {
     shoot("atelier-media", Section::MediaStudio, |app| {
         app.media.kind = crate::state::MediaKind::Image;
@@ -167,15 +198,11 @@ fn media_studio() {
 }
 
 /// The model list with one model loaded, and the import panel under it.
-#[test]
-#[ignore = "writes docs/img and needs a graphics adapter"]
 fn models() {
     shoot("atelier-models", Section::Models, |_| {});
 }
 
 /// The server log with a line of every level, one of them a warning and one an error.
-#[test]
-#[ignore = "writes docs/img and needs a graphics adapter"]
 fn logs() {
     shoot("atelier-logs", Section::ServerLog, |app| {
         let lines: [(LogLevel, &str, &str, &str); 8] = [
@@ -203,6 +230,7 @@ fn logs() {
 #[test]
 #[ignore = "diagnostic"]
 fn which_literal_glyphs_resolve() {
+    let _renderer = render_lock();
     for (name, glyph) in [
         ("U+25CF circle", "\u{25CF}"),
         ("U+25C6 diamond", "\u{25C6}"),

@@ -209,6 +209,7 @@ mod tests {
     /// colour, and not each other's.
     #[test]
     fn only_warn_and_error_are_coloured() {
+        let _skin = theme::skin_lock();
         let dim = theme::ink_dim();
         assert_eq!(level_stripe(LogLevel::Trace), dim);
         assert_eq!(level_stripe(LogLevel::Debug), dim);

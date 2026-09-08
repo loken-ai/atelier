@@ -605,7 +605,7 @@ pub struct LLMGuiApp {
     /// "1 loaded · 2 GPU" line).
     /// Transient bottom-right notifications. Pushed via `self.toast(..)`,
     /// rendered + expired in update() after the CentralPanel.
-    toasts: Vec<Toast>,
+    pub(crate) toasts: Vec<Toast>,
     /// Set when the user clicks the top-bar Refresh so the following
     /// ModelsFetched can fire a "refreshed" toast — without this,
     /// every background/startup refresh would emit a noisy toast.

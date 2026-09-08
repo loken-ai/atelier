@@ -347,6 +347,7 @@ mod tests {
     use super::*;
 
     fn frame(dark: bool, body: impl FnMut(&mut Ui)) {
+        let _skin = theme::skin_lock();
         let mut harness = egui_kittest::Harness::new_ui(body);
         theme::apply(&harness.ctx, dark);
         harness.run();

@@ -123,6 +123,15 @@ pub fn palette() -> &'static Palette {
     if is_dark() { &DARK } else { &LIGHT }
 }
 
+/// The skin is one process-wide value, and the test binary runs its tests
+/// on parallel threads. A test that applies a skin or compares two colours
+/// of the palette holds this for its duration.
+#[cfg(test)]
+pub(crate) fn skin_lock() -> std::sync::MutexGuard<'static, ()> {
+    static SKIN_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    SKIN_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 pub fn bg() -> Color32 { palette().bg }
 pub fn panel() -> Color32 { palette().panel }
 pub fn raised() -> Color32 { palette().raised }
@@ -521,6 +530,7 @@ mod tests {
 
     #[test]
     fn apply_installs_the_palette() {
+        let _skin = skin_lock();
         let ctx = egui::Context::default();
         apply(&ctx, false);
         assert!(!is_dark());
