@@ -554,6 +554,40 @@ pub(crate) fn is_error_system_message(content: &str) -> bool {
 /// re-roll. The GUI uses this helper to lift the seed into a
 /// dedicated badge instead of leaking the bracketed text into the
 /// rendered bubble.
+/// The tags a thinking model writes around its reasoning, which is also
+/// how the stream stores a `thinking` field it received apart from the
+/// answer: one form, whichever way the thought arrived.
+pub(crate) const THINK_OPEN: &str = "<think>";
+pub(crate) const THINK_CLOSE: &str = "</think>";
+
+/// `thinking` ahead of `answer` in the wire form. An empty thought is no
+/// block at all; a thought with no answer yet stays open, which is how a
+/// reply still being reasoned about reads.
+pub(crate) fn with_thinking(thinking: &str, answer: &str) -> String {
+    if thinking.is_empty() {
+        return answer.to_string();
+    }
+    if answer.is_empty() {
+        format!("{THINK_OPEN}{thinking}")
+    } else {
+        format!("{THINK_OPEN}{thinking}{THINK_CLOSE}{answer}")
+    }
+}
+
+/// Split a reply into the thought and the answer. A reply that does not
+/// open with the tag has no thought; one that opens it and never closes it
+/// is all thought so far, and its answer is empty.
+pub(crate) fn split_thinking(content: &str) -> (Option<&str>, &str) {
+    let trimmed = content.trim_start();
+    let Some(after_open) = trimmed.strip_prefix(THINK_OPEN) else {
+        return (None, content);
+    };
+    match after_open.find(THINK_CLOSE) {
+        Some(end) => (Some(&after_open[..end]), after_open[end + THINK_CLOSE.len()..].trim_start()),
+        None => (Some(after_open), ""),
+    }
+}
+
 pub(crate) fn parse_seed_prefix(content: &str) -> (Option<u64>, &str) {
     let trimmed = content.trim_start();
     let after_lbracket = match trimmed.strip_prefix("[seed:") {
@@ -1690,4 +1724,28 @@ mod tests {
         assert!(s.chars().all(|c| c.is_ascii_digit() || c == '_'), "{s}");
     }
 
+
+    // ── split_thinking / with_thinking ──
+
+    #[test]
+    fn a_reply_without_a_thought_is_all_answer() {
+        assert_eq!(split_thinking("Paris."), (None, "Paris."));
+        assert_eq!(with_thinking("", "Paris."), "Paris.");
+    }
+
+    #[test]
+    fn a_closed_thought_is_split_from_the_answer() {
+        let wire = with_thinking("Let me see.", "Paris.");
+        assert_eq!(wire, "<think>Let me see.</think>Paris.");
+        assert_eq!(split_thinking(&wire), (Some("Let me see."), "Paris."));
+        // Whitespace the model puts around the tags does not reach the answer.
+        assert_eq!(split_thinking("  <think>a</think>\n\nb"), (Some("a"), "b"));
+    }
+
+    #[test]
+    fn an_open_thought_is_all_thought_so_far() {
+        let wire = with_thinking("Let me", "");
+        assert_eq!(wire, "<think>Let me");
+        assert_eq!(split_thinking(&wire), (Some("Let me"), ""));
+    }
 }

@@ -19,7 +19,7 @@ use crate::icons::Icon;
 use crate::modality::{
     base64_looks_like_image, chat_input_visible_rows, chat_send_allowed,
     format_attachment_cap_mb, format_timing_line, is_error_system_message,
-    parse_seed_prefix, path_is_image_ext, truncate_with_ellipsis,
+    parse_seed_prefix, split_thinking, path_is_image_ext, truncate_with_ellipsis,
     ModelModality, CHAT_ATTACHMENT_MAX_BYTES, CHAT_AUDIO_EXTS, CHAT_IMAGE_EXTS,
     CHAT_INPUT_ATTACH_STRIP_PX, CHAT_INPUT_BASE_CHROME_PX, CHAT_INPUT_ROW_PX,
     IMAGE_NUM_STEPS_MAX, IMAGE_NUM_STEPS_MIN, IMAGE_NUM_STEPS_PLACEHOLDER,
@@ -1554,11 +1554,18 @@ fn render_message(
         } else {
             msg.content.as_str()
         };
-        // Markdown for the assistant; a selectable label for the user and the
-        // system, so a past prompt can be copied by selection.
+        // Markdown for the assistant, its thought folded above the answer; a
+        // selectable label for the user and the system, so a past prompt can be
+        // copied by selection.
         if !body_to_render.is_empty() {
             if msg.role == "assistant" {
-                CommonMarkViewer::new().show(ui, md_cache, body_to_render);
+                let (thinking, answer) = split_thinking(body_to_render);
+                if let Some(thought) = thinking {
+                    thinking_block(ui, thought, false);
+                }
+                if !answer.is_empty() {
+                    CommonMarkViewer::new().show(ui, md_cache, answer);
+                }
             } else {
                 ui.add(
                     egui::Label::new(RichText::new(body_to_render).color(text_color))
@@ -1730,7 +1737,7 @@ fn render_message(
                             .on_hover_text("Copy the response text to the clipboard")
                             .clicked()
                         {
-                            ui.ctx().copy_text(msg.content.clone());
+                            ui.ctx().copy_text(split_thinking(&msg.content).1.to_string());
                         }
                     });
                 }
@@ -1754,10 +1761,14 @@ fn render_streaming_message(
     image_started_at: Option<std::time::Instant>,
     md_cache: &mut CommonMarkCache,
 ) {
+    // A thinking model reasons before it answers; while only the thought has
+    // arrived the lamp says so.
+    let (thinking, answer) = split_thinking(content);
+    let still_thinking = thinking.is_some() && answer.is_empty();
     message_row(ui, theme::panel(), theme::accent(), "ASSISTANT", "", |ui| {
         ui.horizontal(|ui| {
             widgets::lamp_inline(ui, true, theme::accent());
-            ui.label(text::label("GENERATING"));
+            ui.label(text::label(if still_thinking { "THINKING" } else { "GENERATING" }));
             if let Some((completed, total)) = image_progress {
                 // ETA from the mean step so far. Step c is in progress, so c - 1
                 // steps are complete; the estimate needs at least one.
@@ -1778,13 +1789,34 @@ fn render_streaming_message(
             surface::meter(ui, progress, widgets::METER_SIZE, theme::accent());
         } else {
             ui.add_space(widgets::GAP_LABEL);
-            CommonMarkViewer::new().show(ui, md_cache, content);
+            if let Some(thought) = thinking {
+                thinking_block(ui, thought, still_thinking);
+            }
+            if !answer.is_empty() {
+                CommonMarkViewer::new().show(ui, md_cache, answer);
+            }
             // Painted: U+2588 FULL BLOCK is not in the bundled fonts.
             let (caret, _) = ui.allocate_exact_size(CARET_SIZE, egui::Sense::hover());
             ui.painter()
                 .rect_filled(caret.shrink2(egui::vec2(1.0, 1.0)), 1.0, theme::accent());
         }
     });
+}
+
+/// The thought a model wrote before its answer: a collapsible well of dim
+/// text, held open while it is still being written and folded once the
+/// answer has begun, so the answer is what the eye lands on.
+fn thinking_block(ui: &mut egui::Ui, thought: &str, open: bool) {
+    egui::CollapsingHeader::new(text::label("THINKING"))
+        .id_salt(ui.id().with("thinking"))
+        .default_open(false)
+        .open(if open { Some(true) } else { None })
+        .show(ui, |ui| {
+            widgets::well(ui, |ui| {
+                ui.add(egui::Label::new(text::note(thought.trim())).wrap().selectable(true));
+            });
+        });
+    ui.add_space(widgets::GAP_LABEL);
 }
 
 /// The wait before the first chunk: a lamp and what is being waited for. A
@@ -1861,5 +1893,35 @@ mod tests {
             .collect();
         assert!(labels.iter().any(|l| l == "YOU"), "{labels:?}");
         assert!(labels.iter().any(|l| l == "ASSISTANT"), "{labels:?}");
+    }
+
+    /// A reply that opens with a thought shows it under its own word, and the
+    /// answer stands apart from it.
+    #[test]
+    fn a_thought_is_set_apart_from_the_answer() {
+        use egui_kittest::kittest::NodeT;
+        let mut reply = ChatMessage::system("<think>Paris is the capital.</think>Paris.");
+        reply.role = "assistant".to_string();
+        let mut md_cache = CommonMarkCache::default();
+        let mut textures = HashMap::new();
+        let pending = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let in_flight = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let seed = std::cell::Cell::new(None);
+        let play_err = std::cell::Cell::new(None);
+        let mut harness = egui_kittest::Harness::new_ui(|ui| {
+            render_message(ui, &reply, &mut md_cache, &mut textures, &pending, &in_flight, &seed, &play_err);
+        });
+        harness.run();
+        let texts: Vec<String> = harness
+            .root()
+            .children_recursive()
+            .map(|n| {
+                let ak = n.accesskit_node();
+                format!("{}{}", ak.label().unwrap_or_default(), ak.value().unwrap_or_default())
+            })
+            .collect();
+        assert!(texts.iter().any(|t| t == "THINKING"), "{texts:?}");
+        assert!(texts.iter().any(|t| t.contains("Paris.")), "{texts:?}");
+        assert!(!texts.iter().any(|t| t.contains("<think>")), "the tag leaked: {texts:?}");
     }
 }

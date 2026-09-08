@@ -90,6 +90,8 @@ fn shoot_skin(
             ];
             app.models.loaded_models = vec!["qwen3:8b".into()];
             app.models.selected_model = Some("qwen3:8b".into());
+            // The picker names the model, as the top bar does.
+            app.chat.smart_auto = false;
             dress(&mut app);
             app
         });
@@ -164,7 +166,10 @@ fn chat() {
         });
         app.chat.messages.push_back(ChatMessage {
             role: "assistant".into(),
-            content: "It holds the keys and values already computed for every token in the \
+            // A thinking model's reply: the thought folds above the answer.
+            content: "<think>The question is about inference, not training. Keys and values \
+                      per token, per layer; say what is stored and why it saves work.</think>\
+                      It holds the keys and values already computed for every token in the \
                       context, so each new token attends over them instead of recomputing the \
                       whole prefix. Its size grows with the context length, not with the \
                       prompt you just sent."

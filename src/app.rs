@@ -1879,6 +1879,8 @@ impl LLMGuiApp {
             let result = match client.chat_stream(&request).await {
                 Ok(mut response) => {
                     let mut accumulated = String::new();
+                    // The reasoning a thinking model streams apart from its answer.
+                    let mut thinking_acc = String::new();
                     let mut line_buf = String::new();
                     let mut timing_info: Option<crate::state::MessageTiming> = None;
                     let mut generated_images: Vec<String> = Vec::new();
@@ -1944,16 +1946,14 @@ impl LLMGuiApp {
                                                 }
                                             }
                                         }
-                                        if !chunk_resp.message.content.is_empty() {
+                                        let thought = chunk_resp.thinking.as_deref().unwrap_or_default();
+                                        if !chunk_resp.message.content.is_empty() || !thought.is_empty() {
+                                            thinking_acc.push_str(thought);
                                             accumulated.push_str(&chunk_resp.message.content);
-                                            // Update shared streaming buffer.
-                                            // clone_from reuses buf's existing
-                                            // allocation when capacity is
-                                            // sufficient — for long streaming
-                                            // responses this avoids a fresh
-                                            // String alloc per chunk.
+                                            // The shared buffer carries the thought ahead of the
+                                            // answer, in the one form the chat reads.
                                             if let Ok(mut buf) = streaming_text.lock() {
-                                                buf.clone_from(&accumulated);
+                                                *buf = crate::modality::with_thinking(&thinking_acc, &accumulated);
                                             }
                                             egui_ctx.request_repaint();
                                         }
@@ -2113,6 +2113,9 @@ impl LLMGuiApp {
                                     }
                                 }
                             }
+                            if let Some(thought) = chunk_resp.thinking.as_deref() {
+                                thinking_acc.push_str(thought);
+                            }
                             if !chunk_resp.message.content.is_empty() {
                                 accumulated.push_str(&chunk_resp.message.content);
                             }
@@ -2167,7 +2170,8 @@ impl LLMGuiApp {
                             accumulated.truncate(pos);
                         }
                     }
-                    let accumulated = accumulated.trim().to_string();
+                    let accumulated =
+                        crate::modality::with_thinking(thinking_acc.trim(), accumulated.trim());
 
                     Ok((accumulated, timing_info, generated_audios))
                 }
