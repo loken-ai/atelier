@@ -68,7 +68,7 @@ pub const DARK: Palette = Palette {
     accent_dim: Color32::from_rgb(0x4C, 0x79, 0xAD),
     on_accent: Color32::from_rgb(0x1A, 0x1A, 0x1E),
     success: Color32::from_rgb(0x48, 0x9B, 0x62),
-    warning: Color32::from_rgb(0xC2, 0x88, 0x30),
+    warning: Color32::from_rgb(0xC8, 0x96, 0x2A),
     error: Color32::from_rgb(0xC0, 0x56, 0x4E),
     plate_top: Color32::from_rgb(0x32, 0x32, 0x3C),
     plate_bottom: Color32::from_rgb(0x28, 0x28, 0x2F),
@@ -135,9 +135,12 @@ pub fn text_muted() -> Color32 { palette().ink_dim }
 pub fn success() -> Color32 { palette().success }
 pub fn warning() -> Color32 { palette().warning }
 pub fn error() -> Color32 { palette().error }
-
-/// Primary accent color (Soft Blue)
-pub const PRIMARY: Color32 = Color32::from_rgb(79, 140, 201);
+pub fn accent() -> Color32 { palette().accent }
+// Read by the chrome and the views (src/ui/layout.rs, the view modules).
+#[allow(dead_code)]
+pub fn accent_dim() -> Color32 { palette().accent_dim }
+#[allow(dead_code)]
+pub fn on_accent() -> Color32 { palette().on_accent }
 
 /// Build a tinted (unmultiplied-alpha) variant of `color`. `alpha` is the
 /// unmultiplied alpha byte (0 = transparent, 255 = opaque); typical values
@@ -145,28 +148,6 @@ pub const PRIMARY: Color32 = Color32::from_rgb(79, 140, 201);
 pub fn tinted(color: Color32, alpha: u8) -> Color32 {
     Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha)
 }
-
-// ============================================================================
-// Section Accent Colors - unique identity per navigation section
-// ============================================================================
-
-/// Chat section accent (soft blue)
-pub const ACCENT_CHAT: Color32 = Color32::from_rgb(100, 180, 255);
-
-/// Terminal section accent (green)
-pub const ACCENT_TERMINAL: Color32 = Color32::from_rgb(100, 255, 140);
-
-/// Models section accent (orange)
-pub const ACCENT_MODELS: Color32 = Color32::from_rgb(255, 180, 100);
-
-/// Settings section accent (neutral)
-pub const ACCENT_SETTINGS: Color32 = Color32::from_rgb(160, 160, 175);
-
-/// Server log section accent (muted cyan)
-pub const ACCENT_LOGS: Color32 = Color32::from_rgb(120, 200, 200);
-
-/// Media Studio section accent (magenta/pink)
-pub const ACCENT_MEDIA: Color32 = Color32::from_rgb(255, 140, 200);
 
 // Status glyphs for the places a dot is built into a formatted string, where
 // an SVG cannot slot in. Both resolve in the bundled fonts (see the glyph audit
@@ -269,25 +250,25 @@ pub fn apply_dark_theme(visuals: &mut egui::Visuals) {
     visuals.widgets.inactive.corner_radius = RADIUS;
 
     visuals.widgets.hovered.bg_fill = dark::SURFACE_ELEVATED;
-    visuals.widgets.hovered.fg_stroke = Stroke::new(1.5, PRIMARY);
+    visuals.widgets.hovered.fg_stroke = Stroke::new(1.5, DARK.accent);
     visuals.widgets.hovered.weak_bg_fill = dark::SURFACE_ELEVATED;
-    visuals.widgets.hovered.bg_stroke = Stroke::new(1.0, PRIMARY);
+    visuals.widgets.hovered.bg_stroke = Stroke::new(1.0, DARK.accent);
     visuals.widgets.hovered.corner_radius = RADIUS;
 
-    visuals.widgets.active.bg_fill = PRIMARY;
+    visuals.widgets.active.bg_fill = DARK.accent;
     visuals.widgets.active.fg_stroke = Stroke::new(2.0, Color32::WHITE);
-    visuals.widgets.active.weak_bg_fill = PRIMARY;
+    visuals.widgets.active.weak_bg_fill = DARK.accent;
     visuals.widgets.active.corner_radius = RADIUS;
 
     visuals.widgets.open.bg_fill = dark::SURFACE_ELEVATED;
-    visuals.widgets.open.fg_stroke = Stroke::new(1.0, PRIMARY);
+    visuals.widgets.open.fg_stroke = Stroke::new(1.0, DARK.accent);
     visuals.widgets.open.corner_radius = RADIUS;
 
     // Selection + the slider's filled span (trailing fill, enabled in
     // apply()): SOLID accent - a translucent tint washed out against the rail
     // and made the filled span hard to see.
     visuals.selection.bg_fill = Color32::from_rgb(70, 120, 175);
-    visuals.selection.stroke = Stroke::new(1.0, PRIMARY);
+    visuals.selection.stroke = Stroke::new(1.0, DARK.accent);
 
     visuals.window_stroke = Stroke::new(1.0, dark::BORDER);
     visuals.window_corner_radius = RADIUS;
@@ -317,23 +298,23 @@ pub fn apply_light_theme(visuals: &mut egui::Visuals) {
     visuals.widgets.inactive.corner_radius = RADIUS;
 
     visuals.widgets.hovered.bg_fill = light::SURFACE_ELEVATED;
-    visuals.widgets.hovered.fg_stroke = Stroke::new(1.5, PRIMARY);
+    visuals.widgets.hovered.fg_stroke = Stroke::new(1.5, LIGHT.accent);
     visuals.widgets.hovered.weak_bg_fill = light::SURFACE_ELEVATED;
-    visuals.widgets.hovered.bg_stroke = Stroke::new(1.0, PRIMARY);
+    visuals.widgets.hovered.bg_stroke = Stroke::new(1.0, LIGHT.accent);
     visuals.widgets.hovered.corner_radius = RADIUS;
 
-    visuals.widgets.active.bg_fill = PRIMARY;
+    visuals.widgets.active.bg_fill = LIGHT.accent;
     visuals.widgets.active.fg_stroke = Stroke::new(2.0, Color32::WHITE);
-    visuals.widgets.active.weak_bg_fill = PRIMARY;
+    visuals.widgets.active.weak_bg_fill = LIGHT.accent;
     visuals.widgets.active.corner_radius = RADIUS;
 
     visuals.widgets.open.bg_fill = light::SURFACE_ELEVATED;
-    visuals.widgets.open.fg_stroke = Stroke::new(1.0, PRIMARY);
+    visuals.widgets.open.fg_stroke = Stroke::new(1.0, LIGHT.accent);
     visuals.widgets.open.corner_radius = RADIUS;
 
     // Selection + slider trailing span: solid accent (see dark theme note).
     visuals.selection.bg_fill = Color32::from_rgb(65, 125, 190);
-    visuals.selection.stroke = Stroke::new(1.0, PRIMARY);
+    visuals.selection.stroke = Stroke::new(1.0, LIGHT.accent);
 
     visuals.window_stroke = Stroke::new(1.0, light::BORDER);
     visuals.window_corner_radius = RADIUS;
@@ -360,7 +341,7 @@ mod tests {
         // c.g(), c.b(), a) for every alpha; egui's internal encoding is
         // premultiplied, so channel equality with the source cannot be
         // asserted directly.
-        for &color in &[PRIMARY, DARK.success, DARK.warning, DARK.error] {
+        for &color in &[LIGHT.accent, DARK.success, DARK.warning, DARK.error] {
             for alpha in [0u8, 1, 18, 25, 30, 180, 200, 255] {
                 let expected = Color32::from_rgba_unmultiplied(
                     color.r(), color.g(), color.b(), alpha,
@@ -375,13 +356,13 @@ mod tests {
 
     #[test]
     fn tinted_opaque_alpha_equals_source() {
-        assert_eq!(tinted(PRIMARY, 255), PRIMARY);
+        assert_eq!(tinted(LIGHT.accent, 255), LIGHT.accent);
         assert_eq!(tinted(DARK.success, 255), DARK.success);
     }
 
     #[test]
     fn tinted_zero_alpha_is_fully_transparent() {
-        let t = tinted(PRIMARY, 0);
+        let t = tinted(LIGHT.accent, 0);
         assert_eq!(t, Color32::TRANSPARENT);
     }
 
@@ -412,41 +393,31 @@ mod tests {
         assert!(ratio >= floor, "{what}: contrast {ratio:.2}:1 < {floor}:1");
     }
 
-    /// All section accents; two sections sharing a colour would share a
-    /// navigation pill.
-    const SECTION_ACCENTS: &[(&str, Color32)] = &[
-        ("ACCENT_CHAT",     ACCENT_CHAT),
-        ("ACCENT_TERMINAL", ACCENT_TERMINAL),
-        ("ACCENT_MODELS",   ACCENT_MODELS),
-        ("ACCENT_SETTINGS", ACCENT_SETTINGS),
-        ("ACCENT_LOGS",     ACCENT_LOGS),
-        ("ACCENT_MEDIA",    ACCENT_MEDIA),
-    ];
-
-    #[test]
-    fn section_accent_colors_are_distinct() {
-        for (i, (na, ca)) in SECTION_ACCENTS.iter().enumerate() {
-            for (nb, cb) in SECTION_ACCENTS.iter().skip(i + 1) {
-                assert_ne!(
-                    (ca.r(), ca.g(), ca.b()),
-                    (cb.r(), cb.g(), cb.b()),
-                    "{na} and {nb} share the same RGB"
-                );
-            }
-        }
+    /// Manhattan distance in RGB bytes; two colours closer than
+    /// `HUE_APART` read as the same hue at a glance.
+    fn rgb_distance(a: Color32, b: Color32) -> i32 {
+        (a.r() as i32 - b.r() as i32).abs()
+            + (a.g() as i32 - b.g() as i32).abs()
+            + (a.b() as i32 - b.b() as i32).abs()
     }
+    const HUE_APART: i32 = 90;
 
     #[test]
-    fn status_colors_are_distinct_both_palettes() {
+    fn the_accent_is_not_a_status_colour() {
+        // The accent marks selection and focus; a status colour marks an
+        // outcome. Neither may be mistaken for the other, and no two
+        // outcomes may share a hue.
         for (skin, p) in SKINS {
-            let status = [("success", p.success), ("warning", p.warning), ("error", p.error)];
-            for (i, (na, ca)) in status.iter().enumerate() {
-                for (nb, cb) in status.iter().skip(i + 1) {
-                    assert_ne!(
-                        (ca.r(), ca.g(), ca.b()),
-                        (cb.r(), cb.g(), cb.b()),
-                        "{skin}: {na} and {nb} share the same RGB"
-                    );
+            let named = [
+                ("accent", p.accent),
+                ("success", p.success),
+                ("warning", p.warning),
+                ("error", p.error),
+            ];
+            for (i, (na, ca)) in named.iter().enumerate() {
+                for (nb, cb) in named.iter().skip(i + 1) {
+                    let d = rgb_distance(*ca, *cb);
+                    assert!(d > HUE_APART, "{skin}: {na} and {nb} are {d} apart, under {HUE_APART}");
                 }
             }
         }

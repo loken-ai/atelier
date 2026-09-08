@@ -153,7 +153,7 @@ fn render_log_header(
                             ui.label(
                                 RichText::new(format!("localhost:{}", port))
                                     .size(11.0)
-                                    .color(theme::PRIMARY),
+                                    .color(theme::accent()),
                             );
                         });
                 }
@@ -194,7 +194,7 @@ fn render_filter_controls(
                 for filter in filters {
                     let is_selected = server.log_filter == filter;
                     let filter_bg = if is_selected {
-                        theme::PRIMARY
+                        theme::accent()
                     } else {
                         palette.chip_fill
                     };
@@ -343,7 +343,7 @@ fn render_log_output(
                                 ui.label(
                                     RichText::new("RUST_LOG=atelier=debug atelier")
                                         .size(12.0)
-                                        .color(theme::PRIMARY)
+                                        .color(theme::accent())
                                         .family(egui::FontFamily::Monospace),
                                 );
                             });
@@ -438,7 +438,7 @@ fn render_log_entry(
                 ui.label(
                     RichText::new(format!("{}:", target_short))
                         .size(11.0)
-                        .color(theme::PRIMARY)
+                        .color(theme::accent())
                         .family(egui::FontFamily::Monospace),
                 );
 

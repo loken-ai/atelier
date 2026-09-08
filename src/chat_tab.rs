@@ -90,9 +90,9 @@ impl ChatTheme {
                 (Color32::from_rgb(255, 248, 225), theme::warning(), self.text_primary)
             },
             _ => if dark {
-                (self.surface, theme::PRIMARY, self.text_primary)
+                (self.surface, theme::accent(), self.text_primary)
             } else {
-                (Color32::from_rgb(232, 240, 254), theme::PRIMARY, self.text_primary)
+                (Color32::from_rgb(232, 240, 254), theme::accent(), self.text_primary)
             },
         }
     }
@@ -121,7 +121,7 @@ impl ChatTheme {
                 Icon::Warning, "System",
             ),
             _ => (
-                theme::tinted(theme::PRIMARY, 180),
+                theme::tinted(theme::accent(), 180),
                 Icon::Bot, "AI",
             ),
         }
@@ -428,7 +428,7 @@ pub fn render(
         painter.rect_filled(
             screen,
             0.0,
-            theme::tinted(theme::PRIMARY, 40),
+            theme::tinted(theme::accent(), 40),
         );
         let label = if hovered_count == 1 {
             "Drop file to attach".to_string()
@@ -790,7 +790,7 @@ fn render_chat_header(
                     let badge_resp = egui::Frame {
                         inner_margin: egui::Margin::symmetric(8, 3),
                         corner_radius: CornerRadius::same(4),
-                        fill: theme::tinted(theme::PRIMARY, 25),
+                        fill: theme::tinted(theme::accent(), 25),
                         ..Default::default()
                     }
                     .show(ui, |ui| {
@@ -800,7 +800,7 @@ fn render_chat_header(
                         // clear button) off the right edge of the
                         // window. Full name stays in the tooltip below.
                         let label = truncate_with_ellipsis(&profile.name, 20);
-                        ui.label(RichText::new(label.as_ref()).size(11.0).color(theme::PRIMARY));
+                        ui.label(RichText::new(label.as_ref()).size(11.0).color(theme::accent()));
                     });
                     let api_kind = match profile.api_type {
                         crate::config::ApiType::Loken => "LOKEN",
@@ -1593,7 +1593,7 @@ fn render_input_area(
         if chat.is_generating {
             ui.horizontal(|ui| {
                 ui.spinner();
-                ui.label(RichText::new("Generating...").size(12.0).color(theme::PRIMARY));
+                ui.label(RichText::new("Generating...").size(12.0).color(theme::accent()));
             });
             ui.add_space(4.0);
         }
@@ -1883,7 +1883,7 @@ fn render_input_area(
                     Icon::Play.image(11.0, Color32::WHITE),
                     RichText::new("Send").size(12.0).color(Color32::WHITE),
                 )
-                .fill(theme::PRIMARY)
+                .fill(theme::accent())
                 .corner_radius(CornerRadius::same(4));
                 send_clicked = ui.add(send_btn).on_hover_text(send_tip).clicked();
             } else {
@@ -2454,7 +2454,7 @@ fn render_streaming_message(
             inner_margin: egui::Margin::symmetric(12, 10),
             corner_radius: CornerRadius::same(6),
             fill: bubble_fill,
-            stroke: Stroke::new(2.0, theme::PRIMARY),
+            stroke: Stroke::new(2.0, theme::accent()),
             ..Default::default()
         }
         .show(ui, |ui| {
@@ -2512,7 +2512,7 @@ fn render_streaming_message(
                 let (caret, _) =
                     ui.allocate_exact_size(egui::vec2(7.0, 14.0), egui::Sense::hover());
                 ui.painter()
-                    .rect_filled(caret.shrink2(egui::vec2(1.0, 1.0)), 1.0, theme::PRIMARY);
+                    .rect_filled(caret.shrink2(egui::vec2(1.0, 1.0)), 1.0, theme::accent());
             }
         });
     });
@@ -2555,7 +2555,7 @@ fn render_typing_indicator(
             inner_margin: egui::Margin::symmetric(12, 10),
             corner_radius: CornerRadius::same(6),
             fill: t.surface,
-            stroke: Stroke::new(1.0, theme::PRIMARY),
+            stroke: Stroke::new(1.0, theme::accent()),
             ..Default::default()
         }
         .show(ui, |ui| {
@@ -2564,7 +2564,7 @@ fn render_typing_indicator(
                 ui.label(
                     RichText::new(label_text)
                         .size(13.0)
-                        .color(theme::PRIMARY)
+                        .color(theme::accent())
                         .italics(),
                 );
             });

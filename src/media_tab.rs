@@ -64,7 +64,7 @@ pub fn render(
     // line reflects the write result this frame.
     crate::dialog::drain_pending_dialog(media);
 
-    let accent = theme::ACCENT_MEDIA;
+    let accent = theme::accent();
 
     egui::ScrollArea::vertical()
         .auto_shrink([false, false])
@@ -1911,7 +1911,7 @@ fn overlay_button(
     let resp = ui.interact(rect, id, egui::Sense::click());
     let hovered = enabled && resp.hovered();
     let fill = if hovered {
-        theme::ACCENT_MEDIA.gamma_multiply(0.85)
+        theme::accent().gamma_multiply(0.85)
     } else {
         egui::Color32::from_black_alpha(120)
     };
@@ -1949,7 +1949,7 @@ fn render_results(
     ui.add_space(12.0);
     ui.separator();
     ui.add_space(6.0);
-    ui.label(RichText::new("Result").size(14.0).strong().color(theme::ACCENT_MEDIA));
+    ui.label(RichText::new("Result").size(14.0).strong().color(theme::accent()));
     ui.add_space(6.0);
 
     // ── Text (Transcribe) ────────────────────────────────────────────
@@ -2098,7 +2098,7 @@ fn render_results(
         let n_audios = media.result_audios.len();
         for i in 0..n_audios {
             ui.horizontal(|ui| {
-                Icon::Music.show(ui, 14.0, theme::ACCENT_MEDIA);
+                Icon::Music.show(ui, 14.0, theme::accent());
                 ui.add_space(4.0);
                 ui.label(
                     RichText::new(if n_audios == 1 {
@@ -2186,7 +2186,7 @@ fn render_results(
         for i in 0..media.result_files.len() {
             ui.horizontal(|ui| {
                 let (name, bytes) = &media.result_files[i];
-                Icon::Film.show(ui, 14.0, theme::ACCENT_MEDIA);
+                Icon::Film.show(ui, 14.0, theme::accent());
                 ui.add_space(4.0);
                 ui.label(
                     RichText::new(format!(
@@ -2265,7 +2265,7 @@ fn render_video_player(ui: &mut egui::Ui, video: &mut crate::video_engine::Video
         return false;
     }
     if let Some(err) = &video.error {
-        ui.label(RichText::new(format!("Video: {err}")).size(12.0).color(theme::ACCENT_MEDIA));
+        ui.label(RichText::new(format!("Video: {err}")).size(12.0).color(theme::accent()));
         return false;
     }
     let Some(tex) = video.texture.clone() else { return false };
@@ -2297,7 +2297,7 @@ fn render_video_player(ui: &mut egui::Ui, video: &mut crate::video_engine::Video
         video.stale_frame(),
         video.shown_frame(),
     ) {
-        ui.label(RichText::new(text).size(11.0).color(theme::ACCENT_MEDIA));
+        ui.label(RichText::new(text).size(11.0).color(theme::accent()));
     }
     let (idx, total, playing, fps, looping, samples, dur) = match &video.player {
         Some(p) => (
@@ -2320,7 +2320,7 @@ fn render_video_player(ui: &mut egui::Ui, video: &mut crate::video_engine::Video
                  decoder does not support"
             ))
             .size(11.0)
-            .color(theme::ACCENT_MEDIA),
+            .color(theme::accent()),
         );
     }
     ui.horizontal(|ui| {
@@ -3064,7 +3064,7 @@ fn render_video_viewer(
                         egui::Align2::CENTER_CENTER,
                         text,
                         egui::FontId::proportional(13.0),
-                        theme::ACCENT_MEDIA,
+                        theme::accent(),
                     );
                 }
                 ViewerNotice::Clear | ViewerNotice::Dismiss => {}

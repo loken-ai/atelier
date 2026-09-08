@@ -32,7 +32,6 @@ struct NavItem {
     /// visible.
     tip: &'static str,
     section: Section,
-    accent: Color32,
 }
 
 /// Sidebar icon variants. Either an SVG-backed Icon or a literal
@@ -44,25 +43,13 @@ enum NavIcon {
 }
 
 const NAV_ITEMS: &[NavItem] = &[
-    NavItem { icon: NavIcon::Svg(Icon::Chat),    label: "Chat",     tip: "Talk to a loaded model — text, vision, image-gen, TTS / ASR.", section: Section::Chat,     accent: theme::ACCENT_CHAT },
-    NavItem { icon: NavIcon::Text(">_"),         label: "Terminal", tip: "REPL for model commands: list / load / unload / pull / ps.",   section: Section::Terminal, accent: theme::ACCENT_TERMINAL },
-    NavItem { icon: NavIcon::Svg(Icon::Package), label: "Models",   tip: "Browse, install, load, and delete local models.",              section: Section::Models,   accent: theme::ACCENT_MODELS },
-    NavItem { icon: NavIcon::Svg(Icon::Gear),    label: "Settings", tip: "Server URL, API profiles, theme, config.toml editor.",         section: Section::Settings, accent: theme::ACCENT_SETTINGS },
-    NavItem { icon: NavIcon::Svg(Icon::Bolt),    label: "Studio",   tip: "Media Studio — generate images, music, SFX, MIDI, video, speech.", section: Section::MediaStudio, accent: theme::ACCENT_MEDIA },
-    NavItem { icon: NavIcon::Svg(Icon::Server),  label: "Logs",     tip: "Live server log stream with level + search filters.",          section: Section::ServerLog, accent: theme::ACCENT_LOGS },
+    NavItem { icon: NavIcon::Svg(Icon::Chat),    label: "Chat",     tip: "Talk to a loaded model — text, vision, image-gen, TTS / ASR.", section: Section::Chat },
+    NavItem { icon: NavIcon::Text(">_"),         label: "Terminal", tip: "REPL for model commands: list / load / unload / pull / ps.",   section: Section::Terminal },
+    NavItem { icon: NavIcon::Svg(Icon::Package), label: "Models",   tip: "Browse, install, load, and delete local models.",              section: Section::Models },
+    NavItem { icon: NavIcon::Svg(Icon::Gear),    label: "Settings", tip: "Server URL, API profiles, theme, config.toml editor.",         section: Section::Settings },
+    NavItem { icon: NavIcon::Svg(Icon::Bolt),    label: "Studio",   tip: "Media Studio — generate images, music, SFX, MIDI, video, speech.", section: Section::MediaStudio },
+    NavItem { icon: NavIcon::Svg(Icon::Server),  label: "Logs",     tip: "Live server log stream with level + search filters.",          section: Section::ServerLog },
 ];
-
-/// Get the accent color for a section
-pub fn section_accent(section: Section) -> Color32 {
-    match section {
-        Section::Chat => theme::ACCENT_CHAT,
-        Section::Terminal => theme::ACCENT_TERMINAL,
-        Section::Models => theme::ACCENT_MODELS,
-        Section::Settings => theme::ACCENT_SETTINGS,
-        Section::ServerLog => theme::ACCENT_LOGS,
-        Section::MediaStudio => theme::ACCENT_MEDIA,
-    }
-}
 
 /// Render the top bar
 // egui 0.34 deprecates `Panel::show(&Context)` in favour of
@@ -198,7 +185,7 @@ pub fn top_bar(
                             Icon::Refresh.image(13.0, Color32::WHITE),
                             RichText::new("Refresh").size(12.0).color(Color32::WHITE),
                         )
-                        .fill(theme::PRIMARY)
+                        .fill(theme::accent())
                         .corner_radius(CornerRadius::same(4));
                         ui.add_enabled(false, btn)
                             .on_hover_text("Refreshing model list and hardware info…");
@@ -209,7 +196,7 @@ pub fn top_bar(
                             Icon::Refresh.image(13.0, Color32::WHITE),
                             RichText::new("Refresh").size(12.0).color(Color32::WHITE),
                         )
-                        .fill(theme::PRIMARY)
+                        .fill(theme::accent())
                         .corner_radius(CornerRadius::same(4));
                         if ui.add(btn).on_hover_text("Refresh model list and hardware info").clicked() {
                             refresh_clicked = true;
@@ -294,7 +281,7 @@ pub fn sidebar(
             ui.add_space(4.0);
 
             for item in NAV_ITEMS {
-                render_nav_item(ui, current, &item.icon, item.label, item.tip, item.section, item.accent, dark, sidebar_expanded);
+                render_nav_item(ui, current, &item.icon, item.label, item.tip, item.section, dark, sidebar_expanded);
                 ui.add_space(2.0);
             }
         });
@@ -302,10 +289,7 @@ pub fn sidebar(
     toggle_clicked
 }
 
-/// Render a single navigation item with section-specific accent color.
-/// Wide signature is the natural shape — packs UI handles, current
-/// section ref, label/icon/tip values, accent colour, dark flag, and
-/// expanded flag. Wrapping in a NavItemArgs struct just adds boilerplate.
+/// Render a single navigation item. The active item carries the accent.
 #[allow(clippy::too_many_arguments)]
 fn render_nav_item(
     ui: &mut egui::Ui,
@@ -314,10 +298,10 @@ fn render_nav_item(
     label: &str,
     tip: &str,
     section: Section,
-    accent: Color32,
     dark: bool,
     sidebar_expanded: bool,
 ) {
+    let accent = theme::accent();
     let is_active = *current == section;
     let (fill, text_color) = if is_active {
         (
@@ -409,43 +393,6 @@ pub(crate) fn classify_top_bar_status(
 mod tests {
     use super::*;
     use crate::state::Section;
-
-    #[test]
-    fn section_accent_routes_each_section_to_documented_color() {
-        // The sidebar's navigation pill renders in section_accent.
-        // Drift would silently swap which colour identifies which
-        // section — undoing the visual learning users build via
-        // repeated use. Pin every variant.
-        assert_eq!(section_accent(Section::Chat),      theme::ACCENT_CHAT);
-        assert_eq!(section_accent(Section::Terminal),  theme::ACCENT_TERMINAL);
-        assert_eq!(section_accent(Section::Models),    theme::ACCENT_MODELS);
-        assert_eq!(section_accent(Section::Settings),  theme::ACCENT_SETTINGS);
-        assert_eq!(section_accent(Section::ServerLog), theme::ACCENT_LOGS);
-        assert_eq!(section_accent(Section::MediaStudio), theme::ACCENT_MEDIA);
-    }
-
-    #[test]
-    fn section_accent_yields_distinct_colors_per_section() {
-        // theme::ACCENT_* distinctness is pinned in theme::tests, but
-        // *this* mapping could collapse two Sections onto the same
-        // ACCENT_* if a future refactor renames the variants — pin
-        // distinctness at the layout layer too.
-        let accents: std::collections::HashSet<(u8, u8, u8)> = [
-            Section::Chat,
-            Section::Terminal,
-            Section::Models,
-            Section::Settings,
-            Section::ServerLog,
-            Section::MediaStudio,
-        ]
-        .iter()
-        .map(|s| {
-            let c = section_accent(*s);
-            (c.r(), c.g(), c.b())
-        })
-        .collect();
-        assert_eq!(accents.len(), 6, "every section must yield a distinct accent");
-    }
 
     // ── classify_top_bar_status ───────────────────────────────────
 

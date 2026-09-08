@@ -166,7 +166,7 @@ pub fn render(
                         .size(11.0)
                         .color(if can_apply { Color32::WHITE } else { text_secondary }),
                 )
-                .fill(if can_apply { theme::PRIMARY } else { surface_elevated })
+                .fill(if can_apply { theme::accent() } else { surface_elevated })
                 .corner_radius(CornerRadius::same(4));
                 let apply_resp = ui.add_enabled(can_apply, apply_btn);
                 let apply_clicked = apply_resp.clicked();
@@ -269,7 +269,7 @@ pub fn render(
                     let btn = egui::Button::new(
                         RichText::new(label).size(11.0).color(if is_active { Color32::WHITE } else { text_secondary }),
                     )
-                    .fill(if is_active { theme::PRIMARY } else { surface_elevated })
+                    .fill(if is_active { theme::accent() } else { surface_elevated })
                     .corner_radius(CornerRadius::same(4));
                     let btn_resp = ui.add(btn);
                     btn_resp.clone().on_hover_ui(|ui| {
@@ -296,7 +296,7 @@ pub fn render(
                     let btn = egui::Button::new(
                         RichText::new(label).size(12.0).color(if is_active { Color32::WHITE } else { text_secondary }),
                     )
-                    .fill(if is_active { theme::PRIMARY } else { surface_elevated })
+                    .fill(if is_active { theme::accent() } else { surface_elevated })
                     .corner_radius(CornerRadius::same(4));
                     if ui.add(btn).clicked() && config.dark_theme != value {
                         config.dark_theme = value;
@@ -382,7 +382,7 @@ pub fn render(
                 .show(ui, |ui| {
                     ui.horizontal(|ui| {
                         let badge_color = match profile.api_type {
-                            ApiType::Loken => theme::PRIMARY,
+                            ApiType::Loken => theme::accent(),
                             ApiType::Ollama => theme::success(),
                             ApiType::OpenApi => theme::warning(),
                         };
@@ -421,9 +421,9 @@ pub fn render(
                             }
                             ui.add_space(4.0);
                             let edit_btn = egui::Button::new(
-                                RichText::new("Edit").size(10.0).color(theme::PRIMARY),
+                                RichText::new("Edit").size(10.0).color(theme::accent()),
                             )
-                            .fill(theme::tinted(theme::PRIMARY, 18))
+                            .fill(theme::tinted(theme::accent(), 18))
                             .corner_radius(CornerRadius::same(3));
                             if ui.add(edit_btn).on_hover_text("Open the profile editor").clicked() {
                                 edit_clicked = true;
@@ -467,8 +467,8 @@ pub fn render(
 
             ui.add_space(8.0);
             ui.horizontal(|ui| {
-                let btn = egui::Button::new(RichText::new("+ New Profile").size(11.0).color(theme::PRIMARY))
-                    .fill(theme::tinted(theme::PRIMARY, 15))
+                let btn = egui::Button::new(RichText::new("+ New Profile").size(11.0).color(theme::accent()))
+                    .fill(theme::tinted(theme::accent(), 15))
                     .corner_radius(CornerRadius::same(4));
                 if ui.add(btn).clicked() {
                     // Pick a name that doesn't collide with any
@@ -676,7 +676,7 @@ pub fn render(
                     let save_btn = egui::Button::new(
                         RichText::new("Save config.toml").size(12.0).color(Color32::WHITE),
                     )
-                    .fill(theme::PRIMARY)
+                    .fill(theme::accent())
                     .corner_radius(CornerRadius::same(4));
                     if ui
                         .add(save_btn)
@@ -940,7 +940,7 @@ fn render_inapp_folder_picker(ctx: &egui::Context, editor: &mut ConfigEditorStat
             ui.horizontal(|ui| {
                 if let Some(home) = std::env::var_os("HOME") {
                     let home_resp = ui.add(egui::Button::image_and_text(
-                        Icon::Home.image(13.0, theme::PRIMARY),
+                        Icon::Home.image(13.0, theme::accent()),
                         RichText::new("Home").size(11.0),
                     ).small());
                     if home_resp.on_hover_text("Jump to $HOME").clicked() {
@@ -1003,7 +1003,7 @@ fn render_inapp_folder_picker(ctx: &egui::Context, editor: &mut ConfigEditorStat
                         if ui
                             .add(
                                 egui::Button::image_and_text(
-                                    Icon::Folder.image(13.0, theme::PRIMARY),
+                                    Icon::Folder.image(13.0, theme::accent()),
                                     RichText::new(&name).size(12.0),
                                 )
                                 .frame(false),
@@ -1025,7 +1025,7 @@ fn render_inapp_folder_picker(ctx: &egui::Context, editor: &mut ConfigEditorStat
                     let commit_btn = egui::Button::new(
                         RichText::new("Use this folder").size(12.0).color(Color32::WHITE),
                     )
-                    .fill(theme::PRIMARY)
+                    .fill(theme::accent())
                     .corner_radius(CornerRadius::same(4));
                     if ui.add(commit_btn).clicked() {
                         commit = true;

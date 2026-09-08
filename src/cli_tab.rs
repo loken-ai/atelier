@@ -51,7 +51,7 @@ pub fn render(ui: &mut egui::Ui, cli: &mut CLIState, _models: &ModelState) {
                     ];
                     for (cmd, desc) in cmds {
                         ui.horizontal(|ui| {
-                            ui.label(RichText::new(format!("  {:<18}", cmd)).size(12.0).color(theme::PRIMARY).monospace());
+                            ui.label(RichText::new(format!("  {:<18}", cmd)).size(12.0).color(theme::accent()).monospace());
                             ui.label(RichText::new(desc).size(12.0).color(text_secondary));
                         });
                     }
@@ -121,7 +121,7 @@ fn render_cli_header(
                     ..Default::default()
                 }
                 .show(ui, |ui| {
-                    ui.label(RichText::new(cmd).size(10.0).color(theme::PRIMARY).monospace());
+                    ui.label(RichText::new(cmd).size(10.0).color(theme::accent()).monospace());
                 });
             }
         });
@@ -155,7 +155,7 @@ fn render_input_area(
             egui::Frame {
                 inner_margin: egui::Margin::symmetric(8, 4),
                 corner_radius: CornerRadius::same(3),
-                fill: theme::PRIMARY,
+                fill: theme::accent(),
                 ..Default::default()
             }
             .show(ui, |ui| {
@@ -200,7 +200,7 @@ fn render_output(
     let (stroke_color, output_color) = if output.is_error {
         (theme::error(), theme::error())
     } else if output.in_progress {
-        (theme::PRIMARY, theme::PRIMARY)
+        (theme::accent(), theme::accent())
     } else {
         (border, text_primary)
     };
@@ -209,7 +209,7 @@ fn render_output(
     let fill = if output.is_error {
         theme::tinted(theme::error(), if dark { 15 } else { 8 })
     } else if output.in_progress {
-        theme::tinted(theme::PRIMARY, if dark { 15 } else { 8 })
+        theme::tinted(theme::accent(), if dark { 15 } else { 8 })
     } else {
         surface
     };
@@ -238,13 +238,13 @@ fn render_output(
             });
 
             ui.add_space(6.0);
-            ui.label(RichText::new("$").size(13.0).color(theme::PRIMARY).monospace());
+            ui.label(RichText::new("$").size(13.0).color(theme::accent()).monospace());
             ui.label(RichText::new(&output.command).size(13.0).strong().color(text_primary).monospace());
 
             if output.in_progress {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.spinner();
-                    ui.label(RichText::new("Running...").size(11.0).color(theme::PRIMARY));
+                    ui.label(RichText::new("Running...").size(11.0).color(theme::accent()));
                 });
             }
         });

@@ -130,20 +130,20 @@ pub fn render(
             egui::Frame {
                 inner_margin: egui::Margin::symmetric(12, 8),
                 corner_radius: CornerRadius::same(4),
-                // Tinted from theme::PRIMARY so the fill matches the
+                // Tinted from theme::accent() so the fill matches the
                 // stroke colour — the previous hardcoded (37, 99, 235)
                 // was Tailwind blue-600, which diverged from the
                 // theme's (79, 140, 201) PRIMARY when the palette was
                 // last tuned, leaving a visible blue-on-blue mismatch.
-                fill: theme::tinted(theme::PRIMARY, 20),
-                stroke: Stroke::new(1.0, theme::PRIMARY),
+                fill: theme::tinted(theme::accent(), 20),
+                stroke: Stroke::new(1.0, theme::accent()),
                 ..Default::default()
             }
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.spinner();
                     ui.add_space(8.0);
-                    ui.label(RichText::new(msg).size(12.0).color(theme::PRIMARY));
+                    ui.label(RichText::new(msg).size(12.0).color(theme::accent()));
                 });
                 if is_pull {
                     ui.add_space(6.0);
@@ -253,7 +253,7 @@ pub fn render(
     let visible = visible_pairs.len();
 
     // ── 1. Section header ─────────────────────────────────────────
-    panel::section_header(ui, "LOCAL MODELS", theme::ACCENT_MODELS);
+    panel::section_header(ui, "LOCAL MODELS", theme::accent());
     ui.add_space(8.0);
 
     // ── 2. Toolbar: filter, sort, refresh, count ─────────────────
@@ -313,10 +313,10 @@ pub fn render(
                 let chip_btn = egui::Button::new(
                     RichText::new(*label)
                         .size(11.0)
-                        .color(if selected { theme::PRIMARY } else { text_secondary }),
+                        .color(if selected { theme::accent() } else { text_secondary }),
                 )
                 .fill(if selected {
-                    theme::tinted(theme::PRIMARY, 25)
+                    theme::tinted(theme::accent(), 25)
                 } else {
                     Color32::TRANSPARENT
                 })
@@ -356,10 +356,10 @@ pub fn render(
                 let btn = egui::Button::new(
                     RichText::new(label)
                         .size(11.0)
-                        .color(if selected { theme::PRIMARY } else { text_secondary }),
+                        .color(if selected { theme::accent() } else { text_secondary }),
                 )
                 .fill(if selected {
-                    theme::tinted(theme::PRIMARY, 25)
+                    theme::tinted(theme::accent(), 25)
                 } else {
                     Color32::TRANSPARENT
                 })
@@ -432,7 +432,7 @@ pub fn render(
                 let mut name_clicked = false;
 
                 let card_fill = if is_selected {
-                    theme::tinted(theme::PRIMARY, 18)
+                    theme::tinted(theme::accent(), 18)
                 } else {
                     surface
                 };
@@ -442,7 +442,7 @@ pub fn render(
                     fill: card_fill,
                     stroke: Stroke::new(
                         if is_selected { 1.5 } else { 1.0 },
-                        if is_selected { theme::PRIMARY } else { border },
+                        if is_selected { theme::accent() } else { border },
                     ),
                     ..Default::default()
                 }
@@ -498,7 +498,7 @@ pub fn render(
                         if !model.source.is_empty() {
                             let (src_label, src_color) = match model.source.as_str() {
                                 "ollama"      => ("Ollama", theme::success()),
-                                "huggingface" => ("HF",     theme::PRIMARY),
+                                "huggingface" => ("HF",     theme::accent()),
                                 other         => (other,    text_secondary),
                             };
                             let src_resp = egui::Frame {
@@ -635,7 +635,7 @@ pub fn render(
                         .size(11.0)
                         .color(if selected { Color32::WHITE } else { text_secondary }),
                 )
-                .fill(if selected { theme::PRIMARY } else { Color32::TRANSPARENT })
+                .fill(if selected { theme::accent() } else { Color32::TRANSPARENT })
                 .corner_radius(CornerRadius::same(3));
                 if ui.add(btn).clicked() {
                     models.pull_source = key.to_string();
@@ -660,7 +660,7 @@ pub fn render(
             let pull_btn = egui::Button::new(
                 RichText::new("Pull").size(12.0).color(Color32::WHITE),
             )
-            .fill(if pull_enabled { theme::PRIMARY } else { Color32::from_gray(80) })
+            .fill(if pull_enabled { theme::accent() } else { Color32::from_gray(80) })
             .corner_radius(CornerRadius::same(4));
             let pull_resp = ui.add_enabled(pull_enabled, pull_btn);
             if action_busy {
@@ -705,7 +705,7 @@ pub fn render(
                     let btn = egui::Button::new(
                         RichText::new(name).size(10.0).color(text_secondary),
                     )
-                    .fill(theme::tinted(theme::PRIMARY, 15))
+                    .fill(theme::tinted(theme::accent(), 15))
                     .corner_radius(CornerRadius::same(3));
                     let resp = ui.add_enabled(!pills_busy, btn);
                     // Tooltip surfaces the friendly description from

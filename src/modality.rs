@@ -270,11 +270,11 @@ pub(crate) fn truncate_with_ellipsis(s: &str, max_bytes: usize) -> std::borrow::
 /// ModelModality forces a decision here at compile time.
 pub(crate) fn modality_badge_color(modality: ModelModality) -> egui::Color32 {
     match modality {
-        ModelModality::Vision   => theme::PRIMARY,
+        ModelModality::Vision   => theme::accent(),
         ModelModality::ImageGen => theme::success(),
         ModelModality::VideoGen => theme::error(),
         ModelModality::AudioTts | ModelModality::AudioAsr => theme::warning(),
-        ModelModality::Text     => theme::PRIMARY,
+        ModelModality::Text     => theme::accent(),
     }
 }
 
@@ -1574,14 +1574,14 @@ mod tests {
         // Pin the documented semantic mapping. Drift here would
         // change the visual signal users learn ("green = image
         // gen") without any compile error.
-        assert_eq!(modality_badge_color(ModelModality::Vision),   theme::PRIMARY);
+        assert_eq!(modality_badge_color(ModelModality::Vision),   theme::accent());
         assert_eq!(modality_badge_color(ModelModality::ImageGen), theme::success());
         assert_eq!(modality_badge_color(ModelModality::VideoGen), theme::error());
         assert_eq!(modality_badge_color(ModelModality::AudioTts), theme::warning());
         assert_eq!(modality_badge_color(ModelModality::AudioAsr), theme::warning());
         // Text falls through to PRIMARY — callers short-circuit on
         // Text but the function itself must be safe to call.
-        assert_eq!(modality_badge_color(ModelModality::Text),     theme::PRIMARY);
+        assert_eq!(modality_badge_color(ModelModality::Text),     theme::accent());
     }
 
     #[test]
