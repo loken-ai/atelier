@@ -306,7 +306,11 @@ pub fn render(
                     let is_selected = models.selected_model.as_deref() == Some(&model.name);
 
                     // A row: raised when selected, with a stripe; a hairline under
-                    // each. The whole row is the select target.
+                    // each. The whole row is the select target, sensed for hover
+                    // only: a click sense registered after the buttons would sit on
+                    // top of them and take their clicks. A click that no button took
+                    // selects.
+                    let mut acted = false;
                     let fill = if is_selected { theme::raised() } else { egui::Color32::TRANSPARENT };
                     let row = egui::Frame::NONE
                         .fill(fill)
@@ -349,6 +353,7 @@ pub fn render(
                                             "Delete this model from disk"
                                         };
                                         if resp.on_hover_text(tip).clicked() {
+                                            acted = true;
                                             models.delete_confirm_pending = Some(model.name.clone());
                                         }
                                     }
@@ -361,6 +366,7 @@ pub fn render(
                                     let resp = ui.add_enabled(!gated, egui::Button::new(text::note(label)));
                                     let hover = if gated { "Another model action is in progress" } else { tip };
                                     if resp.on_hover_text(hover).clicked() {
+                                        acted = true;
                                         if is_loaded {
                                             actions.push(SettingsAction::UnloadModel(model.name.clone()));
                                         } else {
@@ -381,8 +387,11 @@ pub fn render(
                         rect.bottom() + HAIRLINE / 2.0,
                         egui::Stroke::new(HAIRLINE, theme::border()),
                     );
-                    let row_click = row.response.interact(egui::Sense::click());
-                    if row_click.on_hover_text("Click to select this model").clicked() {
+                    let row_hover = ui.interact(rect, row.response.id.with("select"), egui::Sense::hover());
+                    let clicked_in_row =
+                        row_hover.contains_pointer() && ui.input(|i| i.pointer.primary_clicked());
+                    row_hover.on_hover_text("Click to select this model");
+                    if clicked_in_row && !acted {
                         models.selected_model = Some(model.name.clone());
                     }
                 }
@@ -468,4 +477,51 @@ pub fn render(
     });
 
     actions
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::api::ModelInfo;
+    use egui_kittest::kittest::Queryable;
+
+    /// A row selects the model on click, and its Load button still takes the click
+    /// meant for it: the row's click sense sits under the buttons, never over them.
+    #[test]
+    fn the_load_button_takes_its_click() {
+        let mut models = ModelState::default();
+        models.available_models = vec![ModelInfo {
+            name: "llama3.2:1b".into(),
+            size: "1.3 GB".into(),
+            size_bytes: 0,
+            modified_at: String::new(),
+            source: "ollama".into(),
+            family: "llama".into(),
+            capabilities: vec!["chat".into()],
+            defaults: None,
+        }];
+        let actions = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let selected = std::rc::Rc::new(std::cell::RefCell::new(None::<String>));
+        let sink = actions.clone();
+        let chosen = selected.clone();
+        let mut harness = egui_kittest::Harness::new_ui(move |ui| {
+            let out = render(ui, &mut models);
+            sink.borrow_mut().extend(out);
+            *chosen.borrow_mut() = models.selected_model.clone();
+        });
+        harness.run();
+        harness.get_by_label("Load").click();
+        harness.run();
+        // A click on the name, which no button owns, selects the row.
+        harness.get_by_label("llama3.2:1b").click();
+        harness.run();
+        drop(harness);
+        let loads = actions
+            .borrow()
+            .iter()
+            .filter(|a| matches!(a, SettingsAction::LoadModel(_)))
+            .count();
+        assert_eq!(loads, 1, "one Load, from the button");
+        assert_eq!(selected.borrow().as_deref(), Some("llama3.2:1b"), "the row click selected");
+    }
 }
