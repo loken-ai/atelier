@@ -16,7 +16,7 @@
 
 use std::collections::HashMap;
 
-use eframe::egui::{self, RichText};
+use eframe::egui;
 
 use crate::icons::Icon;
 use crate::state::{ChatDialogResult, MediaAudioSlot, MediaKind, MediaState, VideoFormat, VideoSampler};
@@ -2782,6 +2782,16 @@ mod thumbnail_orientation_tests {
     }
 }
 
+/// The fullscreen viewer's transport bar and notice strip, the cap on the
+/// fit scale, the zoom per wheel point and per click, and its readouts.
+const VIEWER_BAR_H: f32 = 44.0;
+const VIEWER_STRIP_H: f32 = 32.0;
+const VIEWER_FIT_MAX: f32 = 8.0;
+const VIEWER_WHEEL_RATE: f32 = 0.0015;
+const VIEWER_ZOOM_STEP: f32 = 1.25;
+const VIEWER_FRAME_W: f32 = 96.0;
+const VIEWER_ZOOM_W: f32 = 48.0;
+
 /// The fullscreen clip viewer: the rendered frame, as large as the window allows, with
 /// zoom, pan and frame-by-frame stepping.
 ///
@@ -2852,7 +2862,7 @@ fn render_video_viewer(
             ui.set_clip_rect(screen);
             // An opaque ground, so nothing of the interface shows through and biases the
             // eye about brightness or colour.
-            ui.painter().rect_filled(screen, 0.0, egui::Color32::from_gray(12));
+            ui.painter().rect_filled(screen, 0.0, theme::bg());
 
             let resp = ui.interact(
                 screen,
@@ -2868,7 +2878,7 @@ fn render_video_viewer(
                 let raw = tex.size_vec2();
                 // Fit first, then the zoom multiplies it - so zoom 1 always means "the
                 // whole frame", whatever the clip's resolution.
-                let fit = (screen.width() / raw.x).min(screen.height() / raw.y).min(8.0);
+                let fit = (screen.width() / raw.x).min(screen.height() / raw.y).min(VIEWER_FIT_MAX);
                 let shown = raw * fit * viewer.zoom;
 
                 if resp.dragged() {
@@ -2880,7 +2890,7 @@ fn render_video_viewer(
                 // Wheel and pinch both, because a trackpad reports the second and would
                 // otherwise be a device that cannot zoom.
                 let (scroll, pinch) = ui.input(|i| (i.smooth_scroll_delta.y, i.zoom_delta()));
-                let factor = (1.0 + scroll * 0.0015) * pinch;
+                let factor = (1.0 + scroll * VIEWER_WHEEL_RATE) * pinch;
                 if (factor - 1.0).abs() > f32::EPSILON {
                     if let Some(p) = resp.hover_pos() {
                         let old = viewer.zoom;
@@ -2920,7 +2930,7 @@ fn render_video_viewer(
                 None => (0, 0, false),
             };
             let bar = egui::Rect::from_min_max(
-                egui::pos2(screen.min.x, screen.max.y - 44.0),
+                egui::pos2(screen.min.x, screen.max.y - VIEWER_BAR_H),
                 screen.max,
             );
 
@@ -2932,8 +2942,8 @@ fn render_video_viewer(
                         screen.center(),
                         egui::Align2::CENTER_CENTER,
                         text,
-                        egui::FontId::proportional(15.0),
-                        egui::Color32::from_gray(210),
+                        egui::FontId::proportional(text::TITLE_PT),
+                        theme::ink(),
                     );
                 }
                 ViewerNotice::Over(text) => {
@@ -2942,74 +2952,62 @@ fn render_video_viewer(
                     // in the same field of view.
                     let strip = egui::Rect::from_min_max(
                         screen.min,
-                        egui::pos2(screen.max.x, screen.min.y + 32.0),
+                        egui::pos2(screen.max.x, screen.min.y + VIEWER_STRIP_H),
                     );
-                    ui.painter().rect_filled(strip, 0.0, egui::Color32::from_black_alpha(200));
+                    ui.painter().rect_filled(strip, 0.0, theme::panel());
                     ui.painter().text(
                         strip.center(),
                         egui::Align2::CENTER_CENTER,
                         text,
-                        egui::FontId::proportional(13.0),
-                        theme::accent(),
+                        egui::FontId::proportional(text::BODY_PT),
+                        theme::warning(),
                     );
                 }
                 ViewerNotice::Clear | ViewerNotice::Dismiss => {}
             }
 
-            ui.painter().rect_filled(bar, 0.0, egui::Color32::from_black_alpha(180));
+            surface::plate(ui, bar, 0.0);
             let mut seek: Option<usize> = None;
-            ui.scope_builder(egui::UiBuilder::new().max_rect(bar.shrink(8.0)), |ui| {
+            ui.scope_builder(egui::UiBuilder::new().max_rect(bar.shrink(widgets::GAP_WIDGETS)), |ui| {
                 ui.horizontal(|ui| {
-                    if ui
-                        .button(if playing { "  ||  " } else { "  >  " })
-                        .on_hover_text("Play / pause (Space, or click the picture)")
-                        .clicked()
-                    {
+                    let (icon, tip) = if playing {
+                        (Icon::Pause, "Pause (Space, or click the picture)")
+                    } else {
+                        (Icon::Play, "Play (Space, or click the picture)")
+                    };
+                    if widgets::icon_button(ui, icon, tip).clicked() {
                         toggle = true;
                     }
-                    if ui.button(" |< ").on_hover_text("Previous frame (Left)").clicked() {
+                    if widgets::icon_button(ui, Icon::StepBack, "Previous frame (Left)").clicked() {
                         step -= 1;
                     }
-                    if ui.button(" >| ").on_hover_text("Next frame (Right)").clicked() {
+                    if widgets::icon_button(ui, Icon::StepForward, "Next frame (Right)").clicked() {
                         step += 1;
                     }
                     if total > 1 {
                         let mut pos = idx;
                         if ui
-                            .add(
-                                egui::Slider::new(&mut pos, 0..=total - 1)
-                                    .show_value(false),
-                            )
+                            .add(egui::Slider::new(&mut pos, 0..=total - 1).show_value(false))
                             .changed()
                         {
                             seek = Some(pos);
                         }
                     }
-                    ui.label(
-                        RichText::new(format!("frame {}/{}", idx + 1, total.max(1)))
-                            .size(12.0)
-                            .color(egui::Color32::from_gray(210)),
-                    );
-                    // Same three controls as the image viewer, in the same order: a wheel
-                    // is not the only way anyone zooms.
-                    if ui.button("  -  ").on_hover_text("Zoom out").clicked() {
-                        viewer.zoom = (viewer.zoom / 1.25).clamp(VIEWER_MIN_ZOOM, VIEWER_MAX_ZOOM);
+                    widgets::readout(ui, VIEWER_FRAME_W, &format!("frame {}/{}", idx + 1, total.max(1)));
+                    // The same three zoom controls as the image viewer, in the same order.
+                    if widgets::icon_button(ui, Icon::Minus, "Zoom out").clicked() {
+                        viewer.zoom = (viewer.zoom / VIEWER_ZOOM_STEP).clamp(VIEWER_MIN_ZOOM, VIEWER_MAX_ZOOM);
                     }
-                    ui.label(
-                        RichText::new(format!("{:>4.0}%", viewer.zoom * 100.0))
-                            .size(12.0)
-                            .monospace()
-                            .color(egui::Color32::from_gray(210)),
-                    );
-                    if ui.button("  +  ").on_hover_text("Zoom in").clicked() {
-                        viewer.zoom = (viewer.zoom * 1.25).clamp(VIEWER_MIN_ZOOM, VIEWER_MAX_ZOOM);
+                    widgets::readout(ui, VIEWER_ZOOM_W, &format!("{:>4.0}%", viewer.zoom * 100.0));
+                    if widgets::icon_button(ui, Icon::Plus, "Zoom in").clicked() {
+                        viewer.zoom = (viewer.zoom * VIEWER_ZOOM_STEP).clamp(VIEWER_MIN_ZOOM, VIEWER_MAX_ZOOM);
                     }
-                    if ui.button(" Fit ").on_hover_text("Reset zoom (R)").clicked() {
+                    if ui.add(egui::Button::new(text::note("Fit")).frame(false)).on_hover_text("Reset zoom (R)").clicked() {
                         viewer.zoom = 1.0;
                         viewer.pan = (0.0, 0.0);
                     }
                     if ui
-                        .button(" Close ")
+                        .add(egui::Button::new(text::note("Close")).frame(false))
                         .on_hover_text("Escape, or click beside the picture")
                         .clicked()
                     {

@@ -10,7 +10,11 @@
 //! `&mut Option<FullscreenImage>` through their call chains — only the
 //! top-level [`show`] owns the state and reads the request.
 
-use egui::{Align2, Color32, CursorIcon, Id, Key, Order, Rect, Sense, Vec2};
+use egui::{Align2, CursorIcon, Id, Key, Order, Rect, Sense, Vec2};
+
+use crate::icons::Icon;
+use crate::theme::{self, text};
+use crate::ui::widgets;
 
 /// Live state of the fullscreen viewer. Holds owned [`egui::TextureHandle`]s
 /// (cheap ref-counted clones) so the images stay valid even if the source
@@ -58,6 +62,16 @@ impl FullscreenImage {
 const REQUEST_ID: &str = "fullscreen_image_open_request";
 const MIN_ZOOM: f32 = 0.1;
 const MAX_ZOOM: f32 = 20.0;
+/// Zoom per wheel point, and per click on the zoom buttons.
+const WHEEL_RATE: f32 = 0.0015;
+const ZOOM_STEP: f32 = 1.25;
+/// Share of the viewport the fitted image may take, leaving room for the bar.
+const FIT_W_FRAC: f32 = 0.92;
+const FIT_H_FRAC: f32 = 0.88;
+/// Distance of the control bar from the bottom edge.
+const BAR_OFFSET_Y: f32 = 24.0;
+/// Width of the counter and zoom readouts.
+const COUNTER_W: f32 = 64.0;
 
 /// Newtype so the open request can round-trip through egui temp data:
 /// `remove_temp` requires `Default`, which `TextureHandle` does not implement.
@@ -142,19 +156,19 @@ pub fn show(ctx: &egui::Context, state: &mut Option<FullscreenImage>) {
         .fixed_pos(screen.min)
         .show(ctx, |ui| {
             let bg = ui.allocate_rect(screen, Sense::click_and_drag());
-            ui.painter().rect_filled(screen, 0.0, Color32::from_black_alpha(235));
+            ui.painter().rect_filled(screen, 0.0, theme::bg());
 
             let img = fs.current().size_vec2();
             // Fit the image inside the viewport with margins for the control bar.
-            let fit = (screen.width() * 0.92 / img.x.max(1.0))
-                .min(screen.height() * 0.88 / img.y.max(1.0))
+            let fit = (screen.width() * FIT_W_FRAC / img.x.max(1.0))
+                .min(screen.height() * FIT_H_FRAC / img.y.max(1.0))
                 .max(0.001);
 
             // Wheel and pinch zoom, only while the pointer is over the overlay.
             let (scroll_y, pinch) = ui.input(|i| (i.smooth_scroll_delta.y, i.zoom_delta()));
             if bg.hovered() {
                 if scroll_y != 0.0 {
-                    fs.zoom = (fs.zoom * (1.0 + scroll_y * 0.0015)).clamp(MIN_ZOOM, MAX_ZOOM);
+                    fs.zoom = (fs.zoom * (1.0 + scroll_y * WHEEL_RATE)).clamp(MIN_ZOOM, MAX_ZOOM);
                 }
                 if pinch != 1.0 {
                     fs.zoom = (fs.zoom * pinch).clamp(MIN_ZOOM, MAX_ZOOM);
@@ -181,67 +195,40 @@ pub fn show(ctx: &egui::Context, state: &mut Option<FullscreenImage>) {
     // ── Control bar (bottom center) ──────────────────────────────────────
     egui::Area::new(Id::new("fullscreen_image_controls"))
         .order(Order::Foreground)
-        .anchor(Align2::CENTER_BOTTOM, [0.0, -24.0])
+        .anchor(Align2::CENTER_BOTTOM, [0.0, -BAR_OFFSET_Y])
         .show(ctx, |ui| {
-            egui::Frame::popup(ui.style())
-                .fill(Color32::from_rgb(28, 28, 30))
-                .show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        // Browse controls first: with several results open, stepping is
-                        // the thing reached for most, and it is what forces a close and
-                        // a re-click when it is missing.
-                        if fs.texes.len() > 1 {
-                            if ui
-                                .add(egui::Button::new("  <  "))
-                                .on_hover_text("Previous image (Left arrow)")
-                                .clicked()
-                            {
-                                step = -1;
-                            }
-                            ui.label(
-                                egui::RichText::new(format!(
-                                    "{} / {}",
-                                    fs.idx + 1,
-                                    fs.texes.len()
-                                ))
-                                .monospace()
-                                .color(Color32::WHITE),
-                            );
-                            if ui
-                                .add(egui::Button::new("  >  "))
-                                .on_hover_text("Next image (Right arrow)")
-                                .clicked()
-                            {
-                                step = 1;
-                            }
-                            ui.separator();
+            widgets::on_plate(ui, |ui| {
+                ui.horizontal(|ui| {
+                    // Browsing first: with several results open, stepping is the thing
+                    // reached for most.
+                    if fs.texes.len() > 1 {
+                        if widgets::icon_button(ui, Icon::StepBack, "Previous image (Left arrow)").clicked() {
+                            step = -1;
                         }
-                        if ui.add(egui::Button::new("  -  ")).on_hover_text("Zoom out").clicked() {
-                            fs.zoom = (fs.zoom / 1.25).clamp(MIN_ZOOM, MAX_ZOOM);
-                        }
-                        ui.label(
-                            egui::RichText::new(format!("{:>4.0}%", fs.zoom * 100.0))
-                                .monospace()
-                                .color(Color32::WHITE),
-                        );
-                        if ui.add(egui::Button::new("  +  ")).on_hover_text("Zoom in").clicked() {
-                            fs.zoom = (fs.zoom * 1.25).clamp(MIN_ZOOM, MAX_ZOOM);
+                        widgets::readout(ui, COUNTER_W, &format!("{} / {}", fs.idx + 1, fs.texes.len()));
+                        if widgets::icon_button(ui, Icon::StepForward, "Next image (Right arrow)").clicked() {
+                            step = 1;
                         }
                         ui.separator();
-                        if ui.add(egui::Button::new("Fit")).on_hover_text("Reset zoom").clicked() {
-                            fs.zoom = 1.0;
-                            fs.pan = Vec2::ZERO;
-                        }
-                        ui.separator();
-                        if ui
-                            .add(egui::Button::image(crate::icons::Icon::Cross.image(14.0, Color32::WHITE)))
-                            .on_hover_text("Close (Esc)")
-                            .clicked()
-                        {
-                            close = true;
-                        }
-                    });
+                    }
+                    if widgets::icon_button(ui, Icon::Minus, "Zoom out").clicked() {
+                        fs.zoom = (fs.zoom / ZOOM_STEP).clamp(MIN_ZOOM, MAX_ZOOM);
+                    }
+                    widgets::readout(ui, COUNTER_W, &format!("{:>4.0}%", fs.zoom * 100.0));
+                    if widgets::icon_button(ui, Icon::Plus, "Zoom in").clicked() {
+                        fs.zoom = (fs.zoom * ZOOM_STEP).clamp(MIN_ZOOM, MAX_ZOOM);
+                    }
+                    ui.separator();
+                    if ui.add(egui::Button::new(text::note("Fit")).frame(false)).on_hover_text("Reset zoom").clicked() {
+                        fs.zoom = 1.0;
+                        fs.pan = Vec2::ZERO;
+                    }
+                    ui.separator();
+                    if widgets::icon_button(ui, Icon::Cross, "Close (Esc)").clicked() {
+                        close = true;
+                    }
                 });
+            });
         });
 
     if ctx.input(|i| i.key_pressed(Key::Escape)) {
