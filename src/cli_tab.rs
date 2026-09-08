@@ -11,17 +11,16 @@ use crate::theme;
 
 /// Render the CLI tab content
 pub fn render(ui: &mut egui::Ui, cli: &mut CLIState, _models: &ModelState) {
-    let dark = ui.visuals().dark_mode;
-    let text_primary = if dark { theme::text() } else { theme::light::TEXT };
-    let text_secondary = if dark { theme::text_secondary() } else { theme::light::TEXT_SECONDARY };
-    let text_muted = if dark { theme::text_muted() } else { theme::light::TEXT_MUTED };
-    let surface = if dark { theme::surface() } else { theme::light::SURFACE };
-    let surface_elevated = if dark { theme::surface_elevated() } else { theme::light::SURFACE_ELEVATED };
-    let border = if dark { theme::border() } else { theme::light::BORDER };
+    let text_primary = theme::ink();
+    let text_secondary = theme::ink_dim();
+    let text_muted = theme::ink_dim();
+    let surface = theme::panel();
+    let surface_elevated = theme::raised();
+    let border = theme::border();
 
     ui.with_layout(egui::Layout::top_down(egui::Align::LEFT), |ui| {
         // Header card
-        render_cli_header(ui, dark, text_primary, text_secondary, surface, border);
+        render_cli_header(ui, text_primary, text_secondary, surface, border);
 
         ui.add_space(12.0);
 
@@ -64,7 +63,7 @@ pub fn render(ui: &mut egui::Ui, cli: &mut CLIState, _models: &ModelState) {
                     );
                 } else {
                     for output in &cli.outputs {
-                        render_output(ui, output, dark, text_primary, text_muted, surface, surface_elevated, border);
+                        render_output(ui, output, text_primary, text_muted, surface, surface_elevated, border);
                         ui.add_space(4.0);
                     }
                 }
@@ -73,14 +72,13 @@ pub fn render(ui: &mut egui::Ui, cli: &mut CLIState, _models: &ModelState) {
         ui.add_space(8.0);
 
         // CLI input area
-        render_input_area(ui, cli, dark, surface, border);
+        render_input_area(ui, cli, surface, border);
     });
 }
 
 /// Render CLI header
 fn render_cli_header(
     ui: &mut egui::Ui,
-    dark: bool,
     text_primary: Color32,
     text_secondary: Color32,
     surface: Color32,
@@ -95,7 +93,7 @@ fn render_cli_header(
             offset: [0, 1],
             blur: 3,
             spread: 0,
-            color: Color32::from_black_alpha(if dark { 30 } else { 8 }),
+            color: Color32::from_black_alpha(if theme::is_dark() { 30 } else { 8 }),
         },
         ..Default::default()
     }
@@ -108,11 +106,7 @@ fn render_cli_header(
 
             ui.label(RichText::new("Commands:").size(11.0).color(text_secondary));
 
-            let badge_bg = if dark {
-                theme::surface_elevated()
-            } else {
-                theme::light::SURFACE_ELEVATED
-            };
+            let badge_bg = theme::raised();
             for cmd in ["list", "load", "unload", "pull", "ps"] {
                 egui::Frame {
                     inner_margin: egui::Margin::symmetric(6, 2),
@@ -132,7 +126,6 @@ fn render_cli_header(
 fn render_input_area(
     ui: &mut egui::Ui,
     cli: &mut CLIState,
-    dark: bool,
     surface: Color32,
     border: Color32,
 ) {
@@ -145,7 +138,7 @@ fn render_input_area(
             offset: [0, -1],
             blur: 3,
             spread: 0,
-            color: Color32::from_black_alpha(if dark { 20 } else { 6 }),
+            color: Color32::from_black_alpha(if theme::is_dark() { 20 } else { 6 }),
         },
         ..Default::default()
     }
@@ -190,7 +183,6 @@ fn render_input_area(
 fn render_output(
     ui: &mut egui::Ui,
     output: &CLIOutput,
-    dark: bool,
     text_primary: Color32,
     text_muted: Color32,
     surface: Color32,
@@ -207,9 +199,9 @@ fn render_output(
 
     // Subtle fill tint for errors/progress
     let fill = if output.is_error {
-        theme::tinted(theme::error(), if dark { 15 } else { 8 })
+        theme::tinted(theme::error(), if theme::is_dark() { 15 } else { 8 })
     } else if output.in_progress {
-        theme::tinted(theme::accent(), if dark { 15 } else { 8 })
+        theme::tinted(theme::accent(), if theme::is_dark() { 15 } else { 8 })
     } else {
         surface
     };

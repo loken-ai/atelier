@@ -4,7 +4,6 @@
 
 use eframe::egui::{self, Color32, RichText, CornerRadius, Stroke};
 use crate::api::ModelInfo;
-use crate::config::AppConfig;
 use crate::icons::Icon;
 use crate::state::{ActionStatus, ModelState, ModelSortDirection, ModelSortField};
 use crate::settings::SettingsAction;
@@ -25,14 +24,12 @@ const POPULAR_MODELS: &[(&str, &str)] = &[
 pub fn render(
     ui: &mut egui::Ui,
     models: &mut ModelState,
-    config: &AppConfig,
 ) -> Vec<SettingsAction> {
     let mut actions = Vec::new();
-    let dark = config.dark_theme;
-    let text_primary = if dark { theme::text() } else { theme::light::TEXT };
-    let text_secondary = if dark { theme::text_secondary() } else { theme::light::TEXT_SECONDARY };
-    let surface = if dark { theme::surface() } else { theme::light::SURFACE };
-    let border = if dark { theme::border() } else { theme::light::BORDER };
+    let text_primary = theme::ink();
+    let text_secondary = theme::ink_dim();
+    let surface = theme::panel();
+    let border = theme::border();
 
     // Delete confirmation modal. Two-step delete (set the pending name
     // in ModelState, render a centered Window prompting the user to

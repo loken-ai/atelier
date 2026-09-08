@@ -69,7 +69,6 @@ pub struct TopBarOutput {
 #[allow(deprecated)]
 pub fn top_bar(
     ui: &mut egui::Ui,
-    dark: bool,
     connection_state: crate::state::ConnectionState,
     connection_detail: &str,
     active_model: Option<&str>,
@@ -80,10 +79,10 @@ pub fn top_bar(
     let mut refresh_clicked = false;
     let mut theme_toggle_clicked = false;
 
-    let bar_fill = if dark { Color32::from_rgb(28, 30, 36) } else { Color32::WHITE };
-    let bar_border = if dark { theme::border() } else { theme::light::BORDER };
-    let text_primary = if dark { theme::text() } else { theme::light::TEXT };
-    let text_secondary = if dark { theme::text_secondary() } else { theme::light::TEXT_SECONDARY };
+    let bar_fill = if theme::is_dark() { Color32::from_rgb(28, 30, 36) } else { Color32::WHITE };
+    let bar_border = theme::border();
+    let text_primary = theme::ink();
+    let text_secondary = theme::ink_dim();
 
     egui::Panel::top("top_bar")
         .frame(egui::Frame {
@@ -94,7 +93,7 @@ pub fn top_bar(
                 offset: [0, 1],
                 blur: 3,
                 spread: 0,
-                color: Color32::from_black_alpha(if dark { 30 } else { 8 }),
+                color: Color32::from_black_alpha(if theme::is_dark() { 30 } else { 8 }),
             },
             ..Default::default()
         })
@@ -209,7 +208,7 @@ pub fn top_bar(
                     // Vision modality badge (currentColor SVG retints).
                     // Tooltip reflects the OPPOSITE state so the user
                     // knows what clicking will produce.
-                    let (theme_tip, theme_label) = if dark {
+                    let (theme_tip, theme_label) = if theme::is_dark() {
                         ("Switch to light theme", "Light")
                     } else {
                         ("Switch to dark theme", "Dark")
@@ -218,7 +217,7 @@ pub fn top_bar(
                         Icon::Palette.image(13.0, text_secondary),
                         RichText::new(theme_label).size(12.0).color(text_secondary),
                     )
-                    .fill(if dark { theme::surface_elevated() } else { theme::light::SURFACE_ELEVATED })
+                    .fill(theme::raised())
                     .stroke(Stroke::new(1.0, bar_border))
                     .corner_radius(CornerRadius::same(4));
                     if ui.add(theme_btn).on_hover_text(theme_tip).clicked() {
@@ -242,13 +241,12 @@ pub fn top_bar(
 pub fn sidebar(
     ui: &mut egui::Ui,
     current: &mut Section,
-    dark: bool,
     sidebar_expanded: bool,
 ) -> bool {
     let width = if sidebar_expanded { SIDEBAR_WIDTH_EXPANDED } else { SIDEBAR_WIDTH };
-    let bg = if dark { Color32::from_rgb(24, 26, 30) } else { Color32::WHITE };
-    let border = if dark { theme::border() } else { theme::light::BORDER };
-    let toggle_color = if dark { theme::text_secondary() } else { theme::light::TEXT_SECONDARY };
+    let bg = if theme::is_dark() { Color32::from_rgb(24, 26, 30) } else { Color32::WHITE };
+    let border = theme::border();
+    let toggle_color = theme::ink_dim();
     let mut toggle_clicked = false;
 
     egui::Panel::left("nav_sidebar")
@@ -281,7 +279,7 @@ pub fn sidebar(
             ui.add_space(4.0);
 
             for item in NAV_ITEMS {
-                render_nav_item(ui, current, &item.icon, item.label, item.tip, item.section, dark, sidebar_expanded);
+                render_nav_item(ui, current, &item.icon, item.label, item.tip, item.section, sidebar_expanded);
                 ui.add_space(2.0);
             }
         });
@@ -298,7 +296,6 @@ fn render_nav_item(
     label: &str,
     tip: &str,
     section: Section,
-    dark: bool,
     sidebar_expanded: bool,
 ) {
     let accent = theme::accent();
@@ -311,7 +308,7 @@ fn render_nav_item(
     } else {
         (
             Color32::TRANSPARENT,
-            if dark { theme::text_secondary() } else { theme::light::TEXT_SECONDARY },
+            theme::ink_dim(),
         )
     };
 
@@ -448,7 +445,7 @@ mod tests {
             use egui_kittest::kittest::NodeT;
             let mut section = Section::Chat;
             let mut harness = egui_kittest::Harness::new_ui(move |ui| {
-                sidebar(ui, &mut section, true, expanded);
+                sidebar(ui, &mut section, expanded);
             });
             harness.run();
             harness

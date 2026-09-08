@@ -42,23 +42,23 @@ impl LogTabTheme {
             // naming colours here. A tab that spells its own greys drifts from the
             // rest of the app the first time the palette is tuned.
             Self {
-                card_fill: theme::surface_elevated(),
+                card_fill: theme::raised(),
                 card_stroke: theme::border(),
-                chip_fill: theme::surface(),
-                text: theme::text(),
-                text_secondary: theme::text_secondary(),
-                entry_neutral_fill: theme::surface(),
+                chip_fill: theme::panel(),
+                text: theme::ink(),
+                text_secondary: theme::ink_dim(),
+                entry_neutral_fill: theme::panel(),
                 entry_neutral_stroke: theme::border(),
             }
         } else {
             Self {
-                card_fill: theme::light::SURFACE_ELEVATED,
-                card_stroke: theme::light::BORDER,
-                chip_fill: theme::light::SURFACE,
-                text: theme::light::TEXT,
-                text_secondary: theme::light::TEXT_SECONDARY,
-                entry_neutral_fill: theme::light::SURFACE,
-                entry_neutral_stroke: theme::light::BORDER,
+                card_fill: theme::raised(),
+                card_stroke: theme::border(),
+                chip_fill: theme::panel(),
+                text: theme::ink(),
+                text_secondary: theme::ink_dim(),
+                entry_neutral_fill: theme::panel(),
+                entry_neutral_stroke: theme::border(),
             }
         }
     }
@@ -70,9 +70,8 @@ pub fn render(
     server: &mut ServerState,
     embedded_port: Option<u16>,
     log_buffer: &LogBuffer,
-    dark: bool,
 ) {
-    let palette = LogTabTheme::for_mode(dark);
+    let palette = LogTabTheme::for_mode(theme::is_dark());
     // Use vertical layout with the logs taking all available space
     ui.with_layout(egui::Layout::top_down(egui::Align::LEFT), |ui| {
         render_log_header(ui, server, embedded_port, &palette);

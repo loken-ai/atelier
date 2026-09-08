@@ -19,13 +19,12 @@ pub fn render(
     connection_state: crate::state::ConnectionState,
 ) -> Vec<SettingsAction> {
     let mut actions = Vec::new();
-    let dark = config.dark_theme;
-    let text_primary = if dark { theme::text() } else { theme::light::TEXT };
-    let text_secondary = if dark { theme::text_secondary() } else { theme::light::TEXT_SECONDARY };
-    let text_muted = if dark { theme::text_muted() } else { theme::light::TEXT_MUTED };
-    let surface = if dark { theme::surface() } else { theme::light::SURFACE };
-    let surface_elevated = if dark { theme::surface_elevated() } else { theme::light::SURFACE_ELEVATED };
-    let border = if dark { theme::border() } else { theme::light::BORDER };
+    let text_primary = theme::ink();
+    let text_secondary = theme::ink_dim();
+    let text_muted = theme::ink_dim();
+    let surface = theme::panel();
+    let surface_elevated = theme::raised();
+    let border = theme::border();
 
     // Auto-initialize config editor state if not yet loaded
     if settings_state.config_editor.is_none() {
@@ -143,7 +142,7 @@ pub fn render(
         let card_width = ui.available_width().min(640.0);
 
         // ── Server Connection ──
-        settings_card(ui, Icon::Globe, "Connection", dark, surface, border, card_width, |ui| {
+        settings_card(ui, Icon::Globe, "Connection", surface, border, card_width, |ui| {
             form_row(ui, "Server URL", text_secondary, |ui| {
                 // Apply button width budget so the text field doesn't
                 // hug the right edge of the card.
@@ -289,7 +288,7 @@ pub fn render(
         ui.add_space(12.0);
 
         // ── Appearance ──
-        settings_card(ui, Icon::Palette, "Appearance", dark, surface, border, card_width, |ui| {
+        settings_card(ui, Icon::Palette, "Appearance", surface, border, card_width, |ui| {
             form_row(ui, "Theme", text_secondary, |ui| {
                 for (label, value) in [("Dark", true), ("Light", false)] {
                     let is_active = config.dark_theme == value;
@@ -311,7 +310,7 @@ pub fn render(
         ui.add_space(12.0);
 
         // ── API Profiles ──
-        settings_card(ui, Icon::Key, "API Profiles", dark, surface, border, card_width, |ui| {
+        settings_card(ui, Icon::Key, "API Profiles", surface, border, card_width, |ui| {
             form_row(ui, "Active Profile", text_secondary, |ui| {
                 egui::ComboBox::from_id_salt("profile_selector_settings")
                     .selected_text(config.selected_profile.as_deref().unwrap_or("(none)"))
@@ -540,7 +539,7 @@ pub fn render(
             // affordances that do nearly the same thing was confusing.
             // The rfd path is gone with it; no more silent-None failures
             // when zenity isn't installed.
-            settings_card(ui, Icon::Folder, "Model Directories", dark, surface, border, card_width, |ui| {
+            settings_card(ui, Icon::Folder, "Model Directories", surface, border, card_width, |ui| {
                 ui.label(RichText::new("Ollama Models").size(11.0).color(text_secondary));
                 ui.horizontal(|ui| {
                     TextEdit::singleline(&mut editor.ollama_models_dir)
@@ -587,7 +586,7 @@ pub fn render(
             ui.add_space(12.0);
 
             // Server bind
-            settings_card(ui, Icon::Server, "Server Bind", dark, surface, border, card_width, |ui| {
+            settings_card(ui, Icon::Server, "Server Bind", surface, border, card_width, |ui| {
                 config_row_pair(ui, text_secondary,
                     ("Host", &mut editor.server_host),
                     ("Port", &mut editor.server_port_str),
@@ -601,7 +600,7 @@ pub fn render(
             ui.add_space(12.0);
 
             // Inference
-            settings_card(ui, Icon::Gear, "Inference", dark, surface, border, card_width, |ui| {
+            settings_card(ui, Icon::Gear, "Inference", surface, border, card_width, |ui| {
                 ui.label(RichText::new("Model ID").size(11.0).color(text_secondary));
                 TextEdit::singleline(&mut editor.model_id)
                     .desired_width(ui.available_width())
@@ -641,7 +640,7 @@ pub fn render(
             ui.add_space(12.0);
 
             // GPU & Device
-            settings_card(ui, Icon::Bolt, "GPU & Device", dark, surface, border, card_width, |ui| {
+            settings_card(ui, Icon::Bolt, "GPU & Device", surface, border, card_width, |ui| {
                 config_row_pair(ui, text_secondary,
                     ("Device Index", &mut editor.device_index_str),
                     ("GPU Memory %", &mut editor.max_gpu_memory_fraction_str),
@@ -670,7 +669,7 @@ pub fn render(
             ui.add_space(12.0);
 
             // Save / Reload / Reset row
-            settings_card(ui, Icon::Save, "Actions", dark, surface, border, card_width, |ui| {
+            settings_card(ui, Icon::Save, "Actions", surface, border, card_width, |ui| {
                 ui.horizontal(|ui| {
                     // Save config.toml
                     let save_btn = egui::Button::new(
@@ -761,13 +760,12 @@ fn settings_card(
     ui: &mut egui::Ui,
     icon: Icon,
     title: &str,
-    dark: bool,
     surface: Color32,
     border: Color32,
     max_width: f32,
     add_body: impl FnOnce(&mut egui::Ui),
 ) {
-    let title_color = if dark { theme::text() } else { theme::light::TEXT };
+    let title_color = theme::ink();
 
     ui.allocate_ui(egui::vec2(max_width, 0.0), |ui| {
         egui::Frame {
@@ -779,7 +777,7 @@ fn settings_card(
                 offset: [0, 1],
                 blur: 3,
                 spread: 0,
-                color: Color32::from_black_alpha(if dark { 30 } else { 8 }),
+                color: Color32::from_black_alpha(if theme::is_dark() { 30 } else { 8 }),
             },
             ..Default::default()
         }
@@ -845,8 +843,7 @@ fn config_row_pair(
 
 /// Small muted help text below a field
 fn hint_text(ui: &mut egui::Ui, text: &str) {
-    let dark = ui.visuals().dark_mode;
-    let muted = if dark { theme::text_muted() } else { theme::light::TEXT_MUTED };
+    let muted = theme::ink_dim();
     ui.label(RichText::new(text).size(10.0).color(muted));
 }
 

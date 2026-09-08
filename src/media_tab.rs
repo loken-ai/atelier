@@ -80,7 +80,7 @@ pub fn render(
             ui.label(
                 RichText::new("Generate images, music, sound effects, MIDI, video, and speech.")
                     .size(12.0)
-                    .color(theme::text_secondary()),
+                    .color(theme::ink_dim()),
             );
             ui.add_space(10.0);
 
@@ -91,9 +91,9 @@ pub fn render(
                     let btn = egui::Button::new(
                         RichText::new(kind.label())
                             .size(13.0)
-                            .color(if selected { egui::Color32::WHITE } else { theme::text() }),
+                            .color(if selected { egui::Color32::WHITE } else { theme::ink() }),
                     )
-                    .fill(if selected { accent } else { theme::surface_elevated() })
+                    .fill(if selected { accent } else { theme::raised() })
                     .corner_radius(theme::RADIUS)
                     .min_size(egui::vec2(72.0, 30.0));
                     if ui.add(btn).on_hover_text(kind.tip()).clicked() {
@@ -102,7 +102,7 @@ pub fn render(
                 }
             });
             ui.add_space(2.0);
-            ui.label(RichText::new(media.kind.tip()).size(11.0).color(theme::text_muted()));
+            ui.label(RichText::new(media.kind.tip()).size(11.0).color(theme::ink_dim()));
             ui.add_space(10.0);
 
             // ── Prompt ──
@@ -111,7 +111,7 @@ pub fn render(
                     MediaKind::Speech => "Text",
                     _ => "Prompt",
                 };
-                ui.label(RichText::new(prompt_label).size(12.0).strong().color(theme::text()));
+                ui.label(RichText::new(prompt_label).size(12.0).strong().color(theme::ink()));
                 ui.add_space(3.0);
                 let hint = media.kind.prompt_hint();
                 ui.add(
@@ -127,7 +127,7 @@ pub fn render(
                     ui.horizontal(|ui| {
                         if media.enhancing_prompt {
                             ui.spinner();
-                            ui.label(RichText::new("Enhancing prompt…").size(11.5).color(theme::text_muted()));
+                            ui.label(RichText::new("Enhancing prompt…").size(11.5).color(theme::ink_dim()));
                         } else {
                             let can_enhance = !media.prompt.trim().is_empty() && !media.is_generating;
                             if ui
@@ -195,7 +195,7 @@ pub fn render(
 
             // ── Params (only the relevant widgets for this kind) ──────
             egui::Frame::group(ui.style())
-                .fill(theme::surface())
+                .fill(theme::panel())
                 .corner_radius(theme::RADIUS)
                 .inner_margin(egui::Margin::symmetric(14, 12))
                 .show(ui, |ui| {
@@ -266,7 +266,7 @@ pub fn render(
                         ui.label(
                             RichText::new(format!("{} of denoising", format_estimate(seconds)))
                                 .size(12.0)
-                                .color(theme::text_secondary()),
+                                .color(theme::ink_dim()),
                         )
                         .on_hover_text(
                             "Expected time in the denoising loop for these settings. \
@@ -610,7 +610,7 @@ fn render_params(
                      a sung-vocals directive automatically when lyrics are present.",
                 )
                 .size(11.0)
-                .color(theme::text_muted()),
+                .color(theme::ink_dim()),
             );
             ui.add(
                 egui::TextEdit::multiline(&mut media.music.lyrics)
@@ -626,7 +626,7 @@ fn render_params(
                      effective when CFG is above 1 (SFT/Base checkpoints).",
                 )
                 .size(11.0)
-                .color(theme::text_muted()),
+                .color(theme::ink_dim()),
             );
             ui.add(
                 egui::TextEdit::multiline(&mut media.music.negative_prompt)
@@ -748,7 +748,7 @@ fn render_params(
                 ui.label(
                     RichText::new("What the sound should AVOID; steers the CFG's negative branch.")
                         .size(11.0)
-                        .color(theme::text_muted()),
+                        .color(theme::ink_dim()),
                 );
                 ui.add(
                     egui::TextEdit::multiline(&mut media.sfx.negative_prompt)
@@ -935,7 +935,7 @@ fn render_params(
                                     });
                                 if ui
                                     .add(egui::Button::image_and_text(
-                                        Icon::Refresh.image(11.0, theme::text()),
+                                        Icon::Refresh.image(11.0, theme::ink()),
                                         RichText::new("Voices").size(11.0),
                                     ))
                                     .on_hover_text("Fetch the voice list from the server")
@@ -1355,7 +1355,7 @@ fn audio_picker_row(
         let busy = media.dialog_in_flight.load(std::sync::atomic::Ordering::Relaxed);
         if ui
             .add_enabled(!busy, egui::Button::image_and_text(
-                Icon::Refresh.image(11.0, theme::text()),
+                Icon::Refresh.image(11.0, theme::ink()),
                 RichText::new(if busy {
                     "Choosing…"
                 } else if slot.is_image() {
@@ -1465,10 +1465,10 @@ fn audio_picker_row(
                     .on_hover_text(name.clone());
                 }
                 ui.label(RichText::new(format!("{name} ({} KB)", bytes.len() / 1024))
-                    .size(11.0).color(theme::text_muted()));
+                    .size(11.0).color(theme::ink_dim()));
             }
             None => {
-                ui.label(RichText::new("no file chosen").size(11.0).color(theme::text_muted()));
+                ui.label(RichText::new("no file chosen").size(11.0).color(theme::ink_dim()));
             }
         }
     });
@@ -1501,7 +1501,7 @@ fn section_row(ui: &mut egui::Ui, title: &str) {
         RichText::new(title)
             .size(10.5)
             .strong()
-            .color(theme::text_secondary()),
+            .color(theme::ink_dim()),
     );
     ui.label("");
     ui.end_row();
@@ -1514,7 +1514,7 @@ fn desc_row(ui: &mut egui::Ui, text: &str) {
     ui.label("");
     ui.add(
         egui::Label::new(
-            RichText::new(text).size(11.0).color(theme::text_muted()),
+            RichText::new(text).size(11.0).color(theme::ink_dim()),
         )
         .wrap(),
     );
@@ -1735,7 +1735,7 @@ fn lora_rows_inner(
                 "none on this server".to_string()
             })
             .size(11.0)
-            .color(theme::text_muted()),
+            .color(theme::ink_dim()),
         );
         ui.end_row();
         desc_row(ui, "LoRA adapters let a model render a style, character or concept it \
@@ -1916,7 +1916,7 @@ fn overlay_button(
         egui::Color32::from_black_alpha(120)
     };
     ui.painter().rect_filled(rect, 4.0, fill);
-    let text_col = if enabled { theme::text() } else { theme::text_muted() };
+    let text_col = if enabled { theme::ink() } else { theme::ink_dim() };
     ui.painter().text(
         rect.center(),
         egui::Align2::CENTER_CENTER,
@@ -2116,7 +2116,7 @@ fn render_results(
                 let play_label = if is_current && !player.is_paused() { "Pause" } else { "Play" };
                 if ui
                     .add(egui::Button::image_and_text(
-                        Icon::Play.image(11.0, theme::text()),
+                        Icon::Play.image(11.0, theme::ink()),
                         RichText::new(play_label).size(11.0),
                     ))
                     .clicked()
@@ -2150,7 +2150,7 @@ fn render_results(
                             (dur as u32) % 60
                         ))
                         .size(11.0)
-                        .color(theme::text_muted()),
+                        .color(theme::ink_dim()),
                     );
                     // Keep the position slider moving while playing.
                     ui.ctx().request_repaint_after(std::time::Duration::from_millis(200));
@@ -2222,7 +2222,7 @@ fn render_results(
                 if name.to_lowercase().ends_with(".mp4")
                     && ui
                         .add(egui::Button::image_and_text(
-                            Icon::Play.image(11.0, theme::text()),
+                            Icon::Play.image(11.0, theme::ink()),
                             RichText::new("Play").size(11.0),
                         ))
                         .on_hover_text("Decode and play in the app")
@@ -2232,7 +2232,7 @@ fn render_results(
                 }
                 if ui
                     .add(egui::Button::image_and_text(
-                        Icon::Play.image(11.0, theme::text()),
+                        Icon::Play.image(11.0, theme::ink()),
                         RichText::new("Open").size(11.0),
                     ))
                     .on_hover_text("Write to a temp file and open in the system default app")
@@ -2259,7 +2259,7 @@ fn render_video_player(ui: &mut egui::Ui, video: &mut crate::video_engine::Video
     if video.decoding.is_some() {
         ui.horizontal(|ui| {
             ui.spinner();
-            ui.label(RichText::new("Decoding video...").size(12.0).color(theme::text_muted()));
+            ui.label(RichText::new("Decoding video...").size(12.0).color(theme::ink_dim()));
         });
         ui.ctx().request_repaint();
         return false;
@@ -2350,7 +2350,7 @@ fn render_video_player(ui: &mut egui::Ui, video: &mut crate::video_engine::Video
             ))
                 .size(11.0)
                 .monospace()
-                .color(theme::text_muted()),
+                .color(theme::ink_dim()),
         );
         let mut lp = looping;
         if ui.checkbox(&mut lp, "Loop").changed() {
@@ -2401,7 +2401,7 @@ fn render_history(
             RichText::new(format!("Earlier ({})", media.history.len()))
                 .size(12.0)
                 .strong()
-                .color(theme::text_muted()),
+                .color(theme::ink_dim()),
         );
         if ui
             .add(egui::Button::new(RichText::new("Clear").size(11.0)))

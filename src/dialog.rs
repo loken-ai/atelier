@@ -79,7 +79,7 @@ pub(crate) fn save_button(
     ui.add_enabled(
         !busy,
         egui::Button::image_and_text(
-            Icon::Save.image(11.0, theme::text()),
+            Icon::Save.image(11.0, theme::ink()),
             RichText::new(label).size(11.0),
         ),
     )

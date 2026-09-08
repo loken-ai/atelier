@@ -126,12 +126,11 @@ pub fn palette() -> &'static Palette {
 }
 
 pub fn bg() -> Color32 { palette().bg }
-pub fn surface() -> Color32 { palette().panel }
-pub fn surface_elevated() -> Color32 { palette().raised }
+pub fn panel() -> Color32 { palette().panel }
+pub fn raised() -> Color32 { palette().raised }
 pub fn border() -> Color32 { palette().border }
-pub fn text() -> Color32 { palette().ink }
-pub fn text_secondary() -> Color32 { palette().ink_dim }
-pub fn text_muted() -> Color32 { palette().ink_dim }
+pub fn ink() -> Color32 { palette().ink }
+pub fn ink_dim() -> Color32 { palette().ink_dim }
 pub fn success() -> Color32 { palette().success }
 pub fn warning() -> Color32 { palette().warning }
 pub fn error() -> Color32 { palette().error }
@@ -155,19 +154,6 @@ pub fn tinted(color: Color32, alpha: u8) -> Color32 {
 // crate::icons::Icon instead.
 pub const ICON_FILLED: &str = "\u{2022}";   // bullet (status: active/enabled)
 pub const ICON_EMPTY: &str = "\u{25CB}";    // white circle (status: inactive/disabled)
-
-// Palette fields under their former names. Call sites that branch on the
-// theme themselves read these; they collapse onto the accessors above.
-pub mod light {
-    use super::{Color32, LIGHT};
-    pub const BG: Color32 = LIGHT.bg;
-    pub const SURFACE: Color32 = LIGHT.panel;
-    pub const SURFACE_ELEVATED: Color32 = LIGHT.raised;
-    pub const BORDER: Color32 = LIGHT.border;
-    pub const TEXT: Color32 = LIGHT.ink;
-    pub const TEXT_SECONDARY: Color32 = LIGHT.ink_dim;
-    pub const TEXT_MUTED: Color32 = LIGHT.ink_dim;
-}
 
 // ============================================================================
 // Spacing and Sizing

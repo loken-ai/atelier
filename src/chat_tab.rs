@@ -47,21 +47,21 @@ impl ChatTheme {
     fn from_mode(dark: bool) -> Self {
         if dark {
             Self {
-                text_primary: theme::text(),
-                text_secondary: theme::text_secondary(),
-                text_muted: theme::text_muted(),
-                surface: theme::surface(),
-                surface_elevated: theme::surface_elevated(),
+                text_primary: theme::ink(),
+                text_secondary: theme::ink_dim(),
+                text_muted: theme::ink_dim(),
+                surface: theme::panel(),
+                surface_elevated: theme::raised(),
                 border: theme::border(),
             }
         } else {
             Self {
-                text_primary: theme::light::TEXT,
-                text_secondary: theme::light::TEXT_SECONDARY,
-                text_muted: theme::light::TEXT_MUTED,
-                surface: theme::light::SURFACE,
-                surface_elevated: theme::light::SURFACE_ELEVATED,
-                border: theme::light::BORDER,
+                text_primary: theme::ink(),
+                text_secondary: theme::ink_dim(),
+                text_muted: theme::ink_dim(),
+                surface: theme::panel(),
+                surface_elevated: theme::raised(),
+                border: theme::border(),
             }
         }
     }
@@ -446,7 +446,7 @@ pub fn render(
 
     ui.with_layout(egui::Layout::top_down(egui::Align::LEFT), |ui| {
         // Header card
-        render_chat_header(ui, chat, selected_profile_name, profiles, models, dark, &t, image_textures, md_cache);
+        render_chat_header(ui, chat, selected_profile_name, profiles, models, &t, image_textures, md_cache);
 
         ui.add_space(12.0);
 
@@ -674,7 +674,7 @@ pub fn render(
                         std::cell::Cell::new(None);
                     for msg in chat.messages.iter() {
                         render_message(
-                            ui, msg, dark, &t, md_cache, image_textures,
+                            ui, msg, &t, md_cache, image_textures,
                             &chat.pending_dialog, &chat.dialog_in_flight,
                             &seed_lock_request, &play_error_pending,
                         );
@@ -689,7 +689,7 @@ pub fn render(
 
                     if chat.is_generating {
                         if !chat.streaming_content.is_empty() {
-                            render_streaming_message(ui, &chat.streaming_content, &chat.image_gen_progress, chat.image_gen_started_at, dark, &t, md_cache);
+                            render_streaming_message(ui, &chat.streaming_content, &chat.image_gen_progress, chat.image_gen_started_at, &t, md_cache);
                             ui.add_space(4.0);
                         } else {
                             // Modality-aware indicator — tells the user
@@ -719,7 +719,7 @@ pub fn render(
         // post-send.
         let model_selected = models.selected_model.is_some();
         let send_clicked = render_input_area(
-            ui, chat, dark, &t, image_textures, modality, model_selected,
+            ui, chat, &t, image_textures, modality, model_selected,
             input_rows,
         );
         // Stash whether the button was clicked so we can propagate it out
@@ -751,7 +751,6 @@ fn render_chat_header(
     selected_profile_name: Option<&String>,
     profiles: &[crate::config::ApiProfile],
     models: &mut ModelState,
-    dark: bool,
     t: &ChatTheme,
     image_textures: &mut HashMap<String, TextureHandle>,
     md_cache: &mut CommonMarkCache,
@@ -765,7 +764,7 @@ fn render_chat_header(
             offset: [0, 1],
             blur: 3,
             spread: 0,
-            color: Color32::from_black_alpha(if dark { 30 } else { 8 }),
+            color: Color32::from_black_alpha(if theme::is_dark() { 30 } else { 8 }),
         },
         ..Default::default()
     }
@@ -1168,7 +1167,6 @@ fn render_chat_header(
 fn render_input_area(
     ui: &mut egui::Ui,
     chat: &mut ChatState,
-    dark: bool,
     t: &ChatTheme,
     image_textures: &mut HashMap<String, TextureHandle>,
     modality: ModelModality,
@@ -1196,7 +1194,7 @@ fn render_input_area(
             offset: [0, -1],
             blur: 3,
             spread: 0,
-            color: Color32::from_black_alpha(if dark { 20 } else { 6 }),
+            color: Color32::from_black_alpha(if theme::is_dark() { 20 } else { 6 }),
         },
         ..Default::default()
     }
@@ -1890,7 +1888,7 @@ fn render_input_area(
                 // Tint the disabled-state Play icon with the theme-
                 // matched muted colour so it visually drops out in
                 // both dark and light modes (previous hardcode of
-                // theme::text_muted() looked wrong against the
+                // theme::ink_dim() looked wrong against the
                 // light background).
                 ui.add_enabled(
                     false,
@@ -1915,7 +1913,6 @@ fn render_input_area(
 fn render_message(
     ui: &mut egui::Ui,
     msg: &ChatMessage,
-    dark: bool,
     t: &ChatTheme,
     md_cache: &mut CommonMarkCache,
     image_textures: &mut HashMap<String, TextureHandle>,
@@ -1963,7 +1960,7 @@ fn render_message(
         ui.add_space(8.0);
 
         // Message bubble
-        let (bubble_fill, bubble_stroke, text_color) = t.bubble(&msg.role, dark, is_error);
+        let (bubble_fill, bubble_stroke, text_color) = t.bubble(&msg.role, theme::is_dark(), is_error);
 
         egui::Frame {
             inner_margin: egui::Margin::symmetric(12, 10),
@@ -2426,7 +2423,6 @@ fn render_streaming_message(
     content: &str,
     image_progress: &Option<(usize, usize)>,
     image_started_at: Option<std::time::Instant>,
-    dark: bool,
     t: &ChatTheme,
     md_cache: &mut CommonMarkCache,
 ) {
@@ -2449,7 +2445,7 @@ fn render_streaming_message(
         ui.add_space(8.0);
 
         // Streaming bubble
-        let (bubble_fill, _, _) = t.bubble("assistant", dark, false);
+        let (bubble_fill, _, _) = t.bubble("assistant", theme::is_dark(), false);
         egui::Frame {
             inner_margin: egui::Margin::symmetric(12, 10),
             corner_radius: CornerRadius::same(6),

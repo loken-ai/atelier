@@ -60,7 +60,7 @@ impl Toast {
 /// toast disappears on time even without user input. Clicking a toast
 /// dismisses it early.
 #[allow(deprecated)] // Area::show at ctx top-level, same rationale as layout.rs.
-pub fn render(ctx: &egui::Context, toasts: &mut Vec<Toast>, dark: bool) {
+pub fn render(ctx: &egui::Context, toasts: &mut Vec<Toast>) {
     // Drop expired toasts first so we don't paint a frame of a toast
     // that's already past its TTL.
     toasts.retain(|t| t.created_at.elapsed() < TOAST_TTL);
@@ -68,8 +68,8 @@ pub fn render(ctx: &egui::Context, toasts: &mut Vec<Toast>, dark: bool) {
         return;
     }
 
-    let text_color = if dark { theme::text() } else { theme::light::TEXT };
-    let surface = if dark { theme::surface_elevated() } else { theme::light::SURFACE };
+    let text_color = theme::ink();
+    let surface = if theme::is_dark() { theme::raised() } else { theme::panel() };
 
     let mut dismiss: Option<usize> = None;
 
@@ -94,7 +94,7 @@ pub fn render(ctx: &egui::Context, toasts: &mut Vec<Toast>, dark: bool) {
                             offset: [0, 2],
                             blur: 6,
                             spread: 0,
-                            color: Color32::from_black_alpha(if dark { 60 } else { 30 }),
+                            color: Color32::from_black_alpha(if theme::is_dark() { 60 } else { 30 }),
                         },
                         ..Default::default()
                     }

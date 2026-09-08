@@ -104,9 +104,9 @@ impl<'a> Panel<'a> {
         let dark = ui.visuals().dark_mode;
 
         let (fill, border) = if dark {
-            (theme::surface(), theme::border())
+            (theme::panel(), theme::border())
         } else {
-            (theme::light::SURFACE, theme::light::BORDER)
+            (theme::panel(), theme::border())
         };
 
         let frame_resp = egui::Frame::NONE
@@ -152,8 +152,7 @@ impl<'a> Panel<'a> {
             let rect_before = ui.cursor();
             ui.disable();
             Self::render_content(ui, content, min_col_width, depth);
-            let dark = ui.visuals().dark_mode;
-            let bg = if dark { theme::bg() } else { theme::light::BG };
+            let bg = theme::bg();
             let full_rect = Rect::from_min_max(
                 Pos2::new(rect_before.left(), rect_before.top()),
                 Pos2::new(ui.min_rect().right(), ui.min_rect().bottom()),

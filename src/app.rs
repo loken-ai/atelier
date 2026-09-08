@@ -3181,7 +3181,6 @@ impl eframe::App for LLMGuiApp {
         let refreshing = self.models.action_status.is_in_progress();
         let top_out = crate::ui::layout::top_bar(
             ui,
-            self.config.dark_theme,
             self.connection_status.state,
             &self.connection_status.detail,
             active_model,
@@ -3207,7 +3206,6 @@ impl eframe::App for LLMGuiApp {
         let sidebar_toggled = crate::ui::layout::sidebar(
             ui,
             &mut self.current_section,
-            self.config.dark_theme,
             self.sidebar_expanded,
         );
         if sidebar_toggled {
@@ -3425,7 +3423,6 @@ impl eframe::App for LLMGuiApp {
                     let actions = crate::ui::models::render(
                         ui,
                         &mut self.models,
-                        &self.config,
                     );
                     for action in actions {
                         match action {
@@ -3507,7 +3504,6 @@ impl eframe::App for LLMGuiApp {
                         &mut self.server,
                         self.embedded_port,
                         &self.log_buffer,
-                        self.config.dark_theme,
                     );
                 }
                 Section::MediaStudio => {
@@ -3551,7 +3547,7 @@ impl eframe::App for LLMGuiApp {
         // Rendered after the CentralPanel so the bottom-right stack
         // floats above all tab content. Handles its own expiry +
         // repaint scheduling.
-        crate::toast::render(&ctx, &mut self.toasts, self.config.dark_theme);
+        crate::toast::render(&ctx, &mut self.toasts);
 
         // Fullscreen image viewer (zoom/pan). Rendered last so its modal
         // backdrop covers all tab content and toasts. Opens when any image
