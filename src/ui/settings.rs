@@ -1,14 +1,36 @@
-//! Settings section — all configuration inline, no modals
+//! Settings section: one column of section panels, every field labelled in
+//! capitals and explained by a caption.
 //!
 //! Reads/writes: AppConfig, SettingsState, ConfigEditorState
 
-use eframe::egui::{self, Color32, RichText, CornerRadius, Stroke, TextEdit};
+use eframe::egui::{self, TextEdit};
 #[allow(unused_imports)]
 use crate::config::{AppConfig, ApiProfile, ApiType};
 use crate::config_editor::ConfigEditorState;
 use crate::icons::Icon;
 use crate::settings::{SettingsAction, SettingsState};
-use crate::theme;
+use crate::theme::{self, text};
+use crate::ui::widgets;
+
+/// Point size of the icons in the chrome row and the picker.
+const ICON_PT: f32 = 14.0;
+/// Width of the column of panels.
+const SETTINGS_COLUMN_W: f32 = 640.0;
+/// Room kept beside a field for the button that follows it.
+const FIELD_BUTTON_RESERVE: f32 = 70.0;
+/// Width of the profile picker, of the API type cell, and of a confirmation.
+const PROFILE_PICKER_W: f32 = 250.0;
+const API_TYPE_W: f32 = 64.0;
+const CONFIRM_W: f32 = 380.0;
+/// The profile popup's height.
+const PROFILE_POPUP_H: f32 = 280.0;
+/// The folder picker: its default size, the room kept for its action row,
+/// the least height of its list, the room beside its path field.
+const PICKER_W: f32 = 520.0;
+const PICKER_H: f32 = 420.0;
+const PICKER_ACTIONS_RESERVE: f32 = 80.0;
+const PICKER_LIST_MIN_H: f32 = 120.0;
+const PICKER_GO_RESERVE: f32 = 50.0;
 
 /// Render the settings section
 pub fn render(
@@ -19,12 +41,6 @@ pub fn render(
     connection_state: crate::state::ConnectionState,
 ) -> Vec<SettingsAction> {
     let mut actions = Vec::new();
-    let text_primary = theme::ink();
-    let text_secondary = theme::ink_dim();
-    let text_muted = theme::ink_dim();
-    let surface = theme::panel();
-    let surface_elevated = theme::raised();
-    let border = theme::border();
 
     // Auto-initialize config editor state if not yet loaded
     if settings_state.config_editor.is_none() {
@@ -62,51 +78,35 @@ pub fn render(
             .resizable(false)
             .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
             .show(ctx, |ui| {
-                ui.set_min_width(380.0);
-                ui.add_space(4.0);
-                ui.label(RichText::new("Reset all GUI settings to defaults?").size(13.0).strong());
-                ui.add_space(8.0);
-                ui.label(
-                    RichText::new("This wipes:\n  • All API profiles\n  • Server URL\n  • Selected model\n  • Theme / window preferences")
-                        .size(11.0)
-                        .color(text_secondary),
+                ui.set_min_width(CONFIRM_W);
+                ui.add_space(widgets::GAP_LABEL);
+                ui.label(text::value("Reset all GUI settings to defaults?"));
+                ui.add_space(widgets::GAP_WIDGETS);
+                ui.label(text::note(
+                    "This wipes:\n  - All API profiles\n  - Server URL\n  - Selected model\n  - Theme / window preferences",
+                ));
+                ui.add_space(widgets::GAP_WIDGETS);
+                widgets::caption_row(ui, "Local model files on disk are not affected.");
+                widgets::caption_row(
+                    ui,
+                    "A backup of the current config.json is saved as \
+                     config.json.before_reset.<timestamp> in the same folder, so you can \
+                     restore it manually if needed.",
                 );
-                ui.add_space(8.0);
-                ui.label(
-                    RichText::new("Local model files on disk are not affected.")
-                        .size(11.0)
-                        .italics()
-                        .color(text_muted),
-                );
-                ui.add_space(4.0);
-                // Tell users a backup is taken so the reset feels
-                // less terminal — they can restore by copying the
-                // .before_reset.<ts> file back to config.json.
-                ui.label(
-                    RichText::new("A backup of the current config.json is saved as \
-                                   config.json.before_reset.<timestamp> in the same \
-                                   folder, so you can restore it manually if needed.")
-                        .size(11.0)
-                        .italics()
-                        .color(text_muted),
-                );
-                ui.add_space(12.0);
+                ui.add_space(widgets::GAP_WIDGETS);
                 ui.horizontal(|ui| {
-                    if ui.button(RichText::new("Cancel").size(12.0)).clicked() {
+                    if ui.add(egui::Button::new(text::note("Cancel"))).clicked() {
                         close_modal = true;
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let reset_btn = egui::Button::new(
-                            RichText::new("Reset").size(12.0).color(Color32::WHITE),
-                        )
-                        .fill(theme::error())
-                        .corner_radius(CornerRadius::same(4));
+                        let reset_btn = egui::Button::new(text::value("Reset").color(theme::on_accent()))
+                            .fill(theme::error());
                         if ui.add(reset_btn).clicked() {
                             confirmed = true;
                         }
                     });
                 });
-                ui.add_space(4.0);
+                ui.add_space(widgets::GAP_LABEL);
             });
         if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
             close_modal = true;
@@ -129,26 +129,23 @@ pub fn render(
         }
     }
 
-    // Header
-    ui.horizontal(|ui| {
-        Icon::Gear.show(ui, 20.0, text_primary);
-        ui.add_space(6.0);
-        ui.label(RichText::new("Settings").size(18.0).strong().color(text_primary));
+    widgets::chrome_row(ui, |ui| {
+        Icon::Gear.show(ui, ICON_PT, theme::ink());
+        ui.label(text::title("Settings"));
     });
-    ui.add_space(12.0);
+    ui.add_space(widgets::GAP_WIDGETS);
 
     egui::ScrollArea::vertical().show(ui, |ui| {
         ui.set_width(ui.available_width());
-        let card_width = ui.available_width().min(640.0);
 
         // ── Server Connection ──
-        settings_card(ui, Icon::Globe, "Connection", surface, border, card_width, |ui| {
-            form_row(ui, "Server URL", text_secondary, |ui| {
+        settings_panel(ui, "CONNECTION", |ui| {
+            form_row(ui, "SERVER URL", |ui| {
                 // Apply button width budget so the text field doesn't
                 // hug the right edge of the card.
                 let resp = ui.add(
                     TextEdit::singleline(&mut settings_state.url_input)
-                        .desired_width(ui.available_width() - 70.0),
+                        .desired_width(ui.available_width() - FIELD_BUTTON_RESERVE),
                 );
                 let trimmed_input = settings_state.url_input.trim();
                 let non_empty = !trimmed_input.is_empty();
@@ -160,17 +157,12 @@ pub fn render(
                 // Connect or another card, losing the typed value.
                 // Gated on can_apply (= dirty + non-empty) so an empty
                 // field can never clobber the saved server URL.
-                let apply_btn = egui::Button::new(
-                    RichText::new("Apply")
-                        .size(11.0)
-                        .color(if can_apply { Color32::WHITE } else { text_secondary }),
-                )
-                .fill(if can_apply { theme::accent() } else { surface_elevated })
-                .corner_radius(CornerRadius::same(4));
+                let apply_btn = egui::Button::new(text::value("Apply").color(theme::on_accent()))
+                    .fill(theme::accent());
                 let apply_resp = ui.add_enabled(can_apply, apply_btn);
                 let apply_clicked = apply_resp.clicked();
                 let apply_tip = if dirty && !non_empty {
-                    "URL is empty — type a server URL to enable Apply.".to_string()
+                    "URL is empty: type a server URL to enable Apply.".to_string()
                 } else if can_apply {
                     format!("Apply '{}' as the active server URL", trimmed_input)
                 } else {
@@ -210,14 +202,13 @@ pub fn render(
                     config.save();
                 }
             });
-            hint_text(ui, "The web address where your AI model is running. Press Enter or click Apply to connect. Use the Quick Connect buttons below for common setups.");
-
-            ui.add_space(4.0);
+            widgets::caption_row(ui, "The web address where your AI model is running. Press Enter or click Apply to connect. Use the Quick Connect buttons below for common setups.");
+            ui.add_space(widgets::GAP_LABEL);
 
             // API key. Only needed when the server has `require_auth` on; without this
             // field, turning authentication on server-side would lock this app out with
             // a bare 401 and no way to fix it from the UI.
-            form_row(ui, "API key", text_secondary, |ui| {
+            form_row(ui, "API KEY", |ui| {
                 let mut key = config.api_key.clone().unwrap_or_default();
                 let resp = ui.add(
                     TextEdit::singleline(&mut key)
@@ -235,29 +226,25 @@ pub fn render(
                     // request, so the next call already carries the new key.
                 }
             });
-            hint_text(ui, "Sent as a bearer token on every request. Leave empty unless the server is configured with require_auth.");
+            widgets::caption_row(ui, "Sent as a bearer token on every request. Leave empty unless the server is configured with require_auth.");
+            ui.add_space(widgets::GAP_LABEL);
 
-            ui.add_space(4.0);
-
-            form_row(ui, "Status", text_secondary, |ui| {
+            form_row(ui, "STATUS", |ui| {
                 // Colour + label both derive from the ConnectionState
                 // enum — no more `.contains()` sniffing that could
                 // desync the dot from the text.
-                let dot_color = connection_state.color();
-                let status_text = connection_state.label();
-                let (dot_rect, _) = ui.allocate_exact_size(egui::vec2(8.0, 8.0), egui::Sense::hover());
-                ui.painter().circle_filled(dot_rect.center(), 4.0, dot_color);
-                ui.add_space(4.0);
-                ui.label(RichText::new(status_text).size(12.0).color(text_primary));
+                let lit = connection_state != crate::state::ConnectionState::Disconnected;
+                widgets::lamp_inline(ui, lit, connection_state.color());
+                ui.label(text::note(connection_state.label()));
             });
 
-            ui.add_space(6.0);
+            ui.add_space(widgets::GAP_LABEL);
 
-            ui.label(RichText::new("Quick Connect").size(11.0).color(text_muted));
             ui.horizontal(|ui| {
+                ui.label(text::label("QUICK CONNECT"));
                 for (label, url) in [
                     ("LOKEN", crate::config::DEFAULT_LOKEN_URL),
-                    ("Ollama",     crate::config::DEFAULT_OLLAMA_URL),
+                    ("OLLAMA", crate::config::DEFAULT_OLLAMA_URL),
                 ] {
                     // Highlight based on the SAVED server URL, not
                     // the in-progress input. Typing in the field
@@ -265,12 +252,7 @@ pub fn render(
                     // it just means the user is composing a new URL,
                     // not that they've abandoned the current one.
                     let is_active = config.server_url == url;
-                    let btn = egui::Button::new(
-                        RichText::new(label).size(11.0).color(if is_active { Color32::WHITE } else { text_secondary }),
-                    )
-                    .fill(if is_active { theme::accent() } else { surface_elevated })
-                    .corner_radius(CornerRadius::same(4));
-                    let btn_resp = ui.add(btn);
+                    let btn_resp = widgets::selector_pill(ui, label, is_active);
                     btn_resp.clone().on_hover_ui(|ui| {
                         // Lazy tooltip — format! only runs when the
                         // user is actually hovering, not every frame.
@@ -285,36 +267,30 @@ pub fn render(
             });
         });
 
-        ui.add_space(12.0);
+        ui.add_space(widgets::GAP_WIDGETS);
 
         // ── Appearance ──
-        settings_card(ui, Icon::Palette, "Appearance", surface, border, card_width, |ui| {
-            form_row(ui, "Theme", text_secondary, |ui| {
-                for (label, value) in [("Dark", true), ("Light", false)] {
+        settings_panel(ui, "APPEARANCE", |ui| {
+            form_row(ui, "THEME", |ui| {
+                for (label, value) in [("DARK", true), ("LIGHT", false)] {
                     let is_active = config.dark_theme == value;
-                    let btn = egui::Button::new(
-                        RichText::new(label).size(12.0).color(if is_active { Color32::WHITE } else { text_secondary }),
-                    )
-                    .fill(if is_active { theme::accent() } else { surface_elevated })
-                    .corner_radius(CornerRadius::same(4));
-                    if ui.add(btn).clicked() && config.dark_theme != value {
+                    if widgets::selector_pill(ui, label, is_active).clicked() && config.dark_theme != value {
                         config.dark_theme = value;
                         theme::apply(ctx, value);
                         config.save();
                     }
-                    ui.add_space(4.0);
                 }
             });
         });
 
-        ui.add_space(12.0);
+        ui.add_space(widgets::GAP_WIDGETS);
 
         // ── API Profiles ──
-        settings_card(ui, Icon::Key, "API Profiles", surface, border, card_width, |ui| {
-            form_row(ui, "Active Profile", text_secondary, |ui| {
+        settings_panel(ui, "API PROFILES", |ui| {
+            form_row(ui, "ACTIVE PROFILE", |ui| {
                 egui::ComboBox::from_id_salt("profile_selector_settings")
                     .selected_text(config.selected_profile.as_deref().unwrap_or("(none)"))
-                    .width(ui.available_width().min(250.0))
+                    .width(ui.available_width().min(PROFILE_PICKER_W))
                     .show_ui(ui, |ui| {
                         // Wrap in ScrollArea so a user with many
                         // profiles (10+ via "+ New Profile" clicks
@@ -335,7 +311,7 @@ pub fn render(
                         // since Option<String>: !Copy), but that
                         // now only fires inside the open popup.
                         egui::ScrollArea::vertical()
-                            .max_height(280.0)
+                            .max_height(PROFILE_POPUP_H)
                             .show(ui, |ui| {
                                 // Disjoint borrow: split field borrows
                                 // through the closure (Rust 2021+
@@ -370,24 +346,11 @@ pub fn render(
                 let mut edit_clicked = false;
                 let profile = &config.profiles[profile_idx];
                 let profiles_count = config.profiles.len();
-                ui.add_space(8.0);
-                egui::Frame {
-                    inner_margin: egui::Margin::same(10),
-                    corner_radius: CornerRadius::same(4),
-                    fill: surface_elevated,
-                    stroke: Stroke::new(0.5, border),
-                    ..Default::default()
-                }
-                .show(ui, |ui| {
+                ui.add_space(widgets::GAP_WIDGETS);
+                widgets::well(ui, |ui| {
                     ui.horizontal(|ui| {
-                        let badge_color = match profile.api_type {
-                            ApiType::Loken => theme::accent(),
-                            ApiType::Ollama => theme::success(),
-                            ApiType::OpenApi => theme::warning(),
-                        };
-                        pill_badge(ui, &format!("{}", profile.api_type), badge_color);
-                        ui.add_space(8.0);
-                        ui.label(RichText::new(&profile.server_url).size(11.0).color(text_muted));
+                        widgets::fixed_label(ui, API_TYPE_W, text::label(&format!("{}", profile.api_type)));
+                        ui.label(text::readout(&profile.server_url));
                         // Right-anchored Edit + Delete action row.
                         // Previously there was no way to edit a
                         // profile or delete one from the inline
@@ -401,11 +364,7 @@ pub fn render(
                             // profiles requires a Reset (or +New)
                             // to recover and is rarely intended.
                             let can_delete = profiles_count > 1;
-                            let del_btn = egui::Button::new(
-                                RichText::new("Delete").size(10.0).color(theme::error()),
-                            )
-                            .fill(theme::tinted(theme::error(), 18))
-                            .corner_radius(CornerRadius::same(3));
+                            let del_btn = egui::Button::new(text::note("Delete").color(theme::error())).frame(false);
                             let del_tip = if can_delete {
                                 "Delete this profile"
                             } else {
@@ -418,32 +377,28 @@ pub fn render(
                             {
                                 delete_clicked = true;
                             }
-                            ui.add_space(4.0);
-                            let edit_btn = egui::Button::new(
-                                RichText::new("Edit").size(10.0).color(theme::accent()),
-                            )
-                            .fill(theme::tinted(theme::accent(), 18))
-                            .corner_radius(CornerRadius::same(3));
+                            ui.add_space(widgets::GAP_LABEL);
+                            let edit_btn = egui::Button::new(text::note("Edit")).frame(false);
                             if ui.add(edit_btn).on_hover_text("Open the profile editor").clicked() {
                                 edit_clicked = true;
                             }
                         });
                     });
-                    ui.add_space(4.0);
+                    ui.add_space(widgets::GAP_LABEL);
                     match profile.api_type {
                         ApiType::Ollama | ApiType::Loken => {
-                            param_grid(ui, text_secondary, text_primary, &[
-                                ("Temperature", &format!("{:.2}", profile.ollama_params.temperature)),
-                                ("Top P", &format!("{:.2}", profile.ollama_params.top_p)),
-                                ("Top K", &format!("{}", profile.ollama_params.top_k)),
-                                ("Context", &format!("{}", profile.ollama_params.num_ctx)),
+                            param_grid(ui, &[
+                                ("TEMPERATURE", &format!("{:.2}", profile.ollama_params.temperature)),
+                                ("TOP P", &format!("{:.2}", profile.ollama_params.top_p)),
+                                ("TOP K", &format!("{}", profile.ollama_params.top_k)),
+                                ("CONTEXT", &format!("{}", profile.ollama_params.num_ctx)),
                             ]);
                         }
                         ApiType::OpenApi => {
-                            param_grid(ui, text_secondary, text_primary, &[
-                                ("Temperature", &format!("{:.2}", profile.openapi_params.temperature)),
-                                ("Max Tokens", &format!("{:?}", profile.openapi_params.max_tokens)),
-                                ("Top P", &format!("{:.2}", profile.openapi_params.top_p)),
+                            param_grid(ui, &[
+                                ("TEMPERATURE", &format!("{:.2}", profile.openapi_params.temperature)),
+                                ("MAX TOKENS", &format!("{:?}", profile.openapi_params.max_tokens)),
+                                ("TOP P", &format!("{:.2}", profile.openapi_params.top_p)),
                             ]);
                         }
                     }
@@ -464,12 +419,9 @@ pub fn render(
                 }
             }
 
-            ui.add_space(8.0);
+            ui.add_space(widgets::GAP_WIDGETS);
             ui.horizontal(|ui| {
-                let btn = egui::Button::new(RichText::new("+ New Profile").size(11.0).color(theme::accent()))
-                    .fill(theme::tinted(theme::accent(), 15))
-                    .corner_radius(CornerRadius::same(4));
-                if ui.add(btn).clicked() {
+                if ui.add(egui::Button::new(text::note("New profile"))).clicked() {
                     // Pick a name that doesn't collide with any
                     // existing profile. The previous
                     // `format!("Profile {}", len + 1)` could yield
@@ -491,26 +443,21 @@ pub fn render(
             });
         });
 
-        ui.add_space(12.0);
+        ui.add_space(widgets::GAP_WIDGETS);
 
         // ── Server Configuration (config.toml) — inline ──
         if let Some(editor) = settings_state.config_editor.as_mut() {
             // Error banner
             if let Some(error) = &editor.error_message {
-                egui::Frame {
-                    inner_margin: egui::Margin::symmetric(12, 8),
-                    corner_radius: CornerRadius::same(4),
-                    fill: theme::tinted(theme::error(), 20),
-                    stroke: Stroke::new(1.0, theme::error()),
-                    ..Default::default()
-                }
-                .show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label(RichText::new("!").size(14.0).strong().color(theme::error()));
-                        ui.label(RichText::new(error).size(12.0).color(theme::error()));
+                ui.allocate_ui(egui::vec2(SETTINGS_COLUMN_W, 0.0), |ui| {
+                    widgets::panel_frame(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            widgets::lamp_inline(ui, true, theme::error());
+                            ui.label(text::note(error).color(theme::error()));
+                        });
                     });
                 });
-                ui.add_space(8.0);
+                ui.add_space(widgets::GAP_WIDGETS);
             }
 
             // Model Directories — Browse buttons spawn worker threads
@@ -539,15 +486,15 @@ pub fn render(
             // affordances that do nearly the same thing was confusing.
             // The rfd path is gone with it; no more silent-None failures
             // when zenity isn't installed.
-            settings_card(ui, Icon::Folder, "Model Directories", surface, border, card_width, |ui| {
-                ui.label(RichText::new("Ollama Models").size(11.0).color(text_secondary));
+            settings_panel(ui, "MODEL DIRECTORIES", |ui| {
+                ui.label(text::label("OLLAMA MODELS"));
                 ui.horizontal(|ui| {
                     TextEdit::singleline(&mut editor.ollama_models_dir)
-                        .desired_width(ui.available_width() - 70.0)
+                        .desired_width(ui.available_width() - FIELD_BUTTON_RESERVE)
                         .hint_text("~/.ollama/models")
                         .show(ui);
                     if ui
-                        .add(egui::Button::new("Browse"))
+                        .add(egui::Button::new(text::note("Browse")))
                         .on_hover_text("Open the folder picker")
                         .clicked()
                     {
@@ -558,18 +505,17 @@ pub fn render(
                         ));
                     }
                 });
-                hint_text(ui, "Folder where Ollama keeps its downloaded models. Leave empty to use the standard location.");
+                widgets::caption_row(ui, "Folder where Ollama keeps its downloaded models. Leave empty to use the standard location.");
+                ui.add_space(widgets::GAP_LABEL);
 
-                ui.add_space(6.0);
-
-                ui.label(RichText::new("HuggingFace Models").size(11.0).color(text_secondary));
+                ui.label(text::label("HUGGINGFACE MODELS"));
                 ui.horizontal(|ui| {
                     TextEdit::singleline(&mut editor.huggingface_models_dir)
-                        .desired_width(ui.available_width() - 70.0)
+                        .desired_width(ui.available_width() - FIELD_BUTTON_RESERVE)
                         .hint_text("~/.cache/huggingface/hub")
                         .show(ui);
                     if ui
-                        .add(egui::Button::new("Browse"))
+                        .add(egui::Button::new(text::note("Browse")))
                         .on_hover_text("Open the folder picker")
                         .clicked()
                     {
@@ -580,103 +526,96 @@ pub fn render(
                         ));
                     }
                 });
-                hint_text(ui, "Folder where HuggingFace models are cached after download. Leave empty to use the standard location.");
+                widgets::caption_row(ui, "Folder where HuggingFace models are cached after download. Leave empty to use the standard location.");
             });
 
-            ui.add_space(12.0);
+            ui.add_space(widgets::GAP_WIDGETS);
 
             // Server bind
-            settings_card(ui, Icon::Server, "Server Bind", surface, border, card_width, |ui| {
-                config_row_pair(ui, text_secondary,
-                    ("Host", &mut editor.server_host),
-                    ("Port", &mut editor.server_port_str),
+            settings_panel(ui, "SERVER BIND", |ui| {
+                config_row_pair(ui,
+                    ("HOST", &mut editor.server_host),
+                    ("PORT", &mut editor.server_port_str),
                 );
-                hint_row(ui, text_muted,
+                hint_row(ui,
                     "Use 127.0.0.1 for this computer only, or 0.0.0.0 to allow connections from other devices on your network",
                     "Port number the server listens on. Default 11435. Change if another app already uses this port.",
                 );
             });
 
-            ui.add_space(12.0);
+            ui.add_space(widgets::GAP_WIDGETS);
 
             // Inference
-            settings_card(ui, Icon::Gear, "Inference", surface, border, card_width, |ui| {
-                ui.label(RichText::new("Model ID").size(11.0).color(text_secondary));
+            settings_panel(ui, "INFERENCE", |ui| {
+                ui.label(text::label("MODEL ID"));
                 TextEdit::singleline(&mut editor.model_id)
                     .desired_width(ui.available_width())
                     .show(ui);
-                hint_text(ui, "Name of the AI model to load when the server starts. Must match a model you have downloaded (e.g. devstral-small-2).");
+                widgets::caption_row(ui, "Name of the AI model to load when the server starts. Must match a model you have downloaded (e.g. devstral-small-2).");
+                ui.add_space(widgets::GAP_WIDGETS);
 
-                ui.add_space(8.0);
-
-                config_row_pair(ui, text_secondary,
-                    ("Max Tokens", &mut editor.max_tokens_str),
-                    ("Context Length", &mut editor.context_length_str),
+                config_row_pair(ui,
+                    ("MAX TOKENS", &mut editor.max_tokens_str),
+                    ("CONTEXT LENGTH", &mut editor.context_length_str),
                 );
-                hint_row(ui, text_muted,
+                hint_row(ui,
                     "Limits how long each response can be. Higher = longer answers but slower.",
                     "How much conversation history the model can remember. Larger values use more memory.",
                 );
-                ui.add_space(4.0);
-                config_row_pair(ui, text_secondary,
-                    ("Temperature", &mut editor.temperature_str),
-                    ("Top P", &mut editor.top_p_str),
+                ui.add_space(widgets::GAP_LABEL);
+                config_row_pair(ui,
+                    ("TEMPERATURE", &mut editor.temperature_str),
+                    ("TOP P", &mut editor.top_p_str),
                 );
-                hint_row(ui, text_muted,
+                hint_row(ui,
                     "Controls creativity. Low (0.1) = focused and predictable. High (1.5) = creative and varied.",
                     "Filters unlikely words. Lower values (e.g. 0.5) make output more focused. Usually fine at 0.9.",
                 );
-                ui.add_space(4.0);
-                config_row_pair(ui, text_secondary,
-                    ("Top K", &mut editor.top_k_str),
-                    ("Seed", &mut editor.seed_str),
+                ui.add_space(widgets::GAP_LABEL);
+                config_row_pair(ui,
+                    ("TOP K", &mut editor.top_k_str),
+                    ("SEED", &mut editor.seed_str),
                 );
-                hint_row(ui, text_muted,
+                hint_row(ui,
                     "How many word choices the model considers at each step. Lower = more predictable.",
                     "A number that makes outputs repeatable. Same seed + same prompt = same answer.",
                 );
             });
 
-            ui.add_space(12.0);
+            ui.add_space(widgets::GAP_WIDGETS);
 
             // GPU & Device
-            settings_card(ui, Icon::Bolt, "GPU & Device", surface, border, card_width, |ui| {
-                config_row_pair(ui, text_secondary,
-                    ("Device Index", &mut editor.device_index_str),
-                    ("GPU Memory %", &mut editor.max_gpu_memory_fraction_str),
+            settings_panel(ui, "GPU AND DEVICE", |ui| {
+                config_row_pair(ui,
+                    ("DEVICE INDEX", &mut editor.device_index_str),
+                    ("GPU MEMORY %", &mut editor.max_gpu_memory_fraction_str),
                 );
-                hint_row(ui, text_muted,
+                hint_row(ui,
                     "Which GPU to use if you have multiple. Leave empty to pick automatically.",
                     "How much of your GPU's memory to use (0.9 = 90%). Lower this if you get out-of-memory errors.",
                 );
-                ui.add_space(4.0);
-                config_row_pair(ui, text_secondary,
-                    ("Force GPU Layers", &mut editor.force_gpu_layers_str),
-                    ("CPU Threads", &mut editor.cpu_threads_str),
+                ui.add_space(widgets::GAP_LABEL);
+                config_row_pair(ui,
+                    ("FORCE GPU LAYERS", &mut editor.force_gpu_layers_str),
+                    ("CPU THREADS", &mut editor.cpu_threads_str),
                 );
-                hint_row(ui, text_muted,
+                hint_row(ui,
                     "Force a specific number of model layers onto the GPU. Leave empty to let the server decide based on available memory.",
                     "Number of CPU cores to use for processing. Set to 0 to use all available cores automatically.",
                 );
-                ui.add_space(6.0);
-                ui.horizontal(|ui| {
-                    ui.checkbox(&mut editor.use_quantized_gpu, "");
-                    ui.label(RichText::new("Use Quantized GPU").size(12.0).color(text_primary));
-                });
-                hint_text(ui, "Compresses the model to use less GPU memory at a small quality cost. Recommended if your GPU has limited memory (8 GB or less).");
+                ui.add_space(widgets::GAP_LABEL);
+                ui.checkbox(&mut editor.use_quantized_gpu, text::note("Use quantized GPU"));
+                widgets::caption_row(ui, "Compresses the model to use less GPU memory at a small quality cost. Recommended if your GPU has limited memory (8 GB or less).");
             });
 
-            ui.add_space(12.0);
+            ui.add_space(widgets::GAP_WIDGETS);
 
             // Save / Reload / Reset row
-            settings_card(ui, Icon::Save, "Actions", surface, border, card_width, |ui| {
+            settings_panel(ui, "ACTIONS", |ui| {
                 ui.horizontal(|ui| {
                     // Save config.toml
-                    let save_btn = egui::Button::new(
-                        RichText::new("Save config.toml").size(12.0).color(Color32::WHITE),
-                    )
-                    .fill(theme::accent())
-                    .corner_radius(CornerRadius::same(4));
+                    let save_btn = egui::Button::new(text::value("Save config.toml").color(theme::on_accent()))
+                        .fill(theme::accent());
                     if ui
                         .add(save_btn)
                         .on_hover_text(
@@ -697,15 +636,10 @@ pub fn render(
                         }
                     }
 
-                    ui.add_space(8.0);
+                    ui.add_space(widgets::GAP_WIDGETS);
 
                     // Reload from disk
-                    let reload_btn = egui::Button::new(
-                        RichText::new("Reload from disk").size(12.0).color(text_secondary),
-                    )
-                    .fill(surface_elevated)
-                    .stroke(Stroke::new(0.5, border))
-                    .corner_radius(CornerRadius::same(4));
+                    let reload_btn = egui::Button::new(text::note("Reload from disk"));
                     if ui
                         .add(reload_btn)
                         .on_hover_text(
@@ -719,7 +653,7 @@ pub fn render(
                         }
                     }
 
-                    ui.add_space(8.0);
+                    ui.add_space(widgets::GAP_WIDGETS);
 
                     // Reset GUI defaults — two-step confirm via modal,
                     // since this wipes profiles + server URL + selected
@@ -729,11 +663,7 @@ pub fn render(
                     // disable the button so re-clicking it doesn't
                     // re-trigger or visually hint that a second click
                     // is needed.
-                    let reset_btn = egui::Button::new(
-                        RichText::new("Reset GUI defaults").size(12.0).color(theme::error()),
-                    )
-                    .fill(theme::tinted(theme::error(), 12))
-                    .corner_radius(CornerRadius::same(4));
+                    let reset_btn = egui::Button::new(text::note("Reset GUI defaults").color(theme::error()));
                     if ui
                         .add_enabled(!settings_state.reset_confirm_pending, reset_btn)
                         .clicked()
@@ -750,121 +680,61 @@ pub fn render(
 
 // ── Helper components ──
 
-/// A settings card with title and body
-// Wide signature carries UI handle, icon + title pair, theme colours
-// (dark/surface/border), width budget, and the body closure. Bundling
-// into a struct adds boilerplate without simplifying the call sites,
-// which already pass everything inline.
-#[allow(clippy::too_many_arguments)]
-fn settings_card(
-    ui: &mut egui::Ui,
-    icon: Icon,
-    title: &str,
-    surface: Color32,
-    border: Color32,
-    max_width: f32,
-    add_body: impl FnOnce(&mut egui::Ui),
-) {
-    let title_color = theme::ink();
-
-    ui.allocate_ui(egui::vec2(max_width, 0.0), |ui| {
-        egui::Frame {
-            inner_margin: egui::Margin::same(16),
-            corner_radius: CornerRadius::same(8),
-            fill: surface,
-            stroke: Stroke::new(1.0, border),
-            shadow: egui::epaint::Shadow {
-                offset: [0, 1],
-                blur: 3,
-                spread: 0,
-                color: Color32::from_black_alpha(if theme::is_dark() { 30 } else { 8 }),
-            },
-            ..Default::default()
-        }
-        .show(ui, |ui| {
-            ui.set_width(ui.available_width());
-            ui.horizontal(|ui| {
-                icon.show(ui, 16.0, title_color);
-                ui.add_space(6.0);
-                ui.label(RichText::new(title).size(14.0).strong().color(title_color));
-            });
-            ui.add_space(10.0);
-            add_body(ui);
-        });
+/// A section panel in the settings column.
+fn settings_panel(ui: &mut egui::Ui, caps: &str, add_body: impl FnOnce(&mut egui::Ui)) {
+    ui.allocate_ui(egui::vec2(SETTINGS_COLUMN_W, 0.0), |ui| {
+        widgets::section_panel(ui, caps, add_body);
     });
 }
 
-/// A form row with label on the left and content on the right
-fn form_row(
-    ui: &mut egui::Ui,
-    label: &str,
-    label_color: Color32,
-    add_content: impl FnOnce(&mut egui::Ui),
-) {
+/// A form row: the label in capitals in a column of fixed width, right
+/// aligned, and the content beside it.
+fn form_row(ui: &mut egui::Ui, caps: &str, add_content: impl FnOnce(&mut egui::Ui)) {
     ui.horizontal(|ui| {
-        ui.allocate_ui(egui::vec2(110.0, ui.spacing().interact_size.y), |ui| {
+        ui.allocate_ui(egui::vec2(widgets::FORM_LABEL_W, ui.spacing().interact_size.y), |ui| {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.add_space(8.0);
-                ui.label(RichText::new(label).size(12.0).color(label_color));
+                ui.add_space(widgets::GAP_WIDGETS);
+                ui.label(text::label(caps));
             });
         });
         add_content(ui);
     });
 }
 
-/// Compact parameter grid (2 columns of key=value)
-fn param_grid(ui: &mut egui::Ui, label_color: Color32, value_color: Color32, params: &[(&str, &str)]) {
+/// Key and value pairs in two columns: the key in capitals, the value in
+/// monospace.
+fn param_grid(ui: &mut egui::Ui, params: &[(&str, &str)]) {
     ui.columns(2, |cols| {
         for (i, (key, val)) in params.iter().enumerate() {
             let col = &mut cols[i % 2];
             col.horizontal(|ui| {
-                ui.label(RichText::new(*key).size(11.0).color(label_color));
-                ui.label(RichText::new(*val).size(11.0).strong().color(value_color));
+                ui.label(text::label(key));
+                ui.label(text::mono(val));
             });
         }
     });
 }
 
-/// Two text fields side by side
+/// Two labelled text fields side by side.
 fn config_row_pair(
     ui: &mut egui::Ui,
-    label_color: Color32,
-    (label_a, val_a): (&str, &mut String),
-    (label_b, val_b): (&str, &mut String),
+    (caps_a, val_a): (&str, &mut String),
+    (caps_b, val_b): (&str, &mut String),
 ) {
     ui.columns(2, |cols| {
-        cols[0].label(RichText::new(label_a).size(11.0).color(label_color));
+        cols[0].label(text::label(caps_a));
         TextEdit::singleline(val_a).desired_width(f32::INFINITY).show(&mut cols[0]);
 
-        cols[1].label(RichText::new(label_b).size(11.0).color(label_color));
+        cols[1].label(text::label(caps_b));
         TextEdit::singleline(val_b).desired_width(f32::INFINITY).show(&mut cols[1]);
     });
 }
 
-/// Small muted help text below a field
-fn hint_text(ui: &mut egui::Ui, text: &str) {
-    let muted = theme::ink_dim();
-    ui.label(RichText::new(text).size(10.0).color(muted));
-}
-
-/// Two-column hint row (aligned with config_row_pair above it)
-fn hint_row(ui: &mut egui::Ui, muted: Color32, hint_a: &str, hint_b: &str) {
+/// Two captions side by side, under a `config_row_pair`.
+fn hint_row(ui: &mut egui::Ui, hint_a: &str, hint_b: &str) {
     ui.columns(2, |cols| {
-        cols[0].label(RichText::new(hint_a).size(10.0).color(muted));
-        cols[1].label(RichText::new(hint_b).size(10.0).color(muted));
-    });
-}
-
-/// Colored pill badge
-fn pill_badge(ui: &mut egui::Ui, text: &str, color: Color32) {
-    egui::Frame {
-        inner_margin: egui::Margin::symmetric(8, 2),
-        corner_radius: CornerRadius::same(10),
-        fill: theme::tinted(color, 30),
-        ..Default::default()
-    }
-    .show(ui, |ui| {
-        ui.label(RichText::new(text).size(11.0).color(color));
+        widgets::caption_row(&mut cols[0], hint_a);
+        widgets::caption_row(&mut cols[1], hint_b);
     });
 }
 
@@ -899,8 +769,8 @@ fn render_inapp_folder_picker(ctx: &egui::Context, editor: &mut ConfigEditorStat
     egui::Window::new("Choose a folder")
         .collapsible(false)
         .resizable(true)
-        .default_width(520.0)
-        .default_height(420.0)
+        .default_width(PICKER_W)
+        .default_height(PICKER_H)
         .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
         .show(ctx, |ui| {
             // Editable path bar — lets the user paste a full path and
@@ -909,19 +779,16 @@ fn render_inapp_folder_picker(ctx: &egui::Context, editor: &mut ConfigEditorStat
             // path isn't a directory (visible feedback that the path
             // is wrong instead of silent "Enter does nothing").
             ui.horizontal(|ui| {
-                ui.label(RichText::new("Path:").size(11.0));
+                ui.label(text::label("PATH"));
                 let mut path_str = current.display().to_string();
                 let resp = ui.add(
                     egui::TextEdit::singleline(&mut path_str)
-                        .desired_width(ui.available_width() - 50.0)
+                        .desired_width(ui.available_width() - PICKER_GO_RESERVE)
                         .font(egui::TextStyle::Monospace),
                 );
                 let typed_path = std::path::PathBuf::from(path_str.trim());
                 let typed_valid = typed_path.is_dir();
-                let go_btn_resp = ui.add_enabled(
-                    typed_valid,
-                    egui::Button::new(RichText::new("Go").size(11.0)),
-                );
+                let go_btn_resp = ui.add_enabled(typed_valid, egui::Button::new(text::note("Go")));
                 if !typed_valid && path_str.trim() != current.display().to_string() {
                     go_btn_resp.clone().on_hover_text("Path doesn't exist or isn't a directory");
                 }
@@ -931,28 +798,27 @@ fn render_inapp_folder_picker(ctx: &egui::Context, editor: &mut ConfigEditorStat
                     new_path = Some(typed_path);
                 }
             });
-            ui.add_space(4.0);
+            ui.add_space(widgets::GAP_LABEL);
 
-            // Quick-jump row: $HOME, /
+            // Quick jumps: $HOME, /
             ui.horizontal(|ui| {
                 if let Some(home) = std::env::var_os("HOME") {
-                    let home_resp = ui.add(egui::Button::image_and_text(
-                        Icon::Home.image(13.0, theme::accent()),
-                        RichText::new("Home").size(11.0),
-                    ).small());
+                    let home_resp = ui.add(
+                        egui::Button::image_and_text(Icon::Home.image(ICON_PT, theme::ink_dim()), text::note("Home"))
+                            .frame(false),
+                    );
                     if home_resp.on_hover_text("Jump to $HOME").clicked() {
                         new_path = Some(std::path::PathBuf::from(home));
                     }
                 }
-                if ui.small_button("/  Root").on_hover_text("Jump to /").clicked() {
+                if ui.add(egui::Button::new(text::note("/ Root")).frame(false)).on_hover_text("Jump to /").clicked() {
                     new_path = Some(std::path::PathBuf::from("/"));
                 }
             });
-            ui.add_space(4.0);
+            ui.add_space(widgets::GAP_LABEL);
 
-            // Scrollable directory list. Reserve ~80px for the action
-            // row below so the buttons stay visible at any window size.
-            let list_h = (ui.available_height() - 80.0).max(120.0);
+            // The list, keeping room for the action row under it.
+            let list_h = (ui.available_height() - PICKER_ACTIONS_RESERVE).max(PICKER_LIST_MIN_H);
             egui::ScrollArea::vertical()
                 .id_salt("inapp_picker_scroll")
                 .max_height(list_h)
@@ -965,7 +831,7 @@ fn render_inapp_folder_picker(ctx: &egui::Context, editor: &mut ConfigEditorStat
                     // exotic-arrow Unicode required.
                     if current.parent().is_some()
                         && ui
-                            .add(egui::Button::new(RichText::new("..").size(12.0).monospace()).frame(false))
+                            .add(egui::Button::new(text::mono("..")).frame(false))
                             .clicked()
                     {
                         new_path = current.parent().map(std::path::PathBuf::from);
@@ -1000,8 +866,8 @@ fn render_inapp_folder_picker(ctx: &egui::Context, editor: &mut ConfigEditorStat
                         if ui
                             .add(
                                 egui::Button::image_and_text(
-                                    Icon::Folder.image(13.0, theme::accent()),
-                                    RichText::new(&name).size(12.0),
+                                    Icon::Folder.image(ICON_PT, theme::ink_dim()),
+                                    text::note(&name).color(theme::ink()),
                                 )
                                 .frame(false),
                             )
@@ -1012,18 +878,15 @@ fn render_inapp_folder_picker(ctx: &egui::Context, editor: &mut ConfigEditorStat
                     }
                 });
 
-            ui.add_space(6.0);
+            ui.add_space(widgets::GAP_LABEL);
             ui.separator();
             ui.horizontal(|ui| {
-                if ui.button(RichText::new("Cancel").size(12.0)).clicked() {
+                if ui.add(egui::Button::new(text::note("Cancel"))).clicked() {
                     close = true;
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let commit_btn = egui::Button::new(
-                        RichText::new("Use this folder").size(12.0).color(Color32::WHITE),
-                    )
-                    .fill(theme::accent())
-                    .corner_radius(CornerRadius::same(4));
+                    let commit_btn = egui::Button::new(text::value("Use this folder").color(theme::on_accent()))
+                        .fill(theme::accent());
                     if ui.add(commit_btn).clicked() {
                         commit = true;
                     }
