@@ -25,7 +25,7 @@ show the current layout and can show no real address, path or prompt. Regenerate
 ## What is in it
 
 - **Chat**, with streaming, image attachments for vision models, and speech in through the
-  same affordance.
+  same affordance. Up and Down recall earlier prompts, as in a shell.
 - **Media Studio** - image, image editing, audio, speech, video and transcription, each kind
   owning its own parameters so switching between them keeps what you set.
 - **A viewer** for what comes back: fullscreen, zoom, and a strip of earlier generations that

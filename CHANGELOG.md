@@ -4,6 +4,16 @@ All notable changes to `atelier`. The format follows [Keep a Changelog](https://
 
 ## [Unreleased]
 
+### Added
+
+- Up on the first line of the chat input and Down on the last recall the previous and next
+  prompt, as in a shell; Ctrl+Up and Ctrl+Down recall from anywhere in the text.
+
+### Fixed
+
+- An audio output that fails is closed and the device opened again, instead of logging a
+  line on every period and never playing again.
+
 ### Changed
 
 - One visual grammar, shared with the phonix plugins: a palette of two skins built on three
