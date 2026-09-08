@@ -11,8 +11,15 @@
 //! `LLMGuiApp::toast(sev, msg)`; render + expire in `update()` after
 //! the CentralPanel via `toast::render`.
 
-use eframe::egui::{self, Color32, CornerRadius, RichText, Stroke};
-use crate::theme;
+use eframe::egui::{self, Color32};
+use crate::theme::{self, text, HAIRLINE};
+use crate::ui::widgets;
+
+/// Width of a toast, and its distance from the window's corner.
+const TOAST_W: f32 = 360.0;
+const TOAST_MARGIN: f32 = 16.0;
+/// Gap between stacked toasts.
+const TOAST_GAP: i8 = 6;
 
 /// How long a toast stays on screen before auto-dismissing.
 const TOAST_TTL: std::time::Duration = std::time::Duration::from_millis(4500);
@@ -26,13 +33,22 @@ pub enum ToastSeverity {
 }
 
 impl ToastSeverity {
-    /// Accent colour from the shared theme palette so toasts speak the
-    /// same colour language as status dots / chips elsewhere.
+    /// The status colour of the palette.
     fn color(self) -> Color32 {
         match self {
             ToastSeverity::Success => theme::success(),
             ToastSeverity::Warning => theme::warning(),
             ToastSeverity::Error => theme::error(),
+        }
+    }
+
+    /// The word beside the stripe, so the severity is never carried by the
+    /// colour alone.
+    fn label(self) -> &'static str {
+        match self {
+            ToastSeverity::Success => "OK",
+            ToastSeverity::Warning => "WARNING",
+            ToastSeverity::Error => "ERROR",
         }
     }
 }
@@ -68,54 +84,40 @@ pub fn render(ctx: &egui::Context, toasts: &mut Vec<Toast>) {
         return;
     }
 
-    let text_color = theme::ink();
-    let surface = if theme::is_dark() { theme::raised() } else { theme::panel() };
-
     let mut dismiss: Option<usize> = None;
 
     egui::Area::new(egui::Id::new("toast_stack"))
-        .anchor(egui::Align2::RIGHT_BOTTOM, egui::vec2(-16.0, -16.0))
+        .anchor(egui::Align2::RIGHT_BOTTOM, egui::vec2(-TOAST_MARGIN, -TOAST_MARGIN))
         .interactable(true)
         .show(ctx, |ui| {
             ui.with_layout(egui::Layout::bottom_up(egui::Align::RIGHT), |ui| {
-                // bottom_up layout draws the first-iterated item lowest,
-                // so iterate oldest→newest to stack newest on top.
+                // bottom_up draws the first item lowest, so oldest first puts
+                // the newest on top.
                 for (idx, toast) in toasts.iter().enumerate() {
-                    let accent = toast.severity.color();
-                    let resp = egui::Frame {
-                        inner_margin: egui::Margin::symmetric(12, 8),
-                        outer_margin: egui::Margin { top: 6, ..egui::Margin::same(0) },
-                        corner_radius: CornerRadius::same(6),
-                        fill: surface,
-                        // 2px accent border carries the severity signal
-                        // without washing the message text in colour.
-                        stroke: Stroke::new(2.0, accent),
-                        shadow: egui::epaint::Shadow {
-                            offset: [0, 2],
-                            blur: 6,
-                            spread: 0,
-                            color: Color32::from_black_alpha(if theme::is_dark() { 60 } else { 30 }),
-                        },
-                        ..Default::default()
-                    }
-                    .show(ui, |ui| {
-                        ui.set_max_width(360.0);
-                        ui.horizontal(|ui| {
-                            // Coloured dot backs up the border colour so
-                            // the severity reads even for viewers who
-                            // can't distinguish the accent hue.
-                            let (dot, _) = ui.allocate_exact_size(egui::vec2(8.0, 8.0), egui::Sense::hover());
-                            ui.painter().circle_filled(dot.center(), 4.0, accent);
-                            ui.add_space(4.0);
-                            ui.add(
-                                egui::Label::new(
-                                    RichText::new(&toast.message).size(12.0).color(text_color),
-                                )
-                                .wrap(),
-                            );
+                    let tint = toast.severity.color();
+                    let resp = egui::Frame::NONE
+                        .fill(theme::raised())
+                        .stroke(egui::Stroke::new(HAIRLINE, theme::border()))
+                        .corner_radius(theme::RADIUS)
+                        .inner_margin(egui::Margin::symmetric(12, 8))
+                        .outer_margin(egui::Margin { top: TOAST_GAP, ..egui::Margin::same(0) })
+                        .show(ui, |ui| {
+                            ui.set_max_width(TOAST_W);
+                            ui.horizontal(|ui| {
+                                ui.label(text::label(toast.severity.label()));
+                                ui.add(egui::Label::new(text::note(&toast.message).color(theme::ink())).wrap());
+                            });
                         });
-                    });
-                    // Whole-toast click dismisses it early.
+                    // The stripe runs along the frame itself, below its outer margin.
+                    let rect = resp.response.rect;
+                    widgets::stripe(
+                        ui,
+                        egui::Rect::from_min_max(
+                            egui::pos2(rect.left(), rect.top() + TOAST_GAP as f32),
+                            rect.right_bottom(),
+                        ),
+                        tint,
+                    );
                     if resp.response.interact(egui::Sense::click()).clicked() {
                         dismiss = Some(idx);
                     }
