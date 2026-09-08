@@ -1,7 +1,8 @@
 //! Chat Tab Rendering
 //!
-//! Professional UI rendering for the chat interface with message bubbles.
-//! Theme-aware: adapts to dark and light modes using theme constants.
+//! A chrome row, the message list in a well, the composer in a second well.
+//! A message is a full-width row: its role in capitals, a stripe in the
+//! role's tint, the body, and a monospace footer.
 //!
 //! The pure helpers live beside this rather than in it: `crate::modality`
 //! (ModelModality, helpers and constants), `crate::texture` (the texture cache),
@@ -9,7 +10,7 @@
 //! thread).
 
 use eframe::egui;
-use egui::{Color32, CornerRadius, RichText, Stroke, TextureHandle};
+use egui::{Color32, RichText, TextureHandle};
 use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
 
 use crate::audio_playback::play_audio_blob;
@@ -18,7 +19,7 @@ use crate::icons::Icon;
 use crate::modality::{
     base64_looks_like_image, chat_input_visible_rows, chat_send_allowed,
     format_attachment_cap_mb, format_timing_line, is_error_system_message,
-    modality_badge_color, parse_seed_prefix, path_is_image_ext, truncate_with_ellipsis,
+    parse_seed_prefix, path_is_image_ext, truncate_with_ellipsis,
     ModelModality, CHAT_ATTACHMENT_MAX_BYTES, CHAT_AUDIO_EXTS, CHAT_IMAGE_EXTS,
     CHAT_INPUT_ATTACH_STRIP_PX, CHAT_INPUT_BASE_CHROME_PX, CHAT_INPUT_ROW_PX,
     IMAGE_NUM_STEPS_MAX, IMAGE_NUM_STEPS_MIN, IMAGE_NUM_STEPS_PLACEHOLDER,
@@ -28,105 +29,39 @@ use crate::modality::{
 };
 use crate::state::{ChatDialogResult, ChatMessage, ChatState, ModelState};
 use crate::texture::{clear_attach_chip_textures, image_cache_key, load_base64_texture};
-use crate::theme;
+use crate::theme::{self, text, HAIRLINE};
+use crate::ui::{surface, widgets};
 
 use std::collections::HashMap;
 
-// ── Theme helpers ──
-
-struct ChatTheme {
-    text_primary: Color32,
-    text_secondary: Color32,
-    text_muted: Color32,
-    surface: Color32,
-    surface_elevated: Color32,
-    border: Color32,
-}
-
-impl ChatTheme {
-    fn from_mode(dark: bool) -> Self {
-        if dark {
-            Self {
-                text_primary: theme::ink(),
-                text_secondary: theme::ink_dim(),
-                text_muted: theme::ink_dim(),
-                surface: theme::panel(),
-                surface_elevated: theme::raised(),
-                border: theme::border(),
-            }
-        } else {
-            Self {
-                text_primary: theme::ink(),
-                text_secondary: theme::ink_dim(),
-                text_muted: theme::ink_dim(),
-                surface: theme::panel(),
-                surface_elevated: theme::raised(),
-                border: theme::border(),
-            }
-        }
-    }
-
-    /// Bubble colors for a message role.
-    ///
-    /// `error_flag` upgrades a 'system' role from neutral warning yellow
-    /// to red — server errors (content beginning with "Error:") need to
-    /// pop out from benign info messages ("No model selected", etc.).
-    fn bubble(&self, role: &str, dark: bool, error_flag: bool) -> (Color32, Color32, Color32) {
-        // (fill, stroke, text_color)
-        match role {
-            "user" => if dark {
-                (self.surface, theme::success(), self.text_primary)
-            } else {
-                (Color32::from_rgb(232, 245, 233), theme::success(), self.text_primary)
-            },
-            "system" if error_flag => if dark {
-                (self.surface, theme::error(), self.text_primary)
-            } else {
-                (Color32::from_rgb(253, 232, 232), theme::error(), self.text_primary)
-            },
-            "system" => if dark {
-                (self.surface, theme::warning(), self.text_primary)
-            } else {
-                (Color32::from_rgb(255, 248, 225), theme::warning(), self.text_primary)
-            },
-            _ => if dark {
-                (self.surface, theme::accent(), self.text_primary)
-            } else {
-                (Color32::from_rgb(232, 240, 254), theme::accent(), self.text_primary)
-            },
-        }
-    }
-
-    /// Avatar badge colours and icon for a role. `error_flag`
-    /// upgrades the system avatar to a red "Error" badge so a system
-    /// message reads as a notice or a failure at a glance.
-    ///
-    /// The icon is an SVG, not a character. The geometric shapes
-    /// used here before were chosen to avoid emoji presentation and
-    /// drew as missing-glyph boxes instead, which is worse than the
-    /// problem they were avoiding.
-    fn avatar(&self, role: &str, error_flag: bool) -> (Color32, Icon, &'static str) {
-        // (bg, icon, label)
-        match role {
-            "user" => (
-                theme::tinted(theme::success(), 180),
-                Icon::User, "You",
-            ),
-            "system" if error_flag => (
-                theme::tinted(theme::error(), 200),
-                Icon::Cross, "Error",
-            ),
-            "system" => (
-                theme::tinted(theme::warning(), 180),
-                Icon::Warning, "System",
-            ),
-            _ => (
-                theme::tinted(theme::accent(), 180),
-                Icon::Bot, "AI",
-            ),
-        }
-    }
-}
+/// The wash over the window while files are dragged over it, and its label.
+const DROP_OVERLAY_A: u8 = 40;
+const DROP_LABEL_PT: f32 = 24.0;
+/// The least height the message well keeps when the window is short.
+const MIN_OUTPUT_H: f32 = 60.0;
+/// Space above the empty state's icon.
+const EMPTY_STATE_TOP: f32 = 40.0;
+/// Point size of the icons in the chrome row, and of the smaller ones beside
+/// a control.
+const ICON_PT: f32 = 14.0;
+const ICON_PT_SMALL: f32 = 11.0;
+/// Fixed cells of the chrome row: the profile name and the modality.
+const PROFILE_W: f32 = widgets::READOUT_WIDE_W;
+const MODALITY_W: f32 = 64.0;
+/// Characters of a profile or model name shown in the chrome row.
+const PROFILE_CHARS: usize = 20;
+const MODEL_CHARS: usize = 25;
+/// The model picker and its popup.
+const MODEL_PICKER_W: f32 = 220.0;
+const MODEL_POPUP_H: f32 = 360.0;
+/// Width of the cell that says whether a slider overrides the server.
+const OVERRIDE_W: f32 = 56.0;
+/// Side of an attachment thumbnail in the composer.
+const CHIP_THUMB_PX: f32 = 40.0;
+/// Side of the close mark on a chip.
+const CHIP_CLOSE_PX: f32 = 16.0;
+/// The caret at the end of a streaming reply.
+const CARET_SIZE: egui::Vec2 = egui::Vec2::new(7.0, 14.0);
 
 /// Height to keep below the message list for everything the composer draws.
 ///
@@ -179,9 +114,6 @@ pub fn render(
     md_cache: &mut CommonMarkCache,
     image_textures: &mut HashMap<String, TextureHandle>,
 ) -> ChatRenderOutput {
-    let dark = ui.visuals().dark_mode;
-    let t = ChatTheme::from_mode(dark);
-
     // Resolve the selected-model modality once at the top of the
     // chat-tab render. Used inside the with_layout closure for
     // empty-state copy, typing indicator, and the input-area
@@ -425,11 +357,7 @@ pub fn render(
             egui::Order::Foreground,
             egui::Id::new("chat_drop_overlay"),
         ));
-        painter.rect_filled(
-            screen,
-            0.0,
-            theme::tinted(theme::accent(), 40),
-        );
+        painter.rect_filled(screen, 0.0, theme::tinted(theme::accent(), DROP_OVERLAY_A));
         let label = if hovered_count == 1 {
             "Drop file to attach".to_string()
         } else {
@@ -439,14 +367,14 @@ pub fn render(
             screen.center(),
             egui::Align2::CENTER_CENTER,
             label,
-            egui::FontId::proportional(24.0),
-            Color32::WHITE,
+            egui::FontId::proportional(DROP_LABEL_PT),
+            theme::ink(),
         );
     }
 
     ui.with_layout(egui::Layout::top_down(egui::Align::LEFT), |ui| {
         // Header card
-        render_chat_header(ui, chat, selected_profile_name, profiles, models, &t, image_textures, md_cache);
+        render_chat_header(ui, chat, selected_profile_name, profiles, models, image_textures, md_cache);
 
         ui.add_space(12.0);
 
@@ -459,24 +387,13 @@ pub fn render(
         if !chat.is_generating {
             if let Some(name) = models.selected_model.as_deref() {
                 if !models.is_loaded(name) {
-                    egui::Frame {
-                        inner_margin: egui::Margin::symmetric(10, 6),
-                        corner_radius: CornerRadius::same(4),
-                        fill: theme::tinted(theme::warning(), 22),
-                        stroke: Stroke::new(1.0, theme::warning()),
-                        ..Default::default()
-                    }
-                    .show(ui, |ui| {
-                        ui.horizontal(|ui| {
-                            ui.label(RichText::new(theme::ICON_EMPTY).size(11.0).color(theme::warning()));
-                            ui.label(
-                                RichText::new("Model not loaded — the first response will be slower while it loads into memory.")
-                                    .size(11.0)
-                                    .color(t.text_secondary),
-                            );
-                        });
+                    ui.horizontal(|ui| {
+                        widgets::lamp_inline(ui, true, theme::warning());
+                        ui.label(text::note(
+                            "Model not loaded: the first response will be slower while it loads into memory.",
+                        ));
                     });
-                    ui.add_space(8.0);
+                    ui.add_space(widgets::GAP_WIDGETS);
                 }
             }
         }
@@ -493,12 +410,23 @@ pub fn render(
             attach_extra > 0.0,
             chat.is_generating,
         );
-        let output_height = (ui.available_height() - input_height).max(60.0);
+        let output_height = (ui.available_height() - input_height).max(MIN_OUTPUT_H);
+        let (well_rect, _) = ui.allocate_exact_size(
+            egui::vec2(ui.available_width(), output_height),
+            egui::Sense::hover(),
+        );
+        surface::recess(ui, well_rect, surface::WELL_RADIUS);
+        // The list is top-anchored in the well; it follows its tail only while
+        // a reply streams.
+        let mut list = ui.new_child(
+            egui::UiBuilder::new()
+                .max_rect(well_rect.shrink(widgets::SECTION_PADDING))
+                .layout(egui::Layout::top_down(egui::Align::LEFT)),
+        );
         egui::ScrollArea::vertical()
-            .stick_to_bottom(true)
-            .max_height(output_height)
-            .show(ui, |ui| {
-                ui.set_width(ui.available_width());
+            .auto_shrink([false, false])
+            .stick_to_bottom(chat.is_generating)
+            .show(&mut list, |ui| {
 
                 if chat.messages.is_empty() && !chat.is_generating {
                     // Three distinct empty states:
@@ -628,33 +556,23 @@ pub fn render(
                         }
                     };
                     ui.vertical_centered(|ui| {
-                        ui.add_space(40.0);
-                        icon.show(ui, 32.0, t.text_muted);
-                        ui.add_space(8.0);
-                        ui.label(RichText::new(title).size(15.0).strong().color(t.text_primary));
-                        ui.add_space(4.0);
-                        ui.label(
-                            RichText::new(subtitle)
-                                .size(12.0)
-                                .color(t.text_secondary),
-                        );
+                        ui.add_space(EMPTY_STATE_TOP);
+                        icon.show(ui, text::EMPTY_STATE_ICON_PT, theme::ink_dim());
+                        ui.add_space(widgets::GAP_WIDGETS);
+                        ui.label(text::value(title));
+                        ui.add_space(widgets::GAP_LABEL);
+                        ui.label(text::note(subtitle));
                         if !prompts.is_empty() {
-                            ui.add_space(16.0);
-                            ui.label(RichText::new("Try one of these:").size(11.0).color(t.text_muted));
-                            ui.add_space(4.0);
+                            ui.add_space(widgets::GAP_SECTIONS);
+                            ui.label(text::label("TRY ONE OF THESE"));
+                            ui.add_space(widgets::GAP_LABEL);
                             for prompt in prompts {
-                                // Pill-shaped suggestion: click to drop the
-                                // text into the input box. Keeps the empty
-                                // state useful without committing to a full
-                                // prompt-template library.
-                                if ui
-                                    .small_button(RichText::new(*prompt).size(11.0))
+                                if widgets::selector_pill(ui, prompt, false)
                                     .on_hover_text("Click to use this prompt")
                                     .clicked()
                                 {
                                     chat.input = (*prompt).to_string();
                                 }
-                                ui.add_space(2.0);
                             }
                         }
                     });
@@ -674,7 +592,7 @@ pub fn render(
                         std::cell::Cell::new(None);
                     for msg in chat.messages.iter() {
                         render_message(
-                            ui, msg, &t, md_cache, image_textures,
+                            ui, msg, md_cache, image_textures,
                             &chat.pending_dialog, &chat.dialog_in_flight,
                             &seed_lock_request, &play_error_pending,
                         );
@@ -689,7 +607,7 @@ pub fn render(
 
                     if chat.is_generating {
                         if !chat.streaming_content.is_empty() {
-                            render_streaming_message(ui, &chat.streaming_content, &chat.image_gen_progress, chat.image_gen_started_at, &t, md_cache);
+                            render_streaming_message(ui, &chat.streaming_content, &chat.image_gen_progress, chat.image_gen_started_at, md_cache);
                             ui.add_space(4.0);
                         } else {
                             // Modality-aware indicator — tells the user
@@ -703,7 +621,7 @@ pub fn render(
                                 .selected_model
                                 .as_deref()
                                 .filter(|m| !models.is_loaded(m));
-                            render_typing_indicator(ui, &t, modality, loading_model);
+                            render_typing_indicator(ui, modality, loading_model);
                         }
                     }
                 }
@@ -719,7 +637,7 @@ pub fn render(
         // post-send.
         let model_selected = models.selected_model.is_some();
         let send_clicked = render_input_area(
-            ui, chat, &t, image_textures, modality, model_selected,
+            ui, chat, image_textures, modality, model_selected,
             input_rows,
         );
         // Stash whether the button was clicked so we can propagate it out
@@ -739,11 +657,8 @@ pub fn render(
     ChatRenderOutput { send_clicked, modality }
 }
 
-/// Render chat header bar
-// Wide signature carries the chat state, profile palette, theme, and
-// the GPU texture map (needed so the Clear button can release msg_*
-// and gen_* image textures alongside the message vec — otherwise the
-// HashMap grows unbounded). Refactoring to a struct adds boilerplate.
+/// The chrome row of the chat: title, profile, the model picker with its
+/// lamp, the modality, the layer mode, Clear.
 #[allow(clippy::too_many_arguments)]
 fn render_chat_header(
     ui: &mut egui::Ui,
@@ -751,526 +666,287 @@ fn render_chat_header(
     selected_profile_name: Option<&String>,
     profiles: &[crate::config::ApiProfile],
     models: &mut ModelState,
-    t: &ChatTheme,
     image_textures: &mut HashMap<String, TextureHandle>,
     md_cache: &mut CommonMarkCache,
 ) {
-    egui::Frame {
-        inner_margin: egui::Margin::symmetric(14, 10),
-        corner_radius: CornerRadius::same(8),
-        fill: t.surface,
-        stroke: Stroke::new(1.0, t.border),
-        shadow: egui::epaint::Shadow {
-            offset: [0, 1],
-            blur: 3,
-            spread: 0,
-            color: Color32::from_black_alpha(if theme::is_dark() { 30 } else { 8 }),
-        },
-        ..Default::default()
-    }
-    .show(ui, |ui| {
-        ui.horizontal_wrapped(|ui| {
-            // Icon and title
-            Icon::Chat.show(ui, 16.0, t.text_primary);
-            ui.add_space(4.0);
-            ui.label(RichText::new("Chat").size(15.0).strong().color(t.text_primary));
+    widgets::chrome_row(ui, |ui| {
+        Icon::Chat.show(ui, ICON_PT, theme::ink());
+        ui.label(text::title("Chat"));
+        ui.add_space(widgets::GAP_WIDGETS);
 
-            ui.separator();
-
-            // Profile badge — tooltip reveals the API type + server URL
-            // so users can verify they're hitting the right endpoint
-            // without opening Settings. When no profile is selected
-            // (first run, profiles list empty, or user reset) render
-            // a muted "No profile" badge with a guidance tooltip so
-            // the user knows where to set one up — otherwise the chat
-            // header silently omits the badge and there's no clue.
-            if let Some(profile_name) = selected_profile_name {
-                if let Some(profile) = profiles.iter().find(|p| p.name == *profile_name) {
-                    let badge_resp = egui::Frame {
-                        inner_margin: egui::Margin::symmetric(8, 3),
-                        corner_radius: CornerRadius::same(4),
-                        fill: theme::tinted(theme::accent(), 25),
-                        ..Default::default()
-                    }
-                    .show(ui, |ui| {
-                        // Cap the visible profile name in the badge so a
-                        // long user-typed name can't push the rest of the
-                        // chat header (model dropdown, layer toggle,
-                        // clear button) off the right edge of the
-                        // window. Full name stays in the tooltip below.
-                        let label = truncate_with_ellipsis(&profile.name, 20);
-                        ui.label(RichText::new(label.as_ref()).size(11.0).color(theme::accent()));
-                    });
-                    let api_kind = match profile.api_type {
-                        crate::config::ApiType::Loken => "LOKEN",
-                        crate::config::ApiType::Ollama    => "Ollama",
-                        crate::config::ApiType::OpenApi   => "OpenAPI",
-                    };
-                    // on_hover_ui's closure body only runs when the
-                    // tooltip is actually being shown — the previous
-                    // on_hover_text(format!(...)) ran the format! on
-                    // every frame (60 Hz on the chat tab, the most-
-                    // rendered surface) regardless of whether the
-                    // user was hovering the badge. Three String args
-                    // per format = ~180 short-lived heap allocs/sec
-                    // for an effect the user sees on hover only.
-                    badge_resp.response.on_hover_ui(|ui| {
-                        ui.label(format!(
-                            "Profile: {}\nAPI: {}\nServer: {}",
-                            profile.name, api_kind, profile.server_url,
-                        ));
-                    });
-                }
-            } else {
-                let badge_resp = egui::Frame {
-                    inner_margin: egui::Margin::symmetric(8, 3),
-                    corner_radius: CornerRadius::same(4),
-                    fill: theme::tinted(theme::warning(), 25),
-                    ..Default::default()
-                }
-                .show(ui, |ui| {
-                    ui.label(RichText::new("No profile").size(11.0).color(theme::warning()));
+        // The profile in a fixed cell; API type and server on hover. A warning
+        // lamp stands in when none is selected.
+        match selected_profile_name.and_then(|name| profiles.iter().find(|p| p.name == *name)) {
+            Some(profile) => {
+                let shown = truncate_with_ellipsis(&profile.name, PROFILE_CHARS);
+                let api_kind = match profile.api_type {
+                    crate::config::ApiType::Loken => "LOKEN",
+                    crate::config::ApiType::Ollama => "Ollama",
+                    crate::config::ApiType::OpenApi => "OpenAPI",
+                };
+                widgets::fixed_label(ui, PROFILE_W, text::mono(shown.as_ref())).on_hover_ui(|ui| {
+                    ui.label(format!(
+                        "Profile: {}\nAPI: {}\nServer: {}",
+                        profile.name, api_kind, profile.server_url,
+                    ));
                 });
-                badge_resp.response.on_hover_text(
+            }
+            None => {
+                widgets::lamp_inline(ui, true, theme::warning());
+                widgets::fixed_label(ui, PROFILE_W, text::note("No profile")).on_hover_text(
                     "No API profile selected.\n\
                      Open the Settings tab and pick (or create) a profile under\n\
                      \"API Profiles\" to define which server + parameters this\n\
                      chat uses.",
                 );
             }
+        }
+        ui.add_space(widgets::GAP_WIDGETS);
 
-            ui.separator();
-
-            // Model picker — turns the previous static load-status
-            // badge into a real dropdown so the user can switch
-            // models from the chat tab without bouncing to Models
-            // (the most-frequent friction in multi-model workflows).
-            //
-            // Selected text mirrors the badge layout: load-dot glyph then the
-            // (truncated) name, tinted by load state - green for loaded, amber for
-            // not yet, where the first send triggers the load.
-            // Borrowed, not cloned: a copy of selected_model on every chat-header
-            // paint allocates once per frame to read a value back. The deferred
-            // `new_selection` path below means selected_model is never mutated while
-            // this borrow is live.
-            let selected: Option<&String> = models.selected_model.as_ref();
-            let (current_is_loaded, current_color, current_icon) = match selected.map(String::as_str) {
-                _ if chat.smart_auto => (true, theme::success(), theme::ICON_FILLED),
-                Some(m) => {
-                    let loaded = models.is_loaded(m);
-                    if loaded { (true,  theme::success(), theme::ICON_FILLED) }
-                    else      { (false, theme::warning(), theme::ICON_EMPTY)  }
-                }
-                None => (false, t.text_muted, theme::ICON_EMPTY),
-            };
-            let selected_text = if chat.smart_auto {
-                format!("{} Auto (smart routing)", current_icon)
-            } else {
-                match selected.map(String::as_str) {
-                    Some(m) => format!("{} {}", current_icon, truncate_with_ellipsis(m, 25)),
-                    None    => format!("{} No model selected", current_icon),
-                }
-            };
-            // ComboBox styles itself via egui defaults; the
-            // selected_text colour signals load state at-a-glance.
-            //
-            // Disable picking while a generation is in flight — the
-            // request was dispatched against `selected_model` at
-            // send_chat time, so silently swapping the selection
-            // mid-stream would leave the response attributed to the
-            // wrong model and confuse downstream chunk handlers
-            // (which look at `selected_model` for modality routing).
-            // Stop button / Esc still abort; user can switch once
-            // the chat is idle again.
-            // Defer the click-driven selection write so we can hold
-            // immutable borrows on models.available_models (via
-            // sorted/by_modality) without conflicting with the
-            // models.selected_model assignment. Applied after the
-            // ComboBox closure ends.
-            let mut new_selection: Option<String> = None;
-            let mut auto_clicked = false;
-            let combo_resp = ui.add_enabled_ui(!chat.is_generating, |ui| {
-                egui::ComboBox::from_id_salt("chat_model_picker")
-                    .selected_text(
-                        RichText::new(&selected_text).size(11.0).color(current_color),
-                    )
-                    .width(220.0)
-                    .show_ui(ui, |ui| {
-                        // Smart routing: the server routes each prompt to the right
-                        // model (chat / vision / image / speech) via /conversation.
-                        let auto_row = ui.selectable_label(
+        // The model picker. Its lamp says whether the selection is loaded; the
+        // picker is locked while a reply streams, since the request went out
+        // against the model selected at send time. The selection write is
+        // deferred past the popup so the list can be borrowed while it is open.
+        let selected: Option<&String> = models.selected_model.as_ref();
+        let current_is_loaded =
+            chat.smart_auto || selected.map(String::as_str).is_some_and(|m| models.is_loaded(m));
+        widgets::lamp_inline(ui, current_is_loaded, theme::success());
+        let selected_text: std::borrow::Cow<str> = if chat.smart_auto {
+            "Auto (smart routing)".into()
+        } else {
+            match selected.map(String::as_str) {
+                Some(m) => truncate_with_ellipsis(m, MODEL_CHARS),
+                None => "No model selected".into(),
+            }
+        };
+        let mut new_selection: Option<String> = None;
+        let mut auto_clicked = false;
+        let combo_resp = ui.add_enabled_ui(!chat.is_generating, |ui| {
+            egui::ComboBox::from_id_salt("chat_model_picker")
+                .selected_text(
+                    RichText::new(selected_text.as_ref()).size(text::SECTION_PT).color(theme::ink()),
+                )
+                .width(MODEL_PICKER_W)
+                .show_ui(ui, |ui| {
+                    let auto_row = ui
+                        .selectable_label(
                             chat.smart_auto,
-                            RichText::new("Auto (smart routing)").size(11.0),
+                            RichText::new("Auto (smart routing)").size(text::SECTION_PT),
                         )
                         .on_hover_text(
                             "Let the server pick the model per prompt: chat, vision, \
                              image generation or speech (rules + classifier LLM).",
                         );
-                        if auto_row.clicked() {
-                            auto_clicked = true;
-                        }
-                        ui.separator();
-                        if models.available_models.is_empty() {
-                            ui.label(
-                                RichText::new("No models available — open Models tab to import")
-                                    .size(11.0)
-                                    .color(t.text_muted),
-                            );
-                            return;
-                        }
-                        // Sort + group by modality for a scannable list.
-                        // Groups appear in this order so the user's most-
-                        // likely target is near the top.
-                        const GROUPS: &[(ModelModality, &str)] = &[
-                            (ModelModality::Text,     "Text"),
-                            (ModelModality::Vision,   "Vision"),
-                            (ModelModality::ImageGen, "Image"),
-                            (ModelModality::AudioTts, "TTS"),
-                            (ModelModality::AudioAsr, "ASR"),
-                            (ModelModality::VideoGen, "Video"),
-                        ];
-                        // Sort by reference — no need to clone the full
-                        // ModelInfo (4 Strings × N models) just to drive
-                        // a read-only popup. Iteration order of the
-                        // resulting Vec<&ModelInfo> matches what the
-                        // previous clone-then-sort produced.
-                        let mut sorted: Vec<&crate::api::ModelInfo> =
-                            models.available_models.iter().collect();
-                        sorted.sort_by(|a, b| a.name.cmp(&b.name));
-                        // Cap the popup at 360 px tall — without this,
-                        // a user with 50+ installed models (HF cache
-                        // accumulates quickly) gets a popup taller
-                        // than the screen that either gets clipped or
-                        // pushes the chat tab off the visible area.
-                        // ScrollArea wraps the inner rows so the
-                        // popup stays bounded and the user can scroll
-                        // through long catalogs cleanly.
-                        egui::ScrollArea::vertical()
-                            .max_height(360.0)
-                            .show(ui, |ui| {
-                                // Bucket each model into its modality
-                                // group in a single pass instead of
-                                // doing 6 filter passes over `sorted`
-                                // (one per group label). For a catalog
-                                // of ~50 installed models that's 300
-                                // modality-classifier calls per popup
-                                // open vs 50 here. Also drops the
-                                // intermediate Vec<&ModelInfo> the
-                                // previous code allocated per group.
-                                use std::collections::HashMap;
-                                let mut by_modality: HashMap<ModelModality, Vec<&crate::api::ModelInfo>> =
-                                    HashMap::with_capacity(GROUPS.len());
-                                for m in &sorted {
-                                    let modality = ModelModality::from_model_name(&m.name);
-                                    by_modality.entry(modality).or_default().push(m);
+                    if auto_row.clicked() {
+                        auto_clicked = true;
+                    }
+                    ui.separator();
+                    if models.available_models.is_empty() {
+                        ui.label(text::note("No models available: open the Models tab to import one"));
+                        return;
+                    }
+                    // Grouped by modality, the likeliest target first.
+                    const GROUPS: &[(ModelModality, &str)] = &[
+                        (ModelModality::Text, "TEXT"),
+                        (ModelModality::Vision, "VISION"),
+                        (ModelModality::ImageGen, "IMAGE"),
+                        (ModelModality::AudioTts, "TTS"),
+                        (ModelModality::AudioAsr, "ASR"),
+                        (ModelModality::VideoGen, "VIDEO"),
+                    ];
+                    let mut sorted: Vec<&crate::api::ModelInfo> =
+                        models.available_models.iter().collect();
+                    sorted.sort_by(|a, b| a.name.cmp(&b.name));
+                    egui::ScrollArea::vertical()
+                        .max_height(MODEL_POPUP_H)
+                        .show(ui, |ui| {
+                            let mut by_modality: HashMap<ModelModality, Vec<&crate::api::ModelInfo>> =
+                                HashMap::with_capacity(GROUPS.len());
+                            for m in &sorted {
+                                let modality = ModelModality::from_model_name(&m.name);
+                                by_modality.entry(modality).or_default().push(m);
+                            }
+                            for (group_modality, group_label) in GROUPS {
+                                let Some(in_group) = by_modality.get(group_modality) else {
+                                    continue;
+                                };
+                                if in_group.is_empty() {
+                                    continue;
                                 }
-                                for (group_modality, group_label) in GROUPS {
-                                    let Some(in_group) = by_modality.get(group_modality) else {
-                                        continue;
-                                    };
-                                    if in_group.is_empty() {
-                                        continue;
-                                    }
-                                    ui.label(
-                                        RichText::new(*group_label)
-                                            .size(10.0)
-                                            .strong()
-                                            .color(t.text_secondary),
-                                    );
-                                    for m in in_group {
-                                        let is_selected = selected.map(String::as_str) == Some(m.name.as_str());
-                                        let is_loaded = models.is_loaded(&m.name);
-                                        let row_icon = if is_loaded { theme::ICON_FILLED } else { theme::ICON_EMPTY };
-                                        let row_color = if is_loaded { theme::success() } else { t.text_primary };
-                                        let label = format!("{} {}", row_icon, m.name);
-                                        if ui.selectable_label(is_selected, RichText::new(label).size(11.0).color(row_color)).clicked() {
+                                ui.label(text::label(group_label));
+                                for m in in_group {
+                                    let is_selected =
+                                        selected.map(String::as_str) == Some(m.name.as_str());
+                                    let is_loaded = models.is_loaded(&m.name);
+                                    ui.horizontal(|ui| {
+                                        widgets::lamp_inline(ui, is_loaded, theme::success());
+                                        let row = ui
+                                            .selectable_label(
+                                                is_selected,
+                                                RichText::new(&m.name)
+                                                    .size(text::SECTION_PT)
+                                                    .color(theme::ink()),
+                                            )
+                                            .on_hover_text(if is_loaded {
+                                                "Loaded in memory"
+                                            } else {
+                                                "Not loaded: the first send triggers a load"
+                                            });
+                                        if row.clicked() {
                                             new_selection = Some(m.name.clone());
                                         }
-                                    }
-                                    ui.add_space(2.0);
+                                    });
                                 }
-                            });
-                    })
-            }).inner;
-            // Tooltip on the closed combobox — reveals the full
-            // model name (helpful when truncated past 25 chars)
-            // plus explicit load-state wording. While generating
-            // we surface why the picker is locked. Uses the snapshot
-            // taken at the top of this header render — applying any
-            // pending new_selection is deferred to AFTER the
-            // modality badge below to keep the `selected` borrow
-            // alive across both. Tooltip body builds inside on_hover_ui
-            // so the multi-line format! only allocates when the user
-            // actually hovers — the chat tab repaints at 60 Hz, so the
-            // previous eager format!() spent ~120 short-lived heap
-            // allocs/sec on tooltip strings that were almost never
-            // visible.
-            let selected_name = selected.map(String::as_str);
-            combo_resp.response.on_hover_ui(|ui| {
-                if chat.is_generating {
-                    ui.label("Locked while a response is generating.");
-                    ui.label("Stop (or press Esc) to switch models.");
-                } else if let Some(m) = selected_name {
-                    ui.label(egui::RichText::new(m).strong());
-                    if current_is_loaded {
-                        ui.label(format!("{} Loaded in memory", theme::ICON_FILLED));
-                    } else {
-                        ui.label(format!(
-                            "{} Not loaded - first send will trigger a load",
-                            theme::ICON_EMPTY
-                        ));
-                    }
-                    ui.label("(click to switch model)");
+                                ui.add_space(widgets::GAP_LABEL);
+                            }
+                        });
+                })
+        })
+        .inner;
+        let selected_name = selected.map(String::as_str);
+        combo_resp.response.on_hover_ui(|ui| {
+            if chat.is_generating {
+                ui.label("Locked while a response is generating.");
+                ui.label("Stop (or press Esc) to switch models.");
+            } else if let Some(m) = selected_name {
+                ui.label(text::value(m));
+                ui.label(if current_is_loaded {
+                    "Loaded in memory"
                 } else {
-                    ui.label("Click to pick a model from the available list");
-                }
-            });
-
-            // Modality badge — surfaces at-a-glance whether the
-            // selected model is text / vision / image-gen / audio.
-            // Only render for non-Text modalities; Text is the
-            // default and adding a "Text" badge to every plain LLM
-            // would be visual noise.
-            if let Some(model) = selected {
-                let modality = ModelModality::from_model_name(model);
-                if modality != ModelModality::Text {
-                    let badge_color = modality_badge_color(modality);
-                    let badge_resp = egui::Frame {
-                        inner_margin: egui::Margin::symmetric(8, 3),
-                        corner_radius: CornerRadius::same(4),
-                        fill: theme::tinted(badge_color, 30),
-                        ..Default::default()
-                    }
-                    .show(ui, |ui| {
-                        ui.label(RichText::new(modality.label()).size(11.0).color(badge_color));
-                    });
-                    badge_resp.response.on_hover_text(modality.tooltip());
-                }
-            }
-
-            // Apply any dropdown-driven selection change now that the
-            // `selected` borrow above is no longer in use. The change
-            // surfaces in next frame's render — tooltip + badge above
-            // reflect the previous selection until then, which is
-            // acceptable (one-frame UI lag, invisible in practice).
-            if auto_clicked {
-                chat.smart_auto = !chat.smart_auto;
-            }
-            if let Some(name) = new_selection {
-                models.selected_model = Some(name);
-                // Picking a concrete model leaves Auto mode.
-                chat.smart_auto = false;
-            }
-
-            ui.separator();
-
-            // Layer mode toggle. Two-state: AllLayers (default) ↔
-            // Adaptive (early-exit on high-confidence tokens). Deliberately not
-            // three: a "CUDA only" state would send an option no handler reads.
-            use crate::state::LayerMode;
-            let (toggle_color, toggle_text) = match chat.layer_mode {
-                LayerMode::AllLayers => (t.text_muted, "All Layers"),
-                LayerMode::Adaptive  => (theme::warning(), "Adaptive"),
-            };
-            let toggle_tip = match chat.layer_mode {
-                LayerMode::AllLayers => "All Layers: run every layer (highest quality).\nClick to switch to Adaptive.",
-                LayerMode::Adaptive  => "Adaptive: exit early on high-confidence tokens (faster, slight quality drop).\nClick to switch back to All Layers.",
-            };
-            let toggle_btn = egui::Button::new(
-                RichText::new(toggle_text).size(11.0).color(toggle_color),
-            )
-            .fill(theme::tinted(toggle_color, 20))
-            .corner_radius(CornerRadius::same(4));
-            if ui.add(toggle_btn).on_hover_text(toggle_tip).clicked() {
-                chat.layer_mode = match chat.layer_mode {
-                    LayerMode::AllLayers => LayerMode::Adaptive,
-                    LayerMode::Adaptive  => LayerMode::AllLayers,
-                };
-            }
-
-            // Clear-chat button: drops conversation history + attached
-            // staging files in one click. Disabled while a generation is
-            // in flight (clearing mid-stream would leave the streaming
-            // text orphaned). Push to the right edge so it doesn't
-            // crowd the modality/profile badges.
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let can_clear = !chat.is_generating
-                    && (!chat.messages.is_empty() || !chat.attached_images.is_empty());
-                // Trash-icon SVG ships in icons/trash.svg; egui's
-                // Button supports an image_and_text constructor that
-                // composes the icon + label in one widget.
-                let clear_btn = egui::Button::image_and_text(
-                    Icon::Trash.image(13.0, theme::error()),
-                    RichText::new("Clear").size(11.0).color(theme::error()),
-                )
-                .fill(theme::tinted(theme::error(), 20))
-                .corner_radius(CornerRadius::same(4));
-                let resp = ui.add_enabled(can_clear, clear_btn);
-                // Tooltip enumerates what gets cleared + what doesn't
-                // so users know it's a session-local action, not a
-                // disk-side wipe. Prompt history (Ctrl+Up /
-                // Ctrl+Down) survives intentionally so users can recall
-                // and re-send prompts after clearing.
-                //
-                // Build the tooltip inside on_hover_ui so the per-
-                // frame format!() goes away — the chat tab renders at
-                // 60 Hz and the tooltip body is only visible on hover.
-                // Snapshot the counts before the closure to keep the
-                // hover read independent of mid-frame mutations.
-                let msg_n = chat.messages.len();
-                let att_n = chat.attached_images.len();
-                let is_gen = chat.is_generating;
-                resp.clone().on_hover_ui(|ui| {
-                    let text = if can_clear {
-                        format!(
-                            "Clear {} message{} and {} attached file{}.\n\
-                             Saved images on disk and prompt history \
-                             (Ctrl+Up / Ctrl+Down) are kept.",
-                            msg_n, if msg_n == 1 { "" } else { "s" },
-                            att_n, if att_n == 1 { "" } else { "s" },
-                        )
-                    } else if is_gen {
-                        "Wait for the current response to finish".to_string()
-                    } else {
-                        "Nothing to clear".to_string()
-                    };
-                    ui.label(text);
+                    "Not loaded: the first send triggers a load"
                 });
-                if resp.clicked() {
-                    chat.clear_conversation();
-                    // Release GPU textures keyed by msg_*, gen_*, attach_*
-                    // alongside the message vec. Without this, every
-                    // Clear leaks textures: a session that runs Clear N
-                    // times with K images per session accumulates N*K
-                    // texture handles even though no UI references
-                    // them. ColorImage::from_rgba_unmultiplied uploads
-                    // up to ~16 MB per Mpixel; freeing matters for
-                    // long-running GUI sessions doing image gen.
-                    image_textures.clear();
-                    // Drop egui_commonmark's per-viewer scroll-state
-                    // cache too. Each rendered message creates a
-                    // scrollable entry keyed by viewer id; after Clear
-                    // those entries point at messages that no longer
-                    // exist. Bounded (~KB per session usually) but
-                    // measurable for users who Clear repeatedly in a
-                    // long-running session — same intent as the
-                    // image_textures.clear() right above.
-                    md_cache.clear_scrollable();
-                }
+                ui.label("(click to switch model)");
+            } else {
+                ui.label("Click to pick a model from the available list");
+            }
+        });
+
+        // The modality, for anything but plain text.
+        if let Some(model) = selected {
+            let modality = ModelModality::from_model_name(model);
+            if modality != ModelModality::Text {
+                widgets::fixed_label(ui, MODALITY_W, text::note(modality.label()))
+                    .on_hover_text(modality.tooltip());
+            }
+        }
+
+        if auto_clicked {
+            chat.smart_auto = !chat.smart_auto;
+        }
+        if let Some(name) = new_selection {
+            models.selected_model = Some(name);
+            // Picking a concrete model leaves Auto mode.
+            chat.smart_auto = false;
+        }
+        ui.add_space(widgets::GAP_WIDGETS);
+
+        // Layer mode: two pills, one seated. There is no third: a "CUDA only"
+        // state would send an option no handler reads.
+        use crate::state::LayerMode;
+        if widgets::selector_pill(ui, "ALL LAYERS", chat.layer_mode == LayerMode::AllLayers)
+            .on_hover_text("All Layers: run every layer (highest quality).")
+            .clicked()
+        {
+            chat.layer_mode = LayerMode::AllLayers;
+        }
+        if widgets::selector_pill(ui, "ADAPTIVE", chat.layer_mode == LayerMode::Adaptive)
+            .on_hover_text("Adaptive: exit early on high-confidence tokens (faster, slight quality drop).")
+            .clicked()
+        {
+            chat.layer_mode = LayerMode::Adaptive;
+        }
+
+        // Clear, at the right edge. Locked while a reply streams.
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            let can_clear = !chat.is_generating
+                && (!chat.messages.is_empty() || !chat.attached_images.is_empty());
+            let clear_btn = egui::Button::image_and_text(
+                Icon::Trash.image(ICON_PT_SMALL, theme::ink_dim()),
+                text::note("Clear"),
+            )
+            .frame(false);
+            let resp = ui.add_enabled(can_clear, clear_btn);
+            let msg_n = chat.messages.len();
+            let att_n = chat.attached_images.len();
+            let is_gen = chat.is_generating;
+            resp.clone().on_hover_ui(|ui| {
+                let text = if can_clear {
+                    format!(
+                        "Clear {} message{} and {} attached file{}.\n\
+                         Saved images on disk and prompt history \
+                         (Ctrl+Up / Ctrl+Down) are kept.",
+                        msg_n, if msg_n == 1 { "" } else { "s" },
+                        att_n, if att_n == 1 { "" } else { "s" },
+                    )
+                } else if is_gen {
+                    "Wait for the current response to finish".to_string()
+                } else {
+                    "Nothing to clear".to_string()
+                };
+                ui.label(text);
             });
+            if resp.clicked() {
+                chat.clear_conversation();
+                // The textures keyed by msg_*, gen_* and attach_* go with the
+                // messages, and so does the markdown viewer's scroll state.
+                image_textures.clear();
+                md_cache.clear_scrollable();
+            }
         });
     });
 }
 
-/// Render input area
-#[allow(clippy::too_many_arguments)] // ui/state/theme bundle + modality/model/visible_rows
+/// The composer: one well holding the seed lock, the per-modality controls,
+/// the attachment chips, the generating strip and the input row.
+#[allow(clippy::too_many_arguments)]
 fn render_input_area(
     ui: &mut egui::Ui,
     chat: &mut ChatState,
-    t: &ChatTheme,
     image_textures: &mut HashMap<String, TextureHandle>,
     modality: ModelModality,
-    // True when models.selected_model.is_some() — gates the Send
-    // button. Without this, the user could type, hit Send, and
-    // discover post-click that the server-side guard rejects the
-    // request with "No model selected"; disabling Send up-front
-    // with a clear tooltip avoids the wasted click.
+    // True when a model is selected; Send is disabled up front otherwise.
     model_selected: bool,
-    // Pre-computed visible-row count for the TextEdit. Hoisted to
-    // the caller (which also uses it to reserve output-area height)
-    // so the per-frame O(N) chars-counting pass over the input
-    // buffer happens once, not twice.
+    // The TextEdit's row count, computed once by the caller, which also
+    // reserves the output height with it.
     visible_rows: usize,
 ) -> bool {
-    // True when the user clicked Send this frame — surfaced back to the
-    // caller so the button and the Enter shortcut share one send path.
+    // True when the user clicked Send this frame; the caller merges it with
+    // the Enter shortcut so both share one send path.
     let mut send_clicked = false;
-    egui::Frame {
-        inner_margin: egui::Margin::symmetric(12, 10),
-        corner_radius: CornerRadius::same(8),
-        fill: t.surface,
-        stroke: Stroke::new(1.0, t.border),
-        shadow: egui::epaint::Shadow {
-            offset: [0, -1],
-            blur: 3,
-            spread: 0,
-            color: Color32::from_black_alpha(if theme::is_dark() { 20 } else { 6 }),
-        },
-        ..Default::default()
-    }
-    .show(ui, |ui| {
-        // Seed-lock indicator. When the user clicked the Lock-seed button
-        // on a prior bubble, surface a chip so they know the next
-        // send will reuse that seed (otherwise the lock is invisible
-        // until the next response echoes back). The clear button clears the
-        // lock so a user who clicked by mistake can opt out without
-        // sending the request.
+    widgets::well(ui, |ui| {
+        // The seed lock: the next send reuses this seed. The close mark clears it.
         if let Some(seed) = chat.locked_seed {
             ui.horizontal(|ui| {
-                egui::Frame {
-                    inner_margin: egui::Margin::symmetric(8, 3),
-                    corner_radius: CornerRadius::same(4),
-                    fill: theme::tinted(theme::success(), 30),
-                    ..Default::default()
-                }
-                .show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        Icon::Lock.show(ui, 11.0, theme::success());
-                        ui.label(
-                            RichText::new(format!("Seed locked: {seed}"))
-                                .size(10.0)
-                                .strong()
-                                .color(theme::success())
-                                .family(egui::FontFamily::Monospace),
-                        );
-                    });
-                });
-                let clear = ui.add(
-                    egui::Button::image_and_text(
-                        Icon::Cross.image(10.0, t.text_secondary),
-                        "",
-                    ).min_size(egui::vec2(20.0, 20.0)),
-                );
-                if clear
-                    .on_hover_text("Clear the seed lock — next send will use a fresh random seed")
+                Icon::Lock.show(ui, ICON_PT_SMALL, theme::ink_dim());
+                widgets::readout(ui, widgets::READOUT_WIDE_W, &format!("SEED {seed}"))
+                    .on_hover_text("The next send reuses this seed");
+                if widgets::close_button(ui, CHIP_CLOSE_PX)
+                    .on_hover_text("Clear the seed lock: the next send uses a fresh random seed")
                     .clicked()
                 {
                     chat.locked_seed = None;
                 }
             });
-            ui.add_space(4.0);
+            ui.add_space(widgets::GAP_LABEL);
         }
 
-        // Image-gen control row. Shown only when an image-gen model
-        // is loaded (the same `modality` that drives the badge color)
-        // so it doesn't waste vertical space for text/audio chats
-        // where it has no effect. Dragging either slider commits an
-        // override; the per-control refresh button reverts to the server's
-        // per-model default. Strength only takes effect when the
-        // user has attached an input image (img2img path); the
-        // tooltip surfaces that conditional.
+        // Image-gen controls. Dragging a slider commits an override; the
+        // refresh mark reverts to the server's per-model default. Strength
+        // only acts on the img2img path, so it is greyed without an input image.
         if modality == ModelModality::ImageGen {
-            // Size dropdown — first control on the row, since dimensions
-            // change wall-clock more than any other knob (1024² ≈ 4× the
-            // work of 512²). Default = "let the server pick its per-
-            // model default" (Flux 512² / Z-Image 1024²).
             ui.horizontal(|ui| {
-                ui.label(
-                    RichText::new("Size:")
-                        .size(10.0)
-                        .color(t.text_secondary),
-                );
-                let current_label: String = match chat.image_size {
-                    Some((w, h)) => format!("{w}×{h}"),
-                    None => "(default)".to_string(),
+                ui.label(text::label("SIZE"));
+                let current_label: std::borrow::Cow<str> = match chat.image_size {
+                    Some((w, h)) => format!("{w}x{h}").into(),
+                    None => "(default)".into(),
                 };
                 egui::ComboBox::from_id_salt("image_size_combo")
-                    .selected_text(current_label)
+                    .selected_text(current_label.as_ref())
                     .show_ui(ui, |ui| {
-                        if ui.selectable_label(
-                            chat.image_size.is_none(),
-                            "(default) — server picks per-model",
-                        ).clicked() {
+                        if ui
+                            .selectable_label(chat.image_size.is_none(), "(default): server picks per model")
+                            .clicked()
+                        {
                             chat.image_size = None;
                         }
                         for (label, w, h) in IMAGE_SIZE_PRESETS {
@@ -1282,117 +958,80 @@ fn render_input_area(
                     })
                     .response
                     .on_hover_text(
-                        "Image dimensions. Higher = sharper but slower \
-                         (1024² ≈ 4× the work of 512²). Server defaults: \
-                         Flux 512², Z-Image 1024².",
+                        "Image dimensions. Higher is sharper but slower (1024 squared is \
+                         about four times the work of 512 squared). Server defaults: \
+                         Flux 512, Z-Image 1024.",
                     );
-                ui.add_space(8.0);
+                ui.add_space(widgets::GAP_WIDGETS);
 
-                let mut shown_value: u32 = chat.image_num_steps.unwrap_or(IMAGE_NUM_STEPS_PLACEHOLDER);
-                ui.label(
-                    RichText::new("Steps:")
-                        .size(10.0)
-                        .color(t.text_secondary),
-                );
-                let slider = ui.add(
-                    egui::Slider::new(&mut shown_value, IMAGE_NUM_STEPS_MIN..=IMAGE_NUM_STEPS_MAX)
-                        .integer()
-                        .show_value(true)
-                        .text(if chat.image_num_steps.is_some() { "override" } else { "default" }),
-                );
-                if slider.changed() {
-                    // Any drag = commit the override. The user can
-                    // revert to "let the server pick" via the refresh button below.
-                    chat.image_num_steps = Some(shown_value);
-                }
-                slider.on_hover_text(
-                    "Number of denoising steps. Higher = more detail but slower. \
+                ui.label(text::label("STEPS"));
+                let mut steps: u32 = chat.image_num_steps.unwrap_or(IMAGE_NUM_STEPS_PLACEHOLDER);
+                let changed = slider_with_readout(
+                    ui,
+                    &mut steps,
+                    IMAGE_NUM_STEPS_MIN..=IMAGE_NUM_STEPS_MAX,
+                    0,
+                    "Number of denoising steps. Higher is more detail but slower. \
                      Server defaults: Flux Schnell 4, Z-Image Turbo 9.",
                 );
-                if chat.image_num_steps.is_some() {
-                    let reset = ui.add(
-                        egui::Button::image_and_text(
-                            Icon::Refresh.image(10.0, t.text_secondary),
-                            "",
-                        ).min_size(egui::vec2(20.0, 20.0)),
-                    );
-                    if reset
-                        .on_hover_text("Revert to the server's per-model default step count")
-                        .clicked()
-                    {
-                        chat.image_num_steps = None;
-                    }
+                if changed {
+                    chat.image_num_steps = Some(steps);
                 }
+                override_cell(ui, chat.image_num_steps.is_some());
+                if chat.image_num_steps.is_some()
+                    && widgets::icon_button(ui, Icon::Refresh, "Revert to the server's per-model default step count")
+                        .clicked()
+                {
+                    chat.image_num_steps = None;
+                }
+                ui.add_space(widgets::GAP_WIDGETS);
 
-                ui.add_space(8.0);
-                let mut shown_strength: f32 = chat.image_strength.unwrap_or(IMAGE_STRENGTH_PLACEHOLDER);
-                // Strength is a no-op for pure txt2img: the server only
-                // consults it on the img2img path (input_image set). Disable
-                // the slider when nothing is attached so the user isn't
-                // tricked into thinking a strength change will affect the
-                // pending generation. Re-enables the instant they attach.
                 let has_input_image = !chat.attached_images.is_empty();
-                ui.label(
-                    RichText::new("Strength:")
-                        .size(10.0)
-                        .color(if has_input_image { t.text_secondary } else { t.text_muted }),
-                );
-                let strength_slider = ui.add_enabled(
-                    has_input_image,
-                    egui::Slider::new(&mut shown_strength, IMAGE_STRENGTH_MIN..=IMAGE_STRENGTH_MAX)
-                        .fixed_decimals(2)
-                        .show_value(true)
-                        .text(if chat.image_strength.is_some() { "override" } else { "default" }),
-                );
-                if strength_slider.changed() {
-                    chat.image_strength = Some(shown_strength);
+                ui.label(text::label("STRENGTH"));
+                let mut strength: f32 = chat.image_strength.unwrap_or(IMAGE_STRENGTH_PLACEHOLDER);
+                let changed = ui
+                    .add_enabled_ui(has_input_image, |ui| {
+                        slider_with_readout(
+                            ui,
+                            &mut strength,
+                            IMAGE_STRENGTH_MIN..=IMAGE_STRENGTH_MAX,
+                            2,
+                            if has_input_image {
+                                "img2img mix: 0.0 preserves the input image, 1.0 is a full \
+                                 txt2img re-roll. Server chat-path default: 0.4."
+                            } else {
+                                "Attach an input image to enable img2img strength. Pure \
+                                 txt2img ignores this control."
+                            },
+                        )
+                    })
+                    .inner;
+                if changed {
+                    chat.image_strength = Some(strength);
                 }
-                strength_slider.on_hover_text(if has_input_image {
-                    "img2img mix: 0.0 preserves the input image, 1.0 is full \
-                     txt2img re-roll. Server chat-path default: 0.4."
-                } else {
-                    "Attach an input image to enable img2img strength. Pure \
-                     txt2img ignores this control."
-                });
-                if chat.image_strength.is_some() {
-                    let reset = ui.add(
-                        egui::Button::image_and_text(
-                            Icon::Refresh.image(10.0, t.text_secondary),
-                            "",
-                        ).min_size(egui::vec2(20.0, 20.0)),
-                    );
-                    if reset
-                        .on_hover_text("Revert to the server's per-route default strength")
+                override_cell(ui, chat.image_strength.is_some());
+                if chat.image_strength.is_some()
+                    && widgets::icon_button(ui, Icon::Refresh, "Revert to the server's per-route default strength")
                         .clicked()
-                    {
-                        chat.image_strength = None;
-                    }
+                {
+                    chat.image_strength = None;
                 }
             });
-            ui.add_space(4.0);
+            ui.add_space(widgets::GAP_LABEL);
         }
 
-        // TTS chat control row. Shown only when an AudioTts model is
-        // loaded. Voice dropdown maps to the server's KNOWN_VOICES
-        // (OpenAI-shaped presets) which openai_voice_to_description
-        // expands into the Parler-TTS voice_description prompt.
-        // Speed slider drives time-domain resample at gen end so
-        // duration matches /v1/audio/speech (the well-tested path).
+        // TTS controls: the voice preset and the speed.
         if modality == ModelModality::AudioTts {
             ui.horizontal(|ui| {
-                ui.label(
-                    RichText::new("Voice:")
-                        .size(10.0)
-                        .color(t.text_secondary),
-                );
+                ui.label(text::label("VOICE"));
                 let current_voice = chat.tts_voice.as_deref().unwrap_or("(default)");
                 egui::ComboBox::from_id_salt("tts_voice_picker")
-                    .selected_text(RichText::new(current_voice).size(11.0))
+                    .selected_text(RichText::new(current_voice).size(text::SECTION_PT))
                     .show_ui(ui, |ui| {
-                        if ui.selectable_label(
-                            chat.tts_voice.is_none(),
-                            "(default) — server picks a neutral voice",
-                        ).clicked() {
+                        if ui
+                            .selectable_label(chat.tts_voice.is_none(), "(default): server picks a neutral voice")
+                            .clicked()
+                        {
                             chat.tts_voice = None;
                         }
                         for v in TTS_VOICE_PRESETS {
@@ -1404,73 +1043,53 @@ fn render_input_area(
                     })
                     .response
                     .on_hover_text(
-                        "OpenAI-shaped voice preset. Server maps each name to a \
-                         Parler-TTS voice_description prompt that nudges the \
-                         model toward the requested timbre + tempo.",
+                        "OpenAI-shaped voice preset. The server maps each name to a \
+                         Parler-TTS voice description that nudges the model toward the \
+                         requested timbre and tempo.",
                     );
+                ui.add_space(widgets::GAP_WIDGETS);
 
-                ui.add_space(8.0);
-                let mut shown_speed: f32 = chat.tts_speed.unwrap_or(TTS_SPEED_DEFAULT);
-                ui.label(
-                    RichText::new("Speed:")
-                        .size(10.0)
-                        .color(t.text_secondary),
+                ui.label(text::label("SPEED"));
+                let mut speed: f32 = chat.tts_speed.unwrap_or(TTS_SPEED_DEFAULT);
+                let changed = slider_with_readout(
+                    ui,
+                    &mut speed,
+                    TTS_SPEED_MIN..=TTS_SPEED_MAX,
+                    2,
+                    "Playback speed multiplier. 1.0 is the natural pace, 0.5 half speed, \
+                     2.0 double speed. Applied server-side by resampling so the duration \
+                     matches /v1/audio/speech.",
                 );
-                let speed_slider = ui.add(
-                    egui::Slider::new(&mut shown_speed, TTS_SPEED_MIN..=TTS_SPEED_MAX)
-                        .fixed_decimals(2)
-                        .show_value(true)
-                        .text(if chat.tts_speed.is_some() { "override" } else { "default" }),
-                );
-                if speed_slider.changed() {
-                    chat.tts_speed = Some(shown_speed);
+                if changed {
+                    chat.tts_speed = Some(speed);
                 }
-                speed_slider.on_hover_text(
-                    "Playback speed multiplier. 1.0 = natural pace, 0.5 = half \
-                     speed (longer), 2.0 = double speed (shorter). Applied \
-                     server-side via time-domain resample so duration matches \
-                     /v1/audio/speech.",
-                );
-                if chat.tts_speed.is_some() {
-                    let reset = ui.add(
-                        egui::Button::image_and_text(
-                            Icon::Refresh.image(10.0, t.text_secondary),
-                            "",
-                        ).min_size(egui::vec2(20.0, 20.0)),
-                    );
-                    if reset
-                        .on_hover_text("Revert to the server's default speed (1.0)")
+                override_cell(ui, chat.tts_speed.is_some());
+                if chat.tts_speed.is_some()
+                    && widgets::icon_button(ui, Icon::Refresh, "Revert to the server's default speed (1.0)")
                         .clicked()
-                    {
-                        chat.tts_speed = None;
-                    }
+                {
+                    chat.tts_speed = None;
                 }
             });
-            ui.add_space(4.0);
+            ui.add_space(widgets::GAP_LABEL);
         }
 
-        // Attached file chips. The same staging vec covers images
-        // (vision models) and audio (ASR models); we only try to decode
-        // a texture when the path looks like an image — for audio we
-        // show the Icon::Music SVG instead so the thumbnail isn't an
-        // empty box.
+        // Attached files. The same staging list holds images (vision) and
+        // audio (ASR); a texture is decoded only for a path that looks like an
+        // image, audio gets the music icon.
         if !chat.attached_images.is_empty() {
-            // Header strip: count + "Remove all" button. Only renders
-            // when 2+ attachments are staged — removing 1 file via the
-            // per-chip clear button is the same number of clicks either way.
             if chat.attached_images.len() >= 2 {
                 ui.horizontal(|ui| {
-                    ui.label(
-                        RichText::new(format!("{} attached", chat.attached_images.len()))
-                            .size(10.0)
-                            .color(t.text_secondary),
-                    );
-                    ui.add_space(6.0);
+                    ui.label(text::note(&format!("{} attached", chat.attached_images.len())));
+                    ui.add_space(widgets::GAP_LABEL);
                     if ui
-                        .add(egui::Button::image_and_text(
-                            Icon::Cross.image(11.0, t.text_secondary),
-                            RichText::new("Remove all").size(10.0),
-                        ).small())
+                        .add(
+                            egui::Button::image_and_text(
+                                Icon::Cross.image(ICON_PT_SMALL, theme::ink_dim()),
+                                text::note("Remove all"),
+                            )
+                            .frame(false),
+                        )
                         .on_hover_text("Clear all attached files (does not affect already-sent messages)")
                         .clicked()
                     {
@@ -1478,22 +1097,14 @@ fn render_input_area(
                         clear_attach_chip_textures(image_textures);
                     }
                 });
-                ui.add_space(2.0);
             }
             ui.horizontal_wrapped(|ui| {
                 let mut remove_idx = None;
                 for (i, path) in chat.attached_image_paths.iter().enumerate() {
                     let is_image = path_is_image_ext(path);
-                    // Content-hashed key, not positional. The previous
-                    // `attach_<i>` scheme misbehaved when the user
-                    // removed an attachment and added a different
-                    // one: index 0 was reused and served the cached
-                    // texture of the removed file.
+                    // Keyed by content, not by position: removing one attachment
+                    // shifts the ones after it.
                     let tex_key = image_cache_key("attach", &chat.attached_images[i], i);
-                    // One HashMap lookup per chip per frame. Extract
-                    // tex.id() is Copy, so take it here and let the borrow of
-                    // image_textures end before the Frame.show closure below - which
-                    // would otherwise need a second lookup inside it.
                     let tex_id_opt = if is_image {
                         let tex = image_textures.entry(tex_key.clone()).or_insert_with(|| {
                             load_base64_texture(ui, &chat.attached_images[i], &tex_key)
@@ -1502,65 +1113,29 @@ fn render_input_area(
                     } else {
                         None
                     };
-                    // base64 char count ≈ ceil(bytes / 3) * 4; back-solve
-                    // to display the source file size for context.
-                    // Use the shared api::types::format_size helper so
-                    // every byte-size display in the GUI uses the same
-                    // unit-picking + decimal rules.
+                    // base64 length back-solved to the source size.
                     let bytes_len = (chat.attached_images[i].len() as f32 * 0.75) as u64;
                     let size_label = crate::api::types::format_size(bytes_len);
-                    egui::Frame {
-                        inner_margin: egui::Margin::same(4),
-                        corner_radius: CornerRadius::same(4),
-                        fill: t.surface_elevated,
-                        stroke: Stroke::new(0.5, t.border),
-                        ..Default::default()
-                    }
-                    .show(ui, |ui| {
+                    chip_frame().show(ui, |ui| {
                         ui.horizontal(|ui| {
                             if let Some(tex_id) = tex_id_opt {
-                                ui.image(egui::load::SizedTexture::new(tex_id, egui::vec2(40.0, 40.0)));
+                                ui.image(egui::load::SizedTexture::new(
+                                    tex_id,
+                                    egui::vec2(CHIP_THUMB_PX, CHIP_THUMB_PX),
+                                ));
                             } else {
-                                // Audio (or unknown) file: Icon::Music
-                                // placeholder — matches the visual weight
-                                // of the image thumbnail without faking
-                                // a decode.
-                                Icon::Music.show(ui, 32.0, t.text_secondary);
+                                Icon::Music.show(ui, text::EMPTY_STATE_ICON_PT, theme::ink_dim());
                             }
                             ui.vertical(|ui| {
-                                // Keep filename + filename_display as
-                                // Cow<str> so the common ASCII path is
-                                // alloc-free: to_string_lossy returns
-                                // Cow::Borrowed for valid UTF-8 paths,
-                                // and truncate_with_ellipsis returns
-                                // Cow::Borrowed when the name fits in
-                                // 32 bytes — the previous `.into_owned()`
-                                // forced an allocation per chip per
-                                // frame even when nothing needed
-                                // copying.
                                 let filename: std::borrow::Cow<str> = std::path::Path::new(path)
                                     .file_name()
                                     .map(|n| n.to_string_lossy())
                                     .unwrap_or_else(|| std::borrow::Cow::Owned(format!("attachment_{}", i)));
-                                // Cap the visible filename so a long
-                                // generated name (uuid-stamped
-                                // exports / `output_2026-05-18_…`)
-                                // doesn't force the chip to overflow
-                                // its parent's horizontal layout.
-                                // Tooltip surfaces the full filename
-                                // so users can read it on hover.
                                 let filename_display = truncate_with_ellipsis(&filename, 32);
-                                ui.label(
-                                    RichText::new(filename_display.as_ref())
-                                        .size(10.0)
-                                        .color(t.text_secondary),
-                                )
-                                .on_hover_text(filename.as_ref());
-                                ui.label(RichText::new(size_label).size(9.0).color(t.text_muted));
-                                if ui
-                                    .add(egui::Button::image(
-                                        Icon::Cross.image(10.0, t.text_secondary),
-                                    ).small().frame(false))
+                                ui.label(text::note(filename_display.as_ref()))
+                                    .on_hover_text(filename.as_ref());
+                                ui.label(text::readout(&size_label));
+                                if widgets::close_button(ui, CHIP_CLOSE_PX)
                                     .on_hover_text("Remove this attachment")
                                     .clicked()
                                 {
@@ -1572,42 +1147,28 @@ fn render_input_area(
                 }
                 if let Some(idx) = remove_idx {
                     chat.remove_attachment(idx);
-                    // Invalidate ALL attach_* textures, not just the
-                    // removed index. Removing from a Vec shifts every
-                    // entry after `idx` down by one, so attach_{idx+1}
-                    // → attach_{idx}, attach_{idx+2} → attach_{idx+1},
-                    // etc. Only clearing attach_{idx} leaves stale
-                    // textures pointing at the wrong attached file
-                    // (the previous neighbor's image renders for the
-                    // shifted entry). Matches the same retain pattern
-                    // used at attach-files / drag-drop paths.
+                    // Every attach_* texture goes: the indices after idx shifted.
                     clear_attach_chip_textures(image_textures);
                 }
             });
-            ui.add_space(4.0);
+            ui.add_space(widgets::GAP_LABEL);
         }
 
-        // Generating status
+        // The generating strip. Its height is what chat_input_reserved_height
+        // counts, so the row is pinned to the control height.
         if chat.is_generating {
             ui.horizontal(|ui| {
-                ui.spinner();
-                ui.label(RichText::new("Generating...").size(12.0).color(theme::accent()));
+                ui.set_min_height(ui.spacing().interact_size.y);
+                widgets::lamp_inline(ui, true, theme::accent());
+                ui.label(text::label("GENERATING"));
             });
-            ui.add_space(4.0);
+            ui.add_space(widgets::GAP_LABEL);
         }
 
-        // Input row
+        // The input row: attach, the text, the counter, Send or Stop.
         ui.horizontal(|ui| {
-            // Attach button — modality-aware. Vision models accept image
-            // files (current behaviour). ASR models accept audio files;
-            // we surface them through the same attached_image* slots
-            // since the server's /api/chat with images[] handles the
-            // base64 bytes regardless (whisper sees them as audio bytes
-            // via the model's pre-processor). Text also shows the
-            // button (defaults to image attach) so the user can switch
-            // to a vision model mid-thread without losing the staging
-            // slot. ImageGen / AudioTts / VideoGen hide the button —
-            // those are text-only request paths server-side.
+            // Attach is for text, vision and ASR models; image-gen, TTS and
+            // video are text-only request paths.
             let attach_visible = matches!(
                 modality,
                 ModelModality::Text | ModelModality::Vision | ModelModality::AudioAsr
@@ -1616,43 +1177,32 @@ fn render_input_area(
                 let (tooltip, filter_label, filter_exts): (&str, &str, &[&str]) = match modality {
                     ModelModality::AudioAsr => (
                         "Attach audio file (for transcription).\n\
-                         Tip: drag-and-drop also works — drop a file anywhere on the window.",
+                         Tip: drag-and-drop also works. Drop a file anywhere on the window.",
                         "Audio",
                         CHAT_AUDIO_EXTS,
                     ),
-                    // Default + Vision: image attach. The Text fallback
-                    // keeps the button available so users can switch to
-                    // a vision model without losing the staging slot.
                     _ => (
                         "Attach image (for vision models).\n\
-                         Tip: drag-and-drop also works — drop a file anywhere on the window.",
+                         Tip: drag-and-drop also works. Drop a file anywhere on the window.",
                         "Images",
                         CHAT_IMAGE_EXTS,
                     ),
                 };
-                let attach_btn = egui::Button::image(
-                    Icon::Attach.image(16.0, t.text_primary),
-                )
-                .fill(t.surface_elevated)
-                .stroke(Stroke::new(0.5, t.border))
-                .corner_radius(CornerRadius::same(4));
-                // Disable while a dialog worker is alive — a second
-                // click would spawn an overlapping dialog whose result
-                // could overwrite the first in pending_dialog.
+                // One dialog at a time: a second would overwrite the first's result.
                 use std::sync::atomic::Ordering;
                 let dialog_busy = chat.dialog_in_flight.load(Ordering::Relaxed);
-                let attach_resp = ui.add_enabled(!dialog_busy, attach_btn);
                 let attach_tip = if dialog_busy {
-                    "Waiting for the open file dialog to close…"
+                    "Waiting for the open file dialog to close..."
                 } else {
                     tooltip
                 };
-                if attach_resp.on_hover_text(attach_tip).clicked() {
-                    // Worker-thread variant: rfd's sync pick_files
-                    // blocks the egui main thread which deadlocks
-                    // against the XDG portal on Linux. spawn_dialog_worker
-                    // handles the in-flight flag + ClearOnDrop guard so
-                    // this closure only carries the dialog logic.
+                let attach_resp = ui.add_enabled_ui(!dialog_busy, |ui| {
+                    widgets::icon_button(ui, Icon::Attach, attach_tip)
+                });
+                if attach_resp.inner.clicked() {
+                    // rfd's synchronous picker blocks the egui thread and
+                    // deadlocks against the XDG portal on Linux, so it runs on a
+                    // worker that also encodes the files.
                     let slot = chat.pending_dialog.clone();
                     let label = filter_label.to_string();
                     let exts: Vec<String> = filter_exts.iter().map(|s| s.to_string()).collect();
@@ -1665,23 +1215,10 @@ fn render_input_area(
                         else {
                             return;
                         };
-                        // Read + base64-encode on the worker so the
-                        // GUI thread doesn't stall encoding multi-MB
-                        // attachments when the dialog returns. Reject
-                        // files over the server-side attachment cap UP-FRONT
-                        // (via fs::metadata before reading) so the GUI
-                        // surfaces the error inline instead of after
-                        // a multi-MB upload round-trip.
                         let mut files: Vec<(std::path::PathBuf, String)> = Vec::new();
                         let mut oversized: Vec<(std::path::PathBuf, u64)> = Vec::new();
                         let mut unreadable: Vec<(std::path::PathBuf, String)> = Vec::new();
                         for p in paths {
-                            // metadata() can fail (permission denied,
-                            // broken symlink). Previous code used
-                            // `.unwrap_or(0)` which let metadata-fails
-                            // pass the size check and then silently
-                            // disappear at the read step. Surface the
-                            // failure via the new unreadable bucket.
                             let size = match std::fs::metadata(&p) {
                                 Ok(m) => m.len(),
                                 Err(e) => {
@@ -1714,20 +1251,12 @@ fn render_input_area(
                 }
             }
 
-            // Multi-line input with chat-standard send semantics:
-            //   - Enter sends (handled by app.rs key detection)
-            //   - Shift+Enter inserts a newline (return_key override)
-            // The pattern every chat application uses, and it matters here: an
-            // image prompt is often several pasted paragraphs.
-            //
-            // desired_rows is the same `visible_rows` the caller reserves the
-            // output-area height with, so both sites agree and the layout does not
-            // flicker. It is computed in render() so the O(N) pass over the input
-            // runs once per frame
-            // instead of twice.
+            // Multi-line input. Enter sends (app.rs), Shift+Enter breaks the
+            // line. It sits on the well: no frame of its own.
             let response = ui.add(
                 egui::TextEdit::multiline(&mut chat.input)
-                    .desired_width(ui.available_width() - 70.0)
+                    .frame(egui::Frame::NONE)
+                    .desired_width(ui.available_width() - SEND_RESERVE_W)
                     .desired_rows(visible_rows)
                     .hint_text(modality.input_hint())
                     .id_salt("chat_input")
@@ -1736,44 +1265,24 @@ fn render_input_area(
                         egui::Key::Enter,
                     ))),
             );
-
-            // Detach from history navigation as soon as the user edits
-            // the recalled prompt. Without this, after Ctrl+Up loads a
-            // past prompt and the user starts tweaking it, a subsequent
-            // Ctrl+Down would replace their edit with the next history
-            // entry — surprising and clobbers work. Helper is on
-            // ChatState so the rule is unit-tested.
+            // Editing a recalled prompt detaches from history navigation.
             if response.changed() {
                 chat.detach_history_if_edited();
             }
-
             if ui.ctx().memory(egui::Memory::focused).is_none() {
                 response.request_focus();
             }
 
-            // TTS char-count indicator: show "N / 4096 chars" with a
-            // red tint when over the server-side cap. Previously the
-            // user only found out post-send via a system-message reject;
-            // showing the limit live lets them split or trim before
-            // submitting. Gated on AudioTts modality so it doesn't add
-            // visual noise to text/image/ASR chats.
+            // TTS: the character count against the server cap, live.
             if matches!(modality, ModelModality::AudioTts) {
                 let chars = chat.input.chars().count();
                 let over = chars > TTS_INPUT_MAX_CHARS_CLIENT;
-                let color = if over { theme::error() } else { t.text_muted };
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let mut text = RichText::new(format!(
-                        "{} / {} chars",
-                        chars, TTS_INPUT_MAX_CHARS_CLIENT,
-                    ))
-                    .size(10.0)
-                    .color(color);
+                    let mut counter = text::readout(&format!("{} / {} chars", chars, TTS_INPUT_MAX_CHARS_CLIENT));
                     if over {
-                        text = text.strong();
+                        counter = counter.color(theme::error()).strong();
                     }
-                    let resp = ui.add(
-                        egui::Label::new(text).sense(egui::Sense::hover()),
-                    );
+                    let resp = ui.add(egui::Label::new(counter).sense(egui::Sense::hover()));
                     if over {
                         resp.on_hover_text(
                             "TTS input exceeds the 4096-char cap. \
@@ -1783,47 +1292,18 @@ fn render_input_area(
                 });
             }
 
-            // Send button — caller checks the returned bool to fire
-            // the same code path as the Enter shortcut. Previously the
-            // click did nothing because the renderer didn't surface it.
-            //
-            // Tooltip documents the keyboard shortcut (Enter to send,
-            // Shift+Enter for newline) so users new to the multi-line
-            // chat-input UX from 68498d0 know what each key does.
-            // VideoGen-tagged checkpoints have no server-side dispatch
-            // path today (see ModelModality::tooltip — 'label only'). The
-            // empty-state copy warns the user, but if they type a prompt
-            // anyway and hit Send the request would fail at /api/chat
-            // with a model-error. Disable Send proactively for VideoGen
-            // with a tooltip explaining why — same end state, clearer UI.
-            // Single source of truth: chat_send_allowed handles the
-            // modality-aware "is this combination sendable?" question.
-            // ASR with attachment doesn't need text; VideoGen is never
-            // sendable; everything else requires non-empty text.
-            // send_chat (app.rs) uses the same helper so the button
-            // gate and the runtime guard can't drift.
+            // Send, gated by chat_send_allowed (the same helper send_chat uses),
+            // or Stop while a reply streams.
             let input_empty = chat.input.trim().is_empty();
             let has_attachment = !chat.attached_images.is_empty();
             let video_gen_blocked = matches!(modality, ModelModality::VideoGen);
             let is_asr = matches!(modality, ModelModality::AudioAsr);
             let asr_blocked = is_asr && !has_attachment;
             let text_blocked = !is_asr && !video_gen_blocked && input_empty;
-            // Three gate sources, all must clear:
-            //   1. model_selected: server-side guard would reject
-            //      the send otherwise — disable up-front.
-            //   2. !chat.is_generating: matches the Stop-button
-            //      swap logic; can't queue a second send.
-            //   3. chat_send_allowed: modality-specific input/
-            //      attachment requirements.
             let send_enabled = model_selected
                 && !chat.is_generating
                 && chat_send_allowed(modality, input_empty, has_attachment);
-            // Per-reason tooltip so the user knows which constraint
-            // is blocking Send instead of seeing the generic
-            // keyboard-help text on every disabled state.
             let send_tip = if !model_selected {
-                // Most-blocking gate goes first — if no model is
-                // picked, the other reasons are moot.
                 "Pick a model from the dropdown above (or open the \
                  Models tab to import one) before sending."
             } else if video_gen_blocked {
@@ -1839,63 +1319,41 @@ fn render_input_area(
             } else {
                 "Send message\n\n\
                  Keyboard:\n  \
-                   Enter — send\n  \
-                   Shift+Enter — newline\n  \
-                   Ctrl+Up / Ctrl+Down - recall prompt history\n  \
-                   Ctrl+L — clear conversation\n  \
-                   Esc — cancel in-flight generation"
+                   Enter: send\n  \
+                   Shift+Enter: newline\n  \
+                   Ctrl+Up / Ctrl+Down: recall prompt history\n  \
+                   Ctrl+L: clear conversation\n  \
+                   Esc: cancel in-flight generation"
             };
             if chat.is_generating {
-                // Active-generation state: show a Stop button instead of
-                // the disabled Send. Clicking it aborts the in-flight
-                // tokio task via the AbortHandle captured in send_chat.
-                // Without this, users had to wait out a stuck/slow
-                // generation OR restart the GUI — both bad UX.
-                //
-                // Filled-square icon (Stop) instead of the prior Cross
-                // (×): pairs visually with the Play triangle the Send
-                // button uses when idle, matching the media-player
-                // convention every user already knows. Cross meant
-                // "dismiss / close" in the rest of the GUI (chip
-                // removal, filter clear) — overloading it for "abort
-                // generation" muddled the visual language.
                 let stop_btn = egui::Button::image_and_text(
-                    Icon::Stop.image(11.0, Color32::WHITE),
-                    RichText::new("Stop").size(12.0).color(Color32::WHITE),
+                    Icon::Stop.image(ICON_PT_SMALL, theme::on_accent()),
+                    text::value("Stop").color(theme::on_accent()),
                 )
-                .fill(theme::error())
-                .corner_radius(CornerRadius::same(4));
-                if ui.add(stop_btn)
-                    .on_hover_text("Cancel the in-flight generation (or press Esc).\n\
-                                    Already-streamed content is kept; \
-                                    the next chunk after abort is dropped.")
+                .fill(theme::error());
+                if ui
+                    .add(stop_btn)
+                    .on_hover_text(
+                        "Cancel the in-flight generation (or press Esc).\n\
+                         Already-streamed content is kept; \
+                         the next chunk after abort is dropped.",
+                    )
                     .clicked()
                     && chat.abort_generation()
                 {
-                    chat.messages.push_back(ChatMessage::system(
-                        "[Generation cancelled by user]",
-                    ));
+                    chat.messages.push_back(ChatMessage::system("[Generation cancelled by user]"));
                 }
             } else if send_enabled {
                 let send_btn = egui::Button::image_and_text(
-                    Icon::Play.image(11.0, Color32::WHITE),
-                    RichText::new("Send").size(12.0).color(Color32::WHITE),
+                    Icon::Play.image(ICON_PT_SMALL, theme::on_accent()),
+                    text::value("Send").color(theme::on_accent()),
                 )
-                .fill(theme::accent())
-                .corner_radius(CornerRadius::same(4));
+                .fill(theme::accent());
                 send_clicked = ui.add(send_btn).on_hover_text(send_tip).clicked();
             } else {
-                // Tint the disabled-state Play icon with the theme-
-                // matched muted colour so it visually drops out in
-                // both dark and light modes (previous hardcode of
-                // theme::ink_dim() looked wrong against the
-                // light background).
                 ui.add_enabled(
                     false,
-                    egui::Button::image_and_text(
-                        Icon::Play.image(11.0, t.text_muted),
-                        "Send",
-                    ),
+                    egui::Button::image_and_text(Icon::Play.image(ICON_PT_SMALL, theme::ink_dim()), "Send"),
                 )
                 .on_hover_text(send_tip);
             }
@@ -1904,670 +1362,442 @@ fn render_input_area(
     send_clicked
 }
 
-/// Render a single chat message
-// Wide signature carries the message, theme palette, markdown cache,
-// GPU texture map, and the worker-dialog handles (slot + busy flag).
-// Refactoring to a struct adds boilerplate without simplifying the
-// single render() call site.
+/// Width kept to the right of the input for the counter and the Send button.
+const SEND_RESERVE_W: f32 = 70.0;
+
+/// A slider of fixed track width followed by its value in a fixed monospace
+/// cell. Returns whether either changed the value.
+fn slider_with_readout<T: egui::emath::Numeric>(
+    ui: &mut egui::Ui,
+    value: &mut T,
+    range: std::ops::RangeInclusive<T>,
+    decimals: usize,
+    tip: &str,
+) -> bool {
+    let slider = ui.scope(|ui| {
+        ui.spacing_mut().slider_width = widgets::SLIDER_TRACK_W;
+        ui.add(egui::Slider::new(value, range.clone()).show_value(false))
+    })
+    .inner
+    .on_hover_text(tip);
+    let drag = ui.scope(|ui| {
+        ui.style_mut().override_font_id = Some(egui::FontId::monospace(text::VALUE_PT));
+        widgets::drag_fixed(
+            ui,
+            egui::DragValue::new(value).range(range).fixed_decimals(decimals),
+            widgets::READOUT_W,
+        )
+    })
+    .inner;
+    slider.changed() || drag.changed()
+}
+
+/// Says whether a control overrides the server's default, in a cell that
+/// keeps its width either way.
+fn override_cell(ui: &mut egui::Ui, overridden: bool) {
+    widgets::fixed_label(
+        ui,
+        OVERRIDE_W,
+        text::label(if overridden { "OVERRIDE" } else { "DEFAULT" }),
+    );
+}
+
+/// The frame of an attachment chip: raised, with a hairline.
+fn chip_frame() -> egui::Frame {
+    egui::Frame::NONE
+        .fill(theme::raised())
+        .stroke(egui::Stroke::new(HAIRLINE, theme::border()))
+        .corner_radius(theme::RADIUS)
+        .inner_margin(widgets::GAP_LABEL as i8)
+}
+
+/// The shell of a message row: a full-width frame in the role's fill, a
+/// stripe in the role's tint, the role in capitals and the timestamp on the
+/// first line. `body` draws the rest.
+fn message_row(ui: &mut egui::Ui, fill: Color32, tint: Color32, role_caps: &str, timestamp: &str, body: impl FnOnce(&mut egui::Ui)) {
+    let row = egui::Frame::NONE
+        .fill(fill)
+        .corner_radius(theme::RADIUS)
+        .inner_margin(egui::Margin::symmetric(MESSAGE_PAD_X, MESSAGE_PAD_Y))
+        .show(ui, |ui| {
+            ui.set_min_width(ui.available_width());
+            ui.horizontal(|ui| {
+                ui.label(text::label(role_caps));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.label(text::readout(timestamp));
+                });
+            });
+            ui.add_space(widgets::GAP_LABEL);
+            body(ui);
+        });
+    widgets::stripe(ui, row.response.rect, tint);
+}
+
+/// Padding inside a message row.
+const MESSAGE_PAD_X: i8 = 12;
+const MESSAGE_PAD_Y: i8 = 8;
+
+/// One message. The role decides the fill and the tint of the stripe: the
+/// assistant on the panel in the accent, the user raised in dim ink, a system
+/// notice in the warning colour, a system error in the error colour.
 #[allow(clippy::too_many_arguments)]
 fn render_message(
     ui: &mut egui::Ui,
     msg: &ChatMessage,
-    t: &ChatTheme,
     md_cache: &mut CommonMarkCache,
     image_textures: &mut HashMap<String, TextureHandle>,
     pending_dialog: &std::sync::Arc<std::sync::Mutex<Option<ChatDialogResult>>>,
     dialog_in_flight: &std::sync::Arc<std::sync::atomic::AtomicBool>,
-    // Single-shot seed-lock slot. Written by the "Lock seed"
-    // button on a seed badge; drained by the outer render() loop
-    // and copied into ChatState.locked_seed for the next send.
-    // Cell lets multiple message-render passes write into one slot
-    // without needing &mut ChatState here (we'd otherwise have to
-    // shadow the borrow split that drives the per-message loop).
+    // Single-shot seed-lock slot, drained by render() into ChatState.
     seed_lock_request: &std::cell::Cell<Option<u64>>,
-    // Single-shot Play-error slot. Written by the audio Play
-    // button when play_audio_blob fails (no audio backend on PATH,
-    // /tmp write denied, etc.); drained by the outer render() loop
-    // and pushed as a system message so the user sees what went
-    // wrong inline instead of having to open the Server Log tab.
+    // Single-shot playback-error slot, drained by render() into a system message.
     play_error_pending: &std::cell::Cell<Option<String>>,
 ) {
     let is_user = msg.role == "user";
     let is_system = msg.role == "system";
-    // Detection lives in is_error_system_message so the prefix rules
-    // are unit-tested (rendering itself is hard to test against egui).
     let is_error = is_system && is_error_system_message(&msg.content);
+    let (fill, tint, role_caps) = if is_user {
+        (theme::raised(), theme::ink_dim(), "YOU")
+    } else if is_error {
+        (theme::panel(), theme::error(), "ERROR")
+    } else if is_system {
+        (theme::panel(), theme::warning(), "SYSTEM")
+    } else {
+        (theme::panel(), theme::accent(), "ASSISTANT")
+    };
+    let text_color = theme::ink();
 
-    let alignment = if is_user { egui::Align::RIGHT } else { egui::Align::LEFT };
-
-    ui.with_layout(egui::Layout::left_to_right(alignment), |ui| {
-        // Avatar badge
-        let (avatar_bg, avatar_icon, avatar_label) = t.avatar(&msg.role, is_error);
-
-        egui::Frame {
-            inner_margin: egui::Margin::symmetric(8, 4),
-            corner_radius: CornerRadius::same(4),
-            fill: avatar_bg,
-            ..Default::default()
-        }
-        .show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.add(avatar_icon.image(12.0, Color32::WHITE));
-                ui.label(RichText::new(avatar_label).size(11.0).strong().color(Color32::WHITE));
-            });
-        });
-
-        ui.add_space(8.0);
-
-        // Message bubble
-        let (bubble_fill, bubble_stroke, text_color) = t.bubble(&msg.role, theme::is_dark(), is_error);
-
-        egui::Frame {
-            inner_margin: egui::Margin::symmetric(12, 10),
-            corner_radius: CornerRadius::same(6),
-            fill: bubble_fill,
-            stroke: Stroke::new(1.0, bubble_stroke),
-            ..Default::default()
-        }
-        .show(ui, |ui| {
-            ui.set_max_width(ui.available_width() * 0.75);
-
-            ui.label(RichText::new(&msg.timestamp).size(10.0).color(t.text_muted));
-            ui.add_space(4.0);
-
-            // Attached files (vision input OR audio for ASR models).
-            // Detects content type from base64 magic bytes so audio
-            // attachments render as Icon::Music chips rather than empty
-            // boxes.
-            if !msg.images.is_empty() {
-                // Pre-pass over the IMAGE attachments only (the same list may hold
-                // audio chips), so opening one gives the viewer the whole set to step
-                // through rather than a single frozen image.
-                let mut img_texes: Vec<egui::TextureHandle> = Vec::new();
-                for (i, b64) in msg.images.iter().enumerate() {
-                    if !base64_looks_like_image(b64) {
-                        continue;
-                    }
-                    let key = image_cache_key("msg", b64, i);
-                    let tex = image_textures
-                        .entry(key.clone())
-                        .or_insert_with(|| load_base64_texture(ui, b64, &key));
-                    img_texes.push(tex.clone());
+    message_row(ui, fill, tint, role_caps, &msg.timestamp, |ui| {
+        // Attached files: images open in the viewer as one set, audio gets a chip.
+        if !msg.images.is_empty() {
+            let mut img_texes: Vec<egui::TextureHandle> = Vec::new();
+            for (i, b64) in msg.images.iter().enumerate() {
+                if !base64_looks_like_image(b64) {
+                    continue;
                 }
-                // Position of the current attachment WITHIN img_texes, which skips
-                // the non-image entries, so the arrows never land on an audio chip.
-                let mut img_ord = 0usize;
-                ui.horizontal_wrapped(|ui| {
-                    for (i, img_b64) in msg.images.iter().enumerate() {
-                        let is_image = base64_looks_like_image(img_b64);
-                        if is_image {
-                            // Key on bytes hash + index, not on the
-                            // minute-resolution timestamp — see
-                            // image_cache_key's docstring for the
-                            // collision bug this avoids.
-                            let tex_key = image_cache_key("msg", img_b64, i);
-                            // One HashMap lookup per visible image per
-                            // frame. The handle returned by
-                            // entry().or_insert_with() borrows
-                            // image_textures, but tex_id + tex_size are
-                            // Copy — extract them so the borrow ends
-                            // before ui.image() runs.
-                            // The pre-pass above already inserted this texture, so
-                            // this is the same cached handle it collected.
-                            let tex = image_textures.entry(tex_key.clone()).or_insert_with(|| {
-                                load_base64_texture(ui, img_b64, &tex_key)
-                            });
-                            let tex_size = tex.size_vec2();
-                            let max_side = 200.0;
-                            let scale = (max_side / tex_size.x.max(tex_size.y)).min(1.0);
-                            crate::image_viewer::clickable_image_in_set(
-                                ui,
-                                &img_texes,
-                                img_ord,
-                                tex_size * scale,
-                            );
-                            img_ord += 1;
-                        } else {
-                            // Audio (or unknown binary): music-icon
-                            // placeholder with the encoded size.
-                            // Matches the input-chip styling for
-                            // visual continuity between pre-send and
-                            // post-send views. Uses the shared
-                            // api::types::format_size helper.
-                            let bytes_len = (img_b64.len() as f32 * 0.75) as u64;
-                            let size_label = crate::api::types::format_size(bytes_len);
-                            egui::Frame {
-                                inner_margin: egui::Margin::same(8),
-                                corner_radius: CornerRadius::same(4),
-                                fill: t.surface_elevated,
-                                stroke: Stroke::new(0.5, t.border),
-                                ..Default::default()
-                            }
-                            .show(ui, |ui| {
-                                ui.horizontal(|ui| {
-                                    Icon::Music.show(ui, 32.0, t.text_secondary);
-                                    ui.vertical(|ui| {
-                                        ui.label(RichText::new("Audio").size(11.0).strong().color(t.text_secondary));
-                                        ui.label(RichText::new(size_label).size(10.0).color(t.text_muted));
-                                    });
+                let key = image_cache_key("msg", b64, i);
+                let tex = image_textures
+                    .entry(key.clone())
+                    .or_insert_with(|| load_base64_texture(ui, b64, &key));
+                img_texes.push(tex.clone());
+            }
+            let mut img_ord = 0usize;
+            ui.horizontal_wrapped(|ui| {
+                for (i, img_b64) in msg.images.iter().enumerate() {
+                    if base64_looks_like_image(img_b64) {
+                        let tex_key = image_cache_key("msg", img_b64, i);
+                        let tex = image_textures.entry(tex_key.clone()).or_insert_with(|| {
+                            load_base64_texture(ui, img_b64, &tex_key)
+                        });
+                        let tex_size = tex.size_vec2();
+                        let scale = (MSG_IMAGE_MAX_PX / tex_size.x.max(tex_size.y)).min(1.0);
+                        crate::image_viewer::clickable_image_in_set(ui, &img_texes, img_ord, tex_size * scale);
+                        img_ord += 1;
+                    } else {
+                        let bytes_len = (img_b64.len() as f32 * 0.75) as u64;
+                        let size_label = crate::api::types::format_size(bytes_len);
+                        chip_frame().show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                Icon::Music.show(ui, text::EMPTY_STATE_ICON_PT, theme::ink_dim());
+                                ui.vertical(|ui| {
+                                    ui.label(text::label("AUDIO"));
+                                    ui.label(text::readout(&size_label));
                                 });
                             });
-                        }
+                        });
                     }
-                });
-                ui.add_space(4.0);
-            }
-
-            // Content: markdown for AI, plain text for user/system.
-            // Guard on non-empty so image-only assistant responses
-            // (content cleared in app.rs ImageGenResponse handler) don't
-            // emit an empty markdown block above the image grid.
-            //
-            // The user/system label is rendered as a selectable Label so
-            // users can drag-select + Ctrl+C their own past prompts
-            // (handy when iterating on an image-gen prompt). Assistant
-            // markdown goes through CommonMarkViewer which doesn't
-            // expose a selectability knob — the per-message Copy
-            // button below covers that case.
-            //
-            // Image-gen responses begin with `[seed: <u64>] …` (server
-            // commit 27cbef3). Lift the seed into a dedicated badge
-            // with a copy-to-clipboard button so the user can re-roll
-            // by pasting it into their next prompt's options.seed —
-            // the bracketed text in the body is noise once a badge
-            // surfaces it explicitly.
-            //
-            // Skip the parse for user + system messages — they can
-            // never carry the server-emitted seed prefix, so running
-            // the trim + strip_prefix scan over the user's typed
-            // prompts every frame is pure waste.
-            let (extracted_seed, content_without_seed) = if is_user || is_system {
-                (None, msg.content.as_str())
-            } else {
-                parse_seed_prefix(&msg.content)
-            };
-            if let Some(seed) = extracted_seed {
-                ui.add_space(2.0);
-                ui.horizontal(|ui| {
-                    egui::Frame {
-                        inner_margin: egui::Margin::symmetric(8, 3),
-                        corner_radius: CornerRadius::same(4),
-                        fill: theme::tinted(theme::success(), 30),
-                        ..Default::default()
-                    }
-                    .show(ui, |ui| {
-                        ui.label(
-                            RichText::new(format!("seed {seed}"))
-                                .size(10.0)
-                                .strong()
-                                .color(theme::success())
-                                .family(egui::FontFamily::Monospace),
-                        );
-                    });
-                    // SVG icon (not emoji) to match the rest of the
-                    // chat-tab visual language - the same Copy button as the
-                    // assistant action row and the image base64 copy. An SVG icon
-                    // rather than a clipboard emoji, like every other site here.
-                    let copy = ui.add(
-                        egui::Button::image_and_text(
-                            Icon::Copy.image(11.0, t.text_primary),
-                            RichText::new("Copy").size(10.0),
-                        )
-                        .min_size(egui::vec2(0.0, 20.0)),
-                    );
-                    if copy
-                        .on_hover_text("Copy seed — paste into the next prompt's options.seed to re-roll this exact generation")
-                        .clicked()
-                    {
-                        ui.ctx().copy_text(seed.to_string());
-                    }
-                    // Lock seed — one-click re-roll. Sets ChatState.
-                    // locked_seed which the next chat send consumes,
-                    // threading options.seed=<this> into the request.
-                    // Single-shot: cleared after send so a tweaked
-                    // prompt automatically gets a fresh random seed
-                    // on subsequent gens unless the user re-locks.
-                    let lock = ui.add(
-                        egui::Button::image_and_text(
-                            Icon::Lock.image(11.0, t.text_primary),
-                            RichText::new("Lock seed").size(10.0),
-                        ).min_size(egui::vec2(0.0, 20.0)),
-                    );
-                    if lock
-                        .on_hover_text("Lock this seed for your NEXT send — generate with the same starting noise but a different prompt to A/B compare variations")
-                        .clicked()
-                    {
-                        seed_lock_request.set(Some(seed));
-                    }
-                });
-                ui.add_space(2.0);
-            }
-            let body_to_render = if extracted_seed.is_some() {
-                content_without_seed
-            } else {
-                msg.content.as_str()
-            };
-            if !body_to_render.is_empty() {
-                if msg.role == "assistant" {
-                    CommonMarkViewer::new().show(ui, md_cache, body_to_render);
-                } else {
-                    ui.add(
-                        egui::Label::new(
-                            RichText::new(body_to_render).size(13.0).color(text_color),
-                        )
-                        .selectable(true),
-                    );
                 }
+            });
+            ui.add_space(widgets::GAP_LABEL);
+        }
+
+        // Image-gen replies begin with `[seed: <u64>]`; the seed becomes a
+        // readout with Copy and Lock, and the body loses the prefix.
+        let (extracted_seed, content_without_seed) = if is_user || is_system {
+            (None, msg.content.as_str())
+        } else {
+            parse_seed_prefix(&msg.content)
+        };
+        if let Some(seed) = extracted_seed {
+            ui.horizontal(|ui| {
+                widgets::readout(ui, widgets::READOUT_WIDE_W, &format!("seed {seed}"));
+                if ui
+                    .add(
+                        egui::Button::image_and_text(
+                            Icon::Copy.image(ICON_PT_SMALL, theme::ink_dim()),
+                            text::note("Copy"),
+                        )
+                        .frame(false),
+                    )
+                    .on_hover_text("Copy the seed: paste it into the next prompt's options.seed to re-roll this exact generation")
+                    .clicked()
+                {
+                    ui.ctx().copy_text(seed.to_string());
+                }
+                if ui
+                    .add(
+                        egui::Button::image_and_text(
+                            Icon::Lock.image(ICON_PT_SMALL, theme::ink_dim()),
+                            text::note("Lock seed"),
+                        )
+                        .frame(false),
+                    )
+                    .on_hover_text("Lock this seed for the next send: the same starting noise under a different prompt")
+                    .clicked()
+                {
+                    seed_lock_request.set(Some(seed));
+                }
+            });
+        }
+        let body_to_render = if extracted_seed.is_some() {
+            content_without_seed
+        } else {
+            msg.content.as_str()
+        };
+        // Markdown for the assistant; a selectable label for the user and the
+        // system, so a past prompt can be copied by selection.
+        if !body_to_render.is_empty() {
+            if msg.role == "assistant" {
+                CommonMarkViewer::new().show(ui, md_cache, body_to_render);
+            } else {
+                ui.add(
+                    egui::Label::new(RichText::new(body_to_render).color(text_color))
+                        .selectable(true),
+                );
             }
+        }
 
-            // Generated audio (TTS responses): render Play + Save buttons
-            // per WAV blob. Playback is best-effort — we shell out to the
-            // first available system player (paplay → aplay → afplay →
-            // xdg-open), no Rust audio dep, no libasound2-dev requirement.
-            if !msg.generated_audios.is_empty() {
-                ui.add_space(8.0);
-                for (i, wav_b64) in msg.generated_audios.iter().enumerate() {
-                    ui.horizontal(|ui| {
-                        Icon::Speaker.show(ui, 12.0, text_color);
-                        // Common case (1 audio response) takes the
-                        // borrowed branch — no per-frame allocation
-                        // for the label. Multi-audio chats hit the
-                        // format!() owned branch.
-                        let label_owned;
-                        let label: &str = if msg.generated_audios.len() == 1 {
-                            "Audio response"
-                        } else {
-                            label_owned = format!(
-                                "Audio {} of {}", i + 1, msg.generated_audios.len(),
-                            );
-                            &label_owned
-                        };
-                        ui.label(RichText::new(label).size(11.0).color(text_color));
-
-                        let play_btn = egui::Button::image_and_text(
-                            Icon::Play.image(11.0, t.text_primary),
-                            RichText::new("Play").size(11.0),
-                        );
-                        if ui.add(play_btn).clicked() {
-                            if let Err(e) = play_audio_blob(wav_b64) {
-                                tracing::warn!("audio playback failed: {e}");
-                                // Surface the failure inline too —
-                                // tracing::warn alone only shows in
-                                // the Server Log tab, which most users
-                                // never open. Common cases worth
-                                // making visible: no system audio
-                                // player on PATH (server-only Linux
-                                // install), no /tmp write perm.
-                                // Prefix with "Failed " so the
-                                // is_error_system_message helper picks
-                                // it up and the bubble gets the
-                                // error-tint styling, not neutral
-                                // system styling (which a user might
-                                // glance past).
-                                play_error_pending.set(Some(format!(
-                                    "Failed to play audio: {e}. \
-                                     Install paplay/aplay/afplay or use the Save \
-                                     button and play the WAV in an external app."
-                                )));
-                            }
+        // Generated audio: Play and Save per clip.
+        if !msg.generated_audios.is_empty() {
+            ui.add_space(widgets::GAP_WIDGETS);
+            for (i, wav_b64) in msg.generated_audios.iter().enumerate() {
+                ui.horizontal(|ui| {
+                    Icon::Speaker.show(ui, ICON_PT_SMALL, theme::ink_dim());
+                    let label_owned;
+                    let label: &str = if msg.generated_audios.len() == 1 {
+                        "Audio response"
+                    } else {
+                        label_owned = format!("Audio {} of {}", i + 1, msg.generated_audios.len());
+                        &label_owned
+                    };
+                    ui.label(text::note(label));
+                    let play_btn = egui::Button::image_and_text(
+                        Icon::Play.image(ICON_PT_SMALL, theme::ink()),
+                        text::note("Play"),
+                    );
+                    if ui.add(play_btn).clicked() {
+                        if let Err(e) = play_audio_blob(wav_b64) {
+                            tracing::warn!("audio playback failed: {e}");
+                            // "Failed" is the prefix is_error_system_message reads.
+                            play_error_pending.set(Some(format!(
+                                "Failed to play audio: {e}. \
+                                 Use the Save button and play the WAV in an external app."
+                            )));
                         }
-                        // Shared save path (dialog::save_button +
-                        // dialog::spawn_save — audit #8): the button
-                        // is disabled while another dialog worker is
-                        // alive, the decode happens at click time
-                        // (cheap, matches the Media Studio), and the
-                        // pick routes through ChatDialogResult::
-                        // SaveBytes so the main-thread drain surfaces
-                        // success/failure inline (mirrors image-save).
-                        if save_button(ui, dialog_in_flight, "Save").clicked() {
-                            use base64::Engine;
-                            let bytes = base64::engine::general_purpose::STANDARD
-                                .decode(wav_b64)
-                                .unwrap_or_default();
-                            let ts = chrono::Local::now().format("%Y%m%d_%H%M%S");
-                            let default_name = format!("tts_{ts}.wav");
+                    }
+                    if save_button(ui, dialog_in_flight, "Save").clicked() {
+                        use base64::Engine;
+                        let bytes = base64::engine::general_purpose::STANDARD
+                            .decode(wav_b64)
+                            .unwrap_or_default();
+                        let ts = chrono::Local::now().format("%Y%m%d_%H%M%S");
+                        let default_name = format!("tts_{ts}.wav");
+                        spawn_save(
+                            ui.ctx().clone(),
+                            pending_dialog.clone(),
+                            dialog_in_flight.clone(),
+                            default_name,
+                            &["wav"],
+                            "WAV audio",
+                            bytes,
+                        );
+                    }
+                });
+            }
+        }
+
+        // Generated images, with Save all above a set.
+        if !msg.generated_images.is_empty() {
+            ui.add_space(widgets::GAP_WIDGETS);
+            if msg.generated_images.len() > 1 {
+                ui.horizontal(|ui| {
+                    widgets::readout(ui, widgets::READOUT_W, &format!("{} images", msg.generated_images.len()));
+                    use std::sync::atomic::Ordering;
+                    let dialog_busy = dialog_in_flight.load(Ordering::Relaxed);
+                    let save_all_resp = ui.add_enabled(!dialog_busy, egui::Button::new(text::note("Save all")));
+                    let save_all_tip = if dialog_busy {
+                        "Waiting for the open file dialog to close..."
+                    } else {
+                        "Save all images to a folder"
+                    };
+                    if save_all_resp.on_hover_text(save_all_tip).clicked() {
+                        use base64::Engine;
+                        let files: Vec<(String, Vec<u8>)> = msg
+                            .generated_images
+                            .iter()
+                            .enumerate()
+                            .filter_map(|(j, b64)| {
+                                base64::engine::general_purpose::STANDARD
+                                    .decode(b64)
+                                    .ok()
+                                    .map(|bytes| (format!("image_{}_{}.png", msg.timestamp, j), bytes))
+                            })
+                            .collect();
+                        let slot = pending_dialog.clone();
+                        spawn_dialog_worker(dialog_in_flight.clone(), ui.ctx().clone(), move |_| {
+                            if let Some(dir) = rfd::FileDialog::new().pick_folder() {
+                                if let Ok(mut g) = slot.lock() {
+                                    *g = Some(ChatDialogResult::SaveBytesMany { dir, files });
+                                }
+                            }
+                        });
+                    }
+                });
+                ui.add_space(widgets::GAP_LABEL);
+            }
+            for (i, img_b64) in msg.generated_images.iter().enumerate() {
+                let tex_key = image_cache_key("gen", img_b64, i);
+                let tex = image_textures.entry(tex_key.clone()).or_insert_with(|| {
+                    load_base64_texture(ui, img_b64, &tex_key)
+                });
+                let tex_handle = tex.clone();
+                let tex_size = tex.size_vec2();
+                let max_width = ui.available_width() * GEN_IMAGE_MAX_FRAC;
+                let scale = (max_width / tex_size.x).min(1.0);
+                crate::image_viewer::clickable_image(ui, &tex_handle, tex_size * scale);
+                ui.horizontal(|ui| {
+                    widgets::readout(ui, widgets::READOUT_WIDE_W, &format!("{}x{}", tex_size.x as u32, tex_size.y as u32));
+                    use std::sync::atomic::Ordering;
+                    let dialog_busy = dialog_in_flight.load(Ordering::Relaxed);
+                    let save_resp = ui.add_enabled(!dialog_busy, egui::Button::new(text::note("Save")));
+                    let save_tip = if dialog_busy {
+                        "Waiting for the open file dialog to close..."
+                    } else {
+                        "Save image to disk"
+                    };
+                    if save_resp.on_hover_text(save_tip).clicked() {
+                        use base64::Engine;
+                        if let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(img_b64) {
+                            let default_name = format!("image_{}_{}.png", msg.timestamp, i);
                             spawn_save(
                                 ui.ctx().clone(),
                                 pending_dialog.clone(),
                                 dialog_in_flight.clone(),
                                 default_name,
-                                &["wav"],
-                                "WAV audio",
+                                &["png"],
+                                "PNG image",
                                 bytes,
                             );
                         }
-                    });
-                }
-            }
-
-            // Generated images
-            if !msg.generated_images.is_empty() {
-                ui.add_space(8.0);
-                // Save-all toolbar: only appears for multi-image responses
-                // where N>1 makes per-image clicking tedious. Picks a
-                // directory once and writes image_<ts>_0.png ... _N-1.png
-                // into it. Skips dialog cancels silently.
-                if msg.generated_images.len() > 1 {
-                    ui.horizontal(|ui| {
-                        ui.label(
-                            RichText::new(format!("{} images", msg.generated_images.len()))
-                                .size(10.0)
-                                .strong()
-                                .color(t.text_secondary),
-                        );
-                        ui.separator();
-                        use std::sync::atomic::Ordering;
-                        let dialog_busy = dialog_in_flight.load(Ordering::Relaxed);
-                        let save_all_btn = egui::Button::new(
-                            RichText::new("Save all").size(11.0),
-                        );
-                        let save_all_resp = ui.add_enabled(!dialog_busy, save_all_btn);
-                        let save_all_tip = if dialog_busy {
-                            "Waiting for the open file dialog to close…"
-                        } else {
-                            "Save all images to a folder"
-                        };
-                        if save_all_resp.on_hover_text(save_all_tip).clicked() {
-                            // Snapshot all image bytes on the GUI
-                            // thread (cheap base64 decode), then run
-                            // pick_folder off-thread so the dialog
-                            // doesn't deadlock the egui main loop.
-                            use base64::Engine;
-                            let files: Vec<(String, Vec<u8>)> = msg
-                                .generated_images
-                                .iter()
-                                .enumerate()
-                                .filter_map(|(j, b64)| {
-                                    base64::engine::general_purpose::STANDARD
-                                        .decode(b64)
-                                        .ok()
-                                        .map(|bytes| (format!("image_{}_{}.png", msg.timestamp, j), bytes))
-                                })
-                                .collect();
-                            let slot = pending_dialog.clone();
-                            spawn_dialog_worker(dialog_in_flight.clone(), ui.ctx().clone(), move |_| {
-                                if let Some(dir) = rfd::FileDialog::new().pick_folder() {
-                                    if let Ok(mut g) = slot.lock() {
-                                        *g = Some(ChatDialogResult::SaveBytesMany { dir, files });
-                                    }
-                                }
-                            });
-                        }
-                    });
-                    ui.add_space(4.0);
-                }
-                for (i, img_b64) in msg.generated_images.iter().enumerate() {
-                    // See msg_* call site comment + image_cache_key
-                    // docstring — content-hash keying defeats the
-                    // same-minute timestamp collision.
-                    let tex_key = image_cache_key("gen", img_b64, i);
-                    // One HashMap lookup per visible generated image
-                    // per frame. The handle returned by
-                    // entry().or_insert_with borrows image_textures
-                    // but tex_id and tex_size are Copy - extract them so the borrow
-                    // ends before ui.image() runs, without a second lookup.
-                    let tex = image_textures.entry(tex_key.clone()).or_insert_with(|| {
-                        load_base64_texture(ui, img_b64, &tex_key)
-                    });
-                    let tex_handle = tex.clone();
-                    let tex_size = tex.size_vec2();
-                    let max_width = ui.available_width() * 0.9;
-                    let scale = (max_width / tex_size.x).min(1.0);
-                    crate::image_viewer::clickable_image(ui, &tex_handle, tex_size * scale);
-                    let tex_size_opt = Some(tex_size);
-                    // Save / Copy actions row: dimensions + buttons. Renders even
-                    // before the texture decodes so the user has a stable target.
-                    ui.horizontal(|ui| {
-                        if let Some(sz) = tex_size_opt {
-                            ui.label(
-                                RichText::new(format!("{}\u{00D7}{}", sz.x as u32, sz.y as u32))
-                                    .size(10.0)
-                                    .color(t.text_muted),
-                            );
-                            ui.separator();
-                        }
-                        // Save: opens a file dialog defaulting to PNG. The
-                        // server emits PNG-encoded base64 today; if/when WebP
-                        // support lands, the format selector will follow.
-                        // Worker-thread to avoid the rfd-on-Linux deadlock.
-                        use std::sync::atomic::Ordering;
-                        let dialog_busy = dialog_in_flight.load(Ordering::Relaxed);
-                        let save_btn = egui::Button::new(
-                            RichText::new("Save").size(11.0),
-                        );
-                        let save_resp = ui.add_enabled(!dialog_busy, save_btn);
-                        let save_tip = if dialog_busy {
-                            "Waiting for the open file dialog to close…"
-                        } else {
-                            "Save image to disk"
-                        };
-                        if save_resp.on_hover_text(save_tip).clicked() {
-                            use base64::Engine;
-                            if let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(img_b64) {
-                                let default_name = format!("image_{}_{}.png", msg.timestamp, i);
-                                // Shared single-file save worker
-                                // (dialog::spawn_save — audit #8);
-                                // same SaveBytes round-trip as the
-                                // TTS save + Media Studio saves.
-                                spawn_save(
-                                    ui.ctx().clone(),
-                                    pending_dialog.clone(),
-                                    dialog_in_flight.clone(),
-                                    default_name,
-                                    &["png"],
-                                    "PNG image",
-                                    bytes,
-                                );
-                            }
-                        }
-                        // Copy as base64 to clipboard. Useful when chaining
-                        // through external tools that consume data: URIs.
-                        if ui
-                            .add(egui::Button::image_and_text(
-                                Icon::Copy.image(12.0, t.text_secondary),
-                                RichText::new("Copy b64").size(11.0),
-                            ).small())
-                            .on_hover_text("Copy base64 string to clipboard")
-                            .clicked()
-                        {
-                            ui.ctx().copy_text(img_b64.clone());
-                        }
-                    });
-                    ui.add_space(6.0);
-                }
-            }
-
-            // Assistant action row: copy text to clipboard. Available
-            // whenever the message has any text content (skip for
-            // image-only generations where content is empty).
-            if !is_user && !is_system && !msg.content.is_empty() {
-                ui.add_space(6.0);
-                ui.horizontal(|ui| {
+                    }
                     if ui
-                        .add(egui::Button::image_and_text(
-                            Icon::Copy.image(12.0, t.text_secondary),
-                            RichText::new("Copy").size(11.0),
-                        ).small())
-                        .on_hover_text("Copy response text to clipboard")
+                        .add(
+                            egui::Button::image_and_text(
+                                Icon::Copy.image(ICON_PT_SMALL, theme::ink_dim()),
+                                text::note("Copy b64"),
+                            )
+                            .frame(false),
+                        )
+                        .on_hover_text("Copy the base64 string to the clipboard")
                         .clicked()
                     {
-                        ui.ctx().copy_text(msg.content.clone());
+                        ui.ctx().copy_text(img_b64.clone());
                     }
                 });
+                ui.add_space(widgets::GAP_LABEL);
             }
+        }
 
-            // Timing info — text models report tokens/sec + count;
-            // image-gen / TTS responses arrive with token_count=0 so
-            // those columns would render as "0.0 tok/s | 0 tokens"
-            // which is noise. format_timing_line() collapses to a
-            // duration-only string in that case.
-            if !is_user && !is_system {
+        // The footer of an assistant row: the timing readout on the left,
+        // Copy on the right. Image-gen and TTS replies carry no tokens, and
+        // format_timing_line collapses to the duration for them.
+        if !is_user && !is_system && (!msg.content.is_empty() || msg.timing.is_some()) {
+            ui.add_space(widgets::GAP_LABEL);
+            ui.horizontal(|ui| {
                 if let Some(timing) = msg.timing {
-                    ui.add_space(8.0);
-                    ui.separator();
-                    ui.add_space(4.0);
-                    ui.label(
-                        RichText::new(format_timing_line(timing))
-                            .size(10.0)
-                            .color(t.text_muted),
-                    );
+                    ui.label(text::readout(&format_timing_line(timing)));
                 }
-            }
-        });
+                if !msg.content.is_empty() {
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui
+                            .add(
+                                egui::Button::image_and_text(
+                                    Icon::Copy.image(ICON_PT_SMALL, theme::ink_dim()),
+                                    text::note("Copy"),
+                                )
+                                .frame(false),
+                            )
+                            .on_hover_text("Copy the response text to the clipboard")
+                            .clicked()
+                        {
+                            ui.ctx().copy_text(msg.content.clone());
+                        }
+                    });
+                }
+            });
+        }
     });
 }
 
-/// Render streaming message
+/// Longest side of an attached image in a message, and the share of the row
+/// a generated image may take.
+const MSG_IMAGE_MAX_PX: f32 = 200.0;
+const GEN_IMAGE_MAX_FRAC: f32 = 0.9;
+
+/// The reply being streamed: an assistant row with a lamp. An image reply
+/// shows its step and a meter; a text reply shows the markdown so far and a
+/// painted caret.
 fn render_streaming_message(
     ui: &mut egui::Ui,
     content: &str,
     image_progress: &Option<(usize, usize)>,
     image_started_at: Option<std::time::Instant>,
-    t: &ChatTheme,
     md_cache: &mut CommonMarkCache,
 ) {
-    ui.horizontal(|ui| {
-        // AI avatar
-        let (avatar_bg, _, _) = t.avatar("assistant", false);
-        egui::Frame {
-            inner_margin: egui::Margin::symmetric(8, 4),
-            corner_radius: CornerRadius::same(4),
-            fill: avatar_bg,
-            ..Default::default()
-        }
-        .show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.add(Icon::Bot.image(12.0, Color32::WHITE));
-                ui.label(RichText::new("AI").size(11.0).strong().color(Color32::WHITE));
-            });
-        });
-
-        ui.add_space(8.0);
-
-        // Streaming bubble
-        let (bubble_fill, _, _) = t.bubble("assistant", theme::is_dark(), false);
-        egui::Frame {
-            inner_margin: egui::Margin::symmetric(12, 10),
-            corner_radius: CornerRadius::same(6),
-            fill: bubble_fill,
-            stroke: Stroke::new(2.0, theme::accent()),
-            ..Default::default()
-        }
-        .show(ui, |ui| {
-            ui.set_max_width(ui.available_width() * 0.75);
-
+    message_row(ui, theme::panel(), theme::accent(), "ASSISTANT", "", |ui| {
+        ui.horizontal(|ui| {
+            widgets::lamp_inline(ui, true, theme::accent());
+            ui.label(text::label("GENERATING"));
             if let Some((completed, total)) = image_progress {
-                // ETA: extrapolate from observed mean step duration.
-                // Skip while completed < 1 (no data point yet); once
-                // we have one observation the linear estimate is
-                // good enough — diffusion step duration is fairly
-                // uniform per request (constant batch + resolution).
-                // ETA off-by-one fix: when we observe "Step C/N",
-                // step C is in progress (started_at was captured the
-                // moment we saw step 1 start, so at that instant no
-                // step has completed yet). Completed = c - 1; gate on
-                // c >= 2 so we have at least one full step duration
-                // to extrapolate. At c=1, elapsed ≈ 0 and dividing
-                // by c=1 would yield "~0s left" briefly, which is
-                // misleading on a 30-step run.
-                let eta_str = if let (Some(start), c) = (image_started_at, *completed) {
-                    if c >= 2 && c <= *total {
-                        let elapsed = start.elapsed().as_secs_f32();
-                        let completed_steps = (c - 1) as f32;
-                        let per_step = elapsed / completed_steps;
-                        let remaining_steps = (*total - c + 1) as f32;
-                        let remaining = per_step * remaining_steps;
-                        format!(" · ~{} left", ModelModality::format_eta_remaining(remaining))
-                    } else {
-                        String::new()
+                // ETA from the mean step so far. Step c is in progress, so c - 1
+                // steps are complete; the estimate needs at least one.
+                let eta = match (image_started_at, *completed) {
+                    (Some(start), c) if c >= 2 && c <= *total => {
+                        let per_step = start.elapsed().as_secs_f32() / (c - 1) as f32;
+                        let remaining = per_step * (*total - c + 1) as f32;
+                        format!(" ~{} left", ModelModality::format_eta_remaining(remaining))
                     }
-                } else {
-                    String::new()
+                    _ => String::new(),
                 };
-                ui.horizontal(|ui| {
-                    ui.spinner();
-                    ui.label(
-                        RichText::new(format!("Generating image... Step {}/{}{}", completed, total, eta_str))
-                            .size(12.0)
-                            .color(theme::warning()),
-                    );
-                });
-                ui.add_space(4.0);
-                let progress = *completed as f32 / (*total).max(1) as f32;
-                ui.add(egui::ProgressBar::new(progress).text(format!("{:.0}%", progress * 100.0)));
-            } else {
-                ui.horizontal(|ui| {
-                    ui.spinner();
-                    ui.label(RichText::new("Generating...").size(10.0).color(t.text_muted));
-                });
-                ui.add_space(4.0);
-                CommonMarkViewer::new().show(ui, md_cache, content);
-                // Painted rather than written: U+2588 FULL BLOCK is not in
-                // the bundled fonts and drew as a box outline, which reads as
-                // a broken character trailing the text it belongs to.
-                let (caret, _) =
-                    ui.allocate_exact_size(egui::vec2(7.0, 14.0), egui::Sense::hover());
-                ui.painter()
-                    .rect_filled(caret.shrink2(egui::vec2(1.0, 1.0)), 1.0, theme::accent());
+                ui.label(text::readout(&format!("step {}/{}{}", completed, total, eta)));
             }
         });
+        if let Some((completed, total)) = image_progress {
+            ui.add_space(widgets::GAP_LABEL);
+            let progress = *completed as f32 / (*total).max(1) as f32;
+            surface::meter(ui, progress, widgets::METER_SIZE, theme::accent());
+        } else {
+            ui.add_space(widgets::GAP_LABEL);
+            CommonMarkViewer::new().show(ui, md_cache, content);
+            // Painted: U+2588 FULL BLOCK is not in the bundled fonts.
+            let (caret, _) = ui.allocate_exact_size(CARET_SIZE, egui::Sense::hover());
+            ui.painter()
+                .rect_filled(caret.shrink2(egui::vec2(1.0, 1.0)), 1.0, theme::accent());
+        }
     });
 }
 
-/// Render typing indicator. Label text adapts to modality so users
-/// see at-a-glance what flavor of generation is starting.
-fn render_typing_indicator(
-    ui: &mut egui::Ui,
-    t: &ChatTheme,
-    modality: ModelModality,
-    loading_model: Option<&str>,
-) {
-    // A selected-but-unloaded model pays a load on the first send —
-    // the server streams no tokens until the weights are in memory,
-    // which can be several seconds and otherwise looks like a hang.
-    // Swap the generic "Thinking…" for an explicit load message so the
-    // wait is legible.
+/// The wait before the first chunk: a lamp and what is being waited for. A
+/// selected model that is not loaded pays its load on the first send, which
+/// is named rather than shown as a generic wait.
+fn render_typing_indicator(ui: &mut egui::Ui, modality: ModelModality, loading_model: Option<&str>) {
     let loading_label = loading_model
-        .map(|m| format!("Loading {} into memory…", truncate_with_ellipsis(m, 28)));
+        .map(|m| format!("Loading {} into memory...", truncate_with_ellipsis(m, MODEL_CHARS)));
     let label_text: &str = loading_label.as_deref().unwrap_or(modality.typing_label());
     ui.horizontal(|ui| {
-        let (avatar_bg, _, _) = t.avatar("assistant", false);
-        egui::Frame {
-            inner_margin: egui::Margin::symmetric(8, 4),
-            corner_radius: CornerRadius::same(4),
-            fill: avatar_bg,
-            ..Default::default()
-        }
-        .show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.add(Icon::Bot.image(12.0, Color32::WHITE));
-                ui.label(RichText::new("AI").size(11.0).strong().color(Color32::WHITE));
-            });
-        });
-
-        ui.add_space(8.0);
-
-        egui::Frame {
-            inner_margin: egui::Margin::symmetric(12, 10),
-            corner_radius: CornerRadius::same(6),
-            fill: t.surface,
-            stroke: Stroke::new(1.0, theme::accent()),
-            ..Default::default()
-        }
-        .show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.spinner();
-                ui.label(
-                    RichText::new(label_text)
-                        .size(13.0)
-                        .color(theme::accent())
-                        .italics(),
-                );
-            });
-        });
+        widgets::lamp_inline(ui, true, theme::accent());
+        ui.label(text::note(label_text));
     });
-
-
 }
 
 #[cfg(test)]
@@ -2597,5 +1827,39 @@ mod tests {
         // One interactive row plus its spacing, so the gap is real and not a rounding
         // difference between two ways of adding the same numbers.
         assert!(streaming - idle >= 16.0, "gap {}", streaming - idle);
+    }
+
+    /// A message row names its role in text, so the role does not rest on the
+    /// colour of a stripe alone.
+    #[test]
+    fn a_message_row_names_its_role_in_text() {
+        use egui_kittest::kittest::NodeT;
+        let mut user = ChatMessage::system("hello");
+        user.role = "user".to_string();
+        let mut assistant = ChatMessage::system("world");
+        assistant.role = "assistant".to_string();
+        let messages = [user, assistant];
+        let mut md_cache = CommonMarkCache::default();
+        let mut textures = HashMap::new();
+        let pending = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let in_flight = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let seed = std::cell::Cell::new(None);
+        let play_err = std::cell::Cell::new(None);
+        let mut harness = egui_kittest::Harness::new_ui(|ui| {
+            for msg in &messages {
+                render_message(ui, msg, &mut md_cache, &mut textures, &pending, &in_flight, &seed, &play_err);
+            }
+        });
+        harness.run();
+        let labels: Vec<String> = harness
+            .root()
+            .children_recursive()
+            .map(|n| {
+                let ak = n.accesskit_node();
+                format!("{}{}", ak.label().unwrap_or_default(), ak.value().unwrap_or_default())
+            })
+            .collect();
+        assert!(labels.iter().any(|l| l == "YOU"), "{labels:?}");
+        assert!(labels.iter().any(|l| l == "ASSISTANT"), "{labels:?}");
     }
 }
