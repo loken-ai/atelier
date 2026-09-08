@@ -41,6 +41,106 @@ impl Playing {
     }
 }
 
+/// How often the audio thread looks for a failed stream.
+#[cfg(feature = "native-audio")]
+const STREAM_POLL: std::time::Duration = std::time::Duration::from_millis(250);
+/// The pause before a lost device is opened again.
+#[cfg(feature = "native-audio")]
+const REOPEN_DELAY: std::time::Duration = std::time::Duration::from_secs(1);
+/// Stream errors logged in one burst before the rest are counted.
+const ERRORS_LOGGED_PER_BURST: u64 = 3;
+/// A burst ends, and the count is reported, after this long without an error.
+const ERROR_BURST_GAP: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// A tally of stream errors that logs the first few of a burst and counts the rest, so a
+/// device that fails on every period does not write a line per period.
+struct ErrorTally {
+    seen: u64,
+    last: Option<std::time::Instant>,
+}
+
+impl ErrorTally {
+    const fn new() -> Self {
+        Self {
+            seen: 0,
+            last: None,
+        }
+    }
+
+    /// Record one error at `now`. Returns the number of errors a new burst closes with
+    /// (to be reported), and whether this error is to be logged itself.
+    fn record(&mut self, now: std::time::Instant) -> (Option<u64>, bool) {
+        let closed = match self.last {
+            Some(last)
+                if now.duration_since(last) > ERROR_BURST_GAP
+                    && self.seen > ERRORS_LOGGED_PER_BURST =>
+            {
+                let n = self.seen;
+                self.seen = 0;
+                Some(n)
+            }
+            Some(last) if now.duration_since(last) > ERROR_BURST_GAP => {
+                self.seen = 0;
+                None
+            }
+            _ => None,
+        };
+        self.last = Some(now);
+        self.seen += 1;
+        (closed, self.seen <= ERRORS_LOGGED_PER_BURST)
+    }
+}
+
+/// Open the default device and start a stream fed from `slot`. `broken` is raised by the
+/// stream's error callback so the owning thread can close and reopen it.
+#[cfg(feature = "native-audio")]
+fn open_stream(
+    slot: &Arc<Mutex<Option<Arc<Playing>>>>,
+    broken: &Arc<AtomicBool>,
+) -> Result<(cpal::Stream, u32, usize), String> {
+    let host = cpal::default_host();
+    let device = host
+        .default_output_device()
+        .ok_or("no audio output device")?;
+    let config = device
+        .default_output_config()
+        .map_err(|e| format!("audio device config: {e}"))?;
+    let sample_rate = config.sample_rate().0;
+    let channels = config.channels() as usize;
+    let flag = broken.clone();
+    let mut tally = ErrorTally::new();
+    let err_fn = move |e: cpal::StreamError| {
+        let (closed, log_this) = tally.record(std::time::Instant::now());
+        if let Some(n) = closed {
+            tracing::warn!("audio stream: {n} errors in the last burst");
+        }
+        if log_this {
+            tracing::warn!("audio stream error: {e}");
+        }
+        flag.store(true, Ordering::Relaxed);
+    };
+    let slot = slot.clone();
+    // The callback is the real-time thread: no allocation, no blocking,
+    // and a failed lock means "emit silence this period" rather than
+    // stalling the device.
+    let stream = match config.sample_format() {
+        cpal::SampleFormat::F32 => device.build_output_stream(
+            &config.into(),
+            move |out: &mut [f32], _: &cpal::OutputCallbackInfo| {
+                fill(out, &slot);
+            },
+            err_fn,
+            None,
+        ),
+        fmt => return Err(format!("unsupported sample format {fmt:?}")),
+    }
+    .map_err(|e| format!("open audio stream: {e}"))?;
+    stream
+        .play()
+        .map_err(|e| format!("start audio stream: {e}"))?;
+    Ok((stream, sample_rate, channels))
+}
+
 /// A handle to an output stream owned by a dedicated thread.
 ///
 /// The stream itself is NOT `Send` - it is bound to the thread that opened it - so it
@@ -70,46 +170,30 @@ impl Output {
         std::thread::Builder::new()
             .name("audio-out".into())
             .spawn(move || {
-                let opened = (|| -> Result<(cpal::Stream, u32, usize), String> {
-                    let host = cpal::default_host();
-                    let device = host
-                        .default_output_device()
-                        .ok_or("no audio output device")?;
-                    let config = device
-                        .default_output_config()
-                        .map_err(|e| format!("audio device config: {e}"))?;
-                    let sample_rate = config.sample_rate().0;
-                    let channels = config.channels() as usize;
-                    let err_fn = |e| tracing::warn!("audio stream error: {e}");
-                    // The callback is the real-time thread: no allocation, no blocking,
-                    // and a failed lock means "emit silence this period" rather than
-                    // stalling the device.
-                    let stream = match config.sample_format() {
-                        cpal::SampleFormat::F32 => device.build_output_stream(
-                            &config.into(),
-                            move |out: &mut [f32], _: &cpal::OutputCallbackInfo| {
-                                fill(out, &slot);
-                            },
-                            err_fn,
-                            None,
-                        ),
-                        fmt => return Err(format!("unsupported sample format {fmt:?}")),
+                // A stream that fails is closed and the device opened again, rather than
+                // kept: once the device is gone the callback fails on every period, and
+                // nothing short of reopening brings the sound back.
+                let broken = Arc::new(AtomicBool::new(false));
+                let mut opened = open_stream(&slot, &broken);
+                let _ = tx.send(opened.as_ref().map(|o| (o.1, o.2)).map_err(Clone::clone));
+                let Ok(mut held) = opened else { return };
+                loop {
+                    while !broken.load(Ordering::Relaxed) {
+                        std::thread::park_timeout(STREAM_POLL);
                     }
-                    .map_err(|e| format!("open audio stream: {e}"))?;
-                    stream
-                        .play()
-                        .map_err(|e| format!("start audio stream: {e}"))?;
-                    Ok((stream, sample_rate, channels))
-                })();
-                match opened {
-                    Ok((stream, rate, ch)) => {
-                        let _ = tx.send(Ok((rate, ch)));
-                        // Hold the stream for the life of the process: dropping it
-                        // closes the device, and everything else here is shared state.
-                        std::mem::forget(stream);
-                    }
-                    Err(e) => {
-                        let _ = tx.send(Err(e));
+                    tracing::warn!("audio output lost; reopening the device");
+                    drop(held);
+                    broken.store(false, Ordering::Relaxed);
+                    loop {
+                        std::thread::sleep(REOPEN_DELAY);
+                        opened = open_stream(&slot, &broken);
+                        match opened {
+                            Ok(o) => {
+                                held = o;
+                                break;
+                            }
+                            Err(e) => tracing::warn!("audio output still unavailable: {e}"),
+                        }
                     }
                 }
             })
@@ -373,6 +457,19 @@ mod tests {
     //! this machine; nothing about them is automatic. Run one by name with
     //!   cargo test --release -p atelier --lib NAME -- --ignored --nocapture
     use super::*;
+
+    #[test]
+    fn a_burst_of_stream_errors_is_logged_a_few_times_then_counted() {
+        use super::{ErrorTally, ERRORS_LOGGED_PER_BURST, ERROR_BURST_GAP};
+        let mut tally = ErrorTally::new();
+        let t0 = std::time::Instant::now();
+        let logged = (0..100).filter(|_| tally.record(t0).1).count() as u64;
+        assert_eq!(logged, ERRORS_LOGGED_PER_BURST);
+        // After a quiet gap the burst closes with its count and logging resumes.
+        let (closed, log_this) = tally.record(t0 + ERROR_BURST_GAP * 2);
+        assert_eq!(closed, Some(100));
+        assert!(log_this);
+    }
 
     /// THE device gate: with a real output device, the operating system must actually
     /// PULL samples, and it must pull them at the clip's own rate.
