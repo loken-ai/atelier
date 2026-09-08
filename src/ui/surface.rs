@@ -74,13 +74,24 @@ pub fn plate_shape(rect: Rect, radius: f32) -> Shape {
     let catch_y = rect.bottom() - HALF_PX - HAIRLINE;
     Shape::Vec(vec![
         gradient_shape(rect, p.plate_top, p.plate_bottom),
-        Shape::rect_stroke(rect, radius, Stroke::new(HAIRLINE, p.plate_edge), StrokeKind::Inside),
+        Shape::rect_stroke(
+            rect,
+            radius,
+            Stroke::new(HAIRLINE, p.plate_edge),
+            StrokeKind::Inside,
+        ),
         Shape::line_segment(
-            [Pos2::new(rect.left() + LIP_INSET, lip_y), Pos2::new(rect.right() - LIP_INSET, lip_y)],
+            [
+                Pos2::new(rect.left() + LIP_INSET, lip_y),
+                Pos2::new(rect.right() - LIP_INSET, lip_y),
+            ],
             Stroke::new(LIP_W, black(p.lip_shadow_a)),
         ),
         Shape::line_segment(
-            [Pos2::new(rect.left() + LIP_INSET, catch_y), Pos2::new(rect.right() - LIP_INSET, catch_y)],
+            [
+                Pos2::new(rect.left() + LIP_INSET, catch_y),
+                Pos2::new(rect.right() - LIP_INSET, catch_y),
+            ],
             Stroke::new(HAIRLINE, white(p.light_catch_a)),
         ),
     ])
@@ -98,14 +109,25 @@ pub fn recess_shape(rect: Rect, radius: f32) -> Shape {
     Shape::Vec(vec![
         Shape::rect_filled(rect, radius, p.well),
         Shape::line_segment(
-            [Pos2::new(rect.left() + radius, shadow_y), Pos2::new(rect.right() - radius, shadow_y)],
+            [
+                Pos2::new(rect.left() + radius, shadow_y),
+                Pos2::new(rect.right() - radius, shadow_y),
+            ],
             Stroke::new(LIP_W, black(p.well_shadow_a)),
         ),
         Shape::line_segment(
-            [Pos2::new(rect.left() + radius, catch_y), Pos2::new(rect.right() - radius, catch_y)],
+            [
+                Pos2::new(rect.left() + radius, catch_y),
+                Pos2::new(rect.right() - radius, catch_y),
+            ],
             Stroke::new(HAIRLINE, white(p.well_catch_a)),
         ),
-        Shape::rect_stroke(rect, radius, Stroke::new(HAIRLINE, p.well_edge), StrokeKind::Inside),
+        Shape::rect_stroke(
+            rect,
+            radius,
+            Stroke::new(HAIRLINE, p.well_edge),
+            StrokeKind::Inside,
+        ),
     ])
 }
 
@@ -120,7 +142,10 @@ pub fn screen_shape(rect: Rect) -> Shape {
     Shape::Vec(vec![
         Shape::rect_filled(rect, WELL_RADIUS, p.well),
         Shape::line_segment(
-            [Pos2::new(rect.left() + WELL_RADIUS, bezel_y), Pos2::new(rect.right() - WELL_RADIUS, bezel_y)],
+            [
+                Pos2::new(rect.left() + WELL_RADIUS, bezel_y),
+                Pos2::new(rect.right() - WELL_RADIUS, bezel_y),
+            ],
             Stroke::new(SCREEN_BEZEL_W, black(p.well_shadow_a)),
         ),
     ])
@@ -134,19 +159,43 @@ pub fn screen(ui: &Ui, rect: Rect) {
 pub fn printed(ui: &Ui, pos: Pos2, s: &str, font: FontId, ink: Color32, anchor: Align2) {
     let p = palette();
     let painter = ui.painter();
-    painter.text(pos + Vec2::new(0.0, 1.0), anchor, s, font.clone(), white(p.print_halo_a));
+    painter.text(
+        pos + Vec2::new(0.0, 1.0),
+        anchor,
+        s,
+        font.clone(),
+        white(p.print_halo_a),
+    );
     painter.text(pos, anchor, s, font, ink);
 }
 
 /// Letter-spaced text, painted one glyph at a time from `left`. Returns the
 /// width painted.
-pub fn tracked_text(ui: &Ui, left: Pos2, s: &str, font: FontId, ink: Color32, tracking: f32) -> f32 {
+pub fn tracked_text(
+    ui: &Ui,
+    left: Pos2,
+    s: &str,
+    font: FontId,
+    ink: Color32,
+    tracking: f32,
+) -> f32 {
     let mut x = left.x;
     let mut buf = [0u8; 4];
     for ch in s.chars() {
         let glyph = ch.encode_utf8(&mut buf);
-        let w = ui.fonts_mut(|f| f.layout_no_wrap(glyph.to_owned(), font.clone(), ink).size().x);
-        printed(ui, Pos2::new(x, left.y), glyph, font.clone(), ink, Align2::LEFT_TOP);
+        let w = ui.fonts_mut(|f| {
+            f.layout_no_wrap(glyph.to_owned(), font.clone(), ink)
+                .size()
+                .x
+        });
+        printed(
+            ui,
+            Pos2::new(x, left.y),
+            glyph,
+            font.clone(),
+            ink,
+            Align2::LEFT_TOP,
+        );
         x += w + tracking;
     }
     (x - left.x - tracking).max(0.0)
@@ -171,7 +220,13 @@ pub fn caption(ui: &Ui, at: Pos2, s: &str) -> f32 {
     let font = FontId::proportional(text::CAPTION_PT);
     let mut y = at.y;
     for line in s.lines() {
-        ui.painter().text(Pos2::new(at.x, y), Align2::LEFT_TOP, line, font.clone(), p.ink_dim);
+        ui.painter().text(
+            Pos2::new(at.x, y),
+            Align2::LEFT_TOP,
+            line,
+            font.clone(),
+            p.ink_dim,
+        );
         y += text::CAPTION_PITCH;
     }
     y
@@ -182,13 +237,25 @@ pub fn lamp(ui: &Ui, centre: Pos2, r: f32, on: bool, tint: Color32) {
     let p = palette();
     let painter = ui.painter();
     if on {
-        painter.circle_filled(centre, r * LAMP_HALO_OUTER_R, tint.gamma_multiply(LAMP_HALO_OUTER_GAMMA));
-        painter.circle_filled(centre, r * LAMP_HALO_INNER_R, tint.gamma_multiply(LAMP_HALO_INNER_GAMMA));
+        painter.circle_filled(
+            centre,
+            r * LAMP_HALO_OUTER_R,
+            tint.gamma_multiply(LAMP_HALO_OUTER_GAMMA),
+        );
+        painter.circle_filled(
+            centre,
+            r * LAMP_HALO_INNER_R,
+            tint.gamma_multiply(LAMP_HALO_INNER_GAMMA),
+        );
     }
     painter.circle_filled(centre, r, if on { tint } else { p.lamp_off });
     painter.circle_stroke(centre, r, Stroke::new(HAIRLINE, p.border));
     if on {
-        painter.circle_filled(centre - Vec2::splat(r * GLINT_OFFSET), r * GLINT_R, white(p.glint_a));
+        painter.circle_filled(
+            centre - Vec2::splat(r * GLINT_OFFSET),
+            r * GLINT_R,
+            white(p.glint_a),
+        );
     }
 }
 
@@ -228,8 +295,14 @@ pub fn chevron(ui: &Ui, rect: Rect, dir: Chevron, stroke: Stroke) {
     };
     let mid = rect.center().y;
     let painter = ui.painter();
-    painter.line_segment([Pos2::new(near, rect.top() + inset), Pos2::new(far, mid)], stroke);
-    painter.line_segment([Pos2::new(far, mid), Pos2::new(near, rect.bottom() - inset)], stroke);
+    painter.line_segment(
+        [Pos2::new(near, rect.top() + inset), Pos2::new(far, mid)],
+        stroke,
+    );
+    painter.line_segment(
+        [Pos2::new(far, mid), Pos2::new(near, rect.bottom() - inset)],
+        stroke,
+    );
 }
 
 #[cfg(test)]
@@ -260,16 +333,47 @@ mod tests {
                     recess(ui, rect, WELL_RADIUS);
                     screen(ui, rect);
                     let font = FontId::proportional(text::HEADING_PT);
-                    printed(ui, rect.left_top(), "PRINTED", font.clone(), palette().ink, Align2::LEFT_TOP);
-                    tracked_text(ui, rect.left_top(), "", font.clone(), palette().ink, text::TRACKING);
-                    tracked_text(ui, rect.left_top(), "AB", font, palette().ink, text::TRACKING);
+                    printed(
+                        ui,
+                        rect.left_top(),
+                        "PRINTED",
+                        font.clone(),
+                        palette().ink,
+                        Align2::LEFT_TOP,
+                    );
+                    tracked_text(
+                        ui,
+                        rect.left_top(),
+                        "",
+                        font.clone(),
+                        palette().ink,
+                        text::TRACKING,
+                    );
+                    tracked_text(
+                        ui,
+                        rect.left_top(),
+                        "AB",
+                        font,
+                        palette().ink,
+                        text::TRACKING,
+                    );
                     heading(ui, rect.left_top(), "HEADING", rect.right());
                     caption(ui, rect.left_top(), "one\ntwo");
                     caption(ui, rect.left_top(), "");
                     lamp(ui, rect.center(), 4.0, true, palette().accent);
                     lamp(ui, rect.center(), 4.0, false, palette().accent);
-                    chevron(ui, rect, Chevron::Left, Stroke::new(HAIRLINE, palette().ink));
-                    chevron(ui, rect, Chevron::Right, Stroke::new(HAIRLINE, palette().ink));
+                    chevron(
+                        ui,
+                        rect,
+                        Chevron::Left,
+                        Stroke::new(HAIRLINE, palette().ink),
+                    );
+                    chevron(
+                        ui,
+                        rect,
+                        Chevron::Right,
+                        Stroke::new(HAIRLINE, palette().ink),
+                    );
                 }
                 for fraction in [-1.0, 0.0, 0.5, 2.0] {
                     meter(ui, fraction, Vec2::new(60.0, 8.0), palette().accent);
@@ -284,10 +388,19 @@ mod tests {
             let font = FontId::proportional(text::HEADING_PT);
             let glyphs: f32 = ["A", "B"]
                 .iter()
-                .map(|g| ui.fonts_mut(|f| f.layout_no_wrap(g.to_string(), font.clone(), Color32::WHITE).size().x))
+                .map(|g| {
+                    ui.fonts_mut(|f| {
+                        f.layout_no_wrap(g.to_string(), font.clone(), Color32::WHITE)
+                            .size()
+                            .x
+                    })
+                })
                 .sum();
             let tracked = tracked_text(ui, Pos2::ZERO, "AB", font, Color32::WHITE, text::TRACKING);
-            assert!(tracked > glyphs, "tracked {tracked} must exceed the bare glyphs {glyphs}");
+            assert!(
+                tracked > glyphs,
+                "tracked {tracked} must exceed the bare glyphs {glyphs}"
+            );
         });
     }
 

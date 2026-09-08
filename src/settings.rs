@@ -56,10 +56,9 @@ pub enum SettingsAction {
     LoadModel(String),
     UnloadModel(String),
     DeleteModel(String),
-    PullModel(String, String),  // (model_name, source)
+    PullModel(String, String), // (model_name, source)
     SaveConfig(crate::config_editor::Config),
 }
-
 
 /// Render profile edit modal
 pub fn render_edit_modal(
@@ -92,11 +91,7 @@ pub fn render_edit_modal(
                     // around each call were no-ops (clippy::if_then_empty).
                     ui.label(RichText::new("API Type").strong());
                     ui.horizontal(|ui| {
-                        ui.selectable_value(
-                            &mut profile.api_type,
-                            ApiType::Loken,
-                            "LOKEN",
-                        );
+                        ui.selectable_value(&mut profile.api_type, ApiType::Loken, "LOKEN");
                         ui.selectable_value(&mut profile.api_type, ApiType::Ollama, "Ollama");
                         ui.selectable_value(&mut profile.api_type, ApiType::OpenApi, "OpenAPI");
                     });
@@ -140,10 +135,7 @@ pub fn render_edit_modal(
                     // Buttons. Save on the left so Tab order from
                     // the form lands on it first (primary action).
                     ui.horizontal(|ui| {
-                        let save_resp = ui.add_enabled(
-                            name_valid,
-                            egui::Button::new("Save"),
-                        );
+                        let save_resp = ui.add_enabled(name_valid, egui::Button::new("Save"));
                         let tip = if name_valid {
                             "Save changes and close the modal\n\n\
                              Keyboard: Enter to save, Esc to cancel"
@@ -232,7 +224,9 @@ fn render_profile_params(ui: &mut egui::Ui, profile: &mut ApiProfile) {
             });
             ui.horizontal(|ui| {
                 ui.label("Max Tokens:");
-                ui.add(egui::DragValue::new(&mut profile.ollama_params.num_predict).range(-1..=32768));
+                ui.add(
+                    egui::DragValue::new(&mut profile.ollama_params.num_predict).range(-1..=32768),
+                );
                 ui.label(RichText::new("(-1 = unlimited)").weak());
             });
             ui.horizontal(|ui| {
@@ -242,8 +236,10 @@ fn render_profile_params(ui: &mut egui::Ui, profile: &mut ApiProfile) {
             });
             ui.horizontal(|ui| {
                 ui.label("Stop:");
-                ui.add(egui::TextEdit::singleline(&mut profile.ollama_params.stop)
-                    .hint_text("comma-separated, e.g. \\n\\n, ###"));
+                ui.add(
+                    egui::TextEdit::singleline(&mut profile.ollama_params.stop)
+                        .hint_text("comma-separated, e.g. \\n\\n, ###"),
+                );
             });
         }
         ApiType::OpenApi => {

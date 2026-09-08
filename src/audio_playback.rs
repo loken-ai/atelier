@@ -22,9 +22,8 @@ pub(crate) fn play_audio_blob(wav_b64: &str) -> Result<(), String> {
     // Fire-and-forget: one process-wide transport, so a second press replaces the
     // first clip instead of layering two players over each other - which is what the
     // spawn-a-player implementation did.
-    static ONESHOT: std::sync::OnceLock<
-        std::sync::Mutex<crate::audio_engine::Transport>,
-    > = std::sync::OnceLock::new();
+    static ONESHOT: std::sync::OnceLock<std::sync::Mutex<crate::audio_engine::Transport>> =
+        std::sync::OnceLock::new();
     let t = ONESHOT.get_or_init(|| std::sync::Mutex::new(crate::audio_engine::Transport::new()));
     let mut guard = t.lock().unwrap_or_else(|e| e.into_inner());
     guard.stop();
@@ -45,24 +44,31 @@ pub(crate) fn sweep_old_tts_temp_files(max_age: std::time::Duration) {
 }
 
 /// Test surface for the sweep. Same logic against an explicit dir.
-pub(crate) fn sweep_old_tts_temp_files_in(
-    dir: &std::path::Path,
-    max_age: std::time::Duration,
-) {
-    let Ok(read_dir) = std::fs::read_dir(dir) else { return; };
+pub(crate) fn sweep_old_tts_temp_files_in(dir: &std::path::Path, max_age: std::time::Duration) {
+    let Ok(read_dir) = std::fs::read_dir(dir) else {
+        return;
+    };
     let now = std::time::SystemTime::now();
     for entry in read_dir.flatten() {
         let name = entry.file_name();
-        let Some(name_str) = name.to_str() else { continue; };
+        let Some(name_str) = name.to_str() else {
+            continue;
+        };
         // Match the exact prefix + extension the writer uses so we
         // don't accidentally chew on unrelated WAVs the user has in
         // /tmp (e.g. from other tools).
         if !name_str.starts_with("llmgui_tts_") || !name_str.ends_with(".wav") {
             continue;
         }
-        let Ok(meta) = entry.metadata() else { continue; };
-        let Ok(mtime) = meta.modified() else { continue; };
-        let Ok(age) = now.duration_since(mtime) else { continue; };
+        let Ok(meta) = entry.metadata() else {
+            continue;
+        };
+        let Ok(mtime) = meta.modified() else {
+            continue;
+        };
+        let Ok(age) = now.duration_since(mtime) else {
+            continue;
+        };
         if age >= max_age {
             let _ = std::fs::remove_file(entry.path());
         }
@@ -118,29 +124,33 @@ mod tests {
         // tools' temp files (other prefix, other extension, no
         // extension at all) must survive even with the most
         // aggressive sweep.
-        let dir = std::env::temp_dir()
-            .join(format!("llmgui_sweep_test_{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("llmgui_sweep_test_{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).expect("seed tempdir");
 
-        let our_wav     = dir.join("llmgui_tts_abc.wav");   // delete
-        let other_pfx   = dir.join("not_ours_abc.wav");     // keep (prefix)
-        let other_ext   = dir.join("llmgui_tts_abc.mp3");   // keep (extension)
-        let other_both  = dir.join("random_file");          // keep (neither)
+        let our_wav = dir.join("llmgui_tts_abc.wav"); // delete
+        let other_pfx = dir.join("not_ours_abc.wav"); // keep (prefix)
+        let other_ext = dir.join("llmgui_tts_abc.mp3"); // keep (extension)
+        let other_both = dir.join("random_file"); // keep (neither)
         for p in [&our_wav, &other_pfx, &other_ext, &other_both] {
             std::fs::write(p, b"x").expect("seed");
         }
 
         sweep_old_tts_temp_files_in(&dir, std::time::Duration::ZERO);
 
-        assert!(!our_wav.exists(),
-            "llmgui_tts_*.wav must be deleted with zero-age sweep");
-        assert!(other_pfx.exists(),
+        assert!(
+            !our_wav.exists(),
+            "llmgui_tts_*.wav must be deleted with zero-age sweep"
+        );
+        assert!(
+            other_pfx.exists(),
             "non-llmgui_tts_ files must survive — prefix gate protects \
-             unrelated WAVs other tools left in /tmp");
-        assert!(other_ext.exists(),
-            "non-.wav files must survive even with the matching prefix");
-        assert!(other_both.exists(),
-            "files matching neither must survive");
+             unrelated WAVs other tools left in /tmp"
+        );
+        assert!(
+            other_ext.exists(),
+            "non-.wav files must survive even with the matching prefix"
+        );
+        assert!(other_both.exists(), "files matching neither must survive");
 
         std::fs::remove_dir_all(&dir).ok();
     }
@@ -153,16 +163,18 @@ mod tests {
         //   - zero   → delete every matching file
         //   - 24 h   → keep every matching file (none can be that old)
         // The production call uses 1 h which sits between the two.
-        let dir = std::env::temp_dir()
-            .join(format!("llmgui_sweep_keep_test_{}", uuid::Uuid::new_v4()));
+        let dir =
+            std::env::temp_dir().join(format!("llmgui_sweep_keep_test_{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).expect("seed tempdir");
         let fresh = dir.join("llmgui_tts_recent.wav");
         std::fs::write(&fresh, b"x").expect("seed");
 
         sweep_old_tts_temp_files_in(&dir, std::time::Duration::from_secs(24 * 3600));
 
-        assert!(fresh.exists(),
-            "freshly-written llmgui_tts_*.wav must survive a long max_age sweep");
+        assert!(
+            fresh.exists(),
+            "freshly-written llmgui_tts_*.wav must survive a long max_age sweep"
+        );
         std::fs::remove_dir_all(&dir).ok();
     }
 
@@ -171,10 +183,8 @@ mod tests {
         // The sweep is best-effort — pointing it at a nonexistent
         // directory must NOT panic. (Defensive: covers the case
         // where TMPDIR is unset or pointing somewhere weird.)
-        let bogus = std::env::temp_dir().join(format!(
-            "llmgui_sweep_nonexistent_{}",
-            uuid::Uuid::new_v4()
-        ));
+        let bogus =
+            std::env::temp_dir().join(format!("llmgui_sweep_nonexistent_{}", uuid::Uuid::new_v4()));
         assert!(!bogus.exists());
         sweep_old_tts_temp_files_in(&bogus, std::time::Duration::from_secs(60));
         // Just not panicking is the assertion.
@@ -262,7 +272,6 @@ impl AudioPlayer {
     pub fn position(&mut self) -> f32 {
         self.transport.position()
     }
-
 }
 
 impl Default for AudioPlayer {

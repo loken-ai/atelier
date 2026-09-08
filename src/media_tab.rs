@@ -19,7 +19,9 @@ use std::collections::HashMap;
 use eframe::egui;
 
 use crate::icons::Icon;
-use crate::state::{ChatDialogResult, MediaAudioSlot, MediaKind, MediaState, VideoFormat, VideoSampler};
+use crate::state::{
+    ChatDialogResult, MediaAudioSlot, MediaKind, MediaState, VideoFormat, VideoSampler,
+};
 use crate::theme::{self, text};
 use crate::ui::{surface, widgets};
 
@@ -102,13 +104,19 @@ pub fn render(
                 Icon::Bolt.show(ui, ICON_PT, theme::ink());
                 ui.label(text::title("Media Studio"));
                 ui.add_space(widgets::GAP_WIDGETS);
-                widgets::caption_row(ui, "Generate images, music, sound effects, MIDI, video, and speech.");
+                widgets::caption_row(
+                    ui,
+                    "Generate images, music, sound effects, MIDI, video, and speech.",
+                );
             });
             ui.add_space(widgets::GAP_WIDGETS);
 
             // The kinds, as tabs; the selected one is underlined.
             let labels: Vec<&str> = MediaKind::ALL.iter().map(|k| k.label()).collect();
-            let selected = MediaKind::ALL.iter().position(|k| *k == media.kind).unwrap_or(0);
+            let selected = MediaKind::ALL
+                .iter()
+                .position(|k| *k == media.kind)
+                .unwrap_or(0);
             if let Some(i) = widgets::tab_bar(ui, selected, &labels) {
                 media.set_kind(MediaKind::ALL[i]);
             }
@@ -140,7 +148,8 @@ pub fn render(
                             widgets::lamp_inline(ui, true, theme::accent());
                             ui.label(text::label("ENHANCING"));
                         } else {
-                            let can_enhance = !media.prompt.trim().is_empty() && !media.is_generating;
+                            let can_enhance =
+                                !media.prompt.trim().is_empty() && !media.is_generating;
                             if ui
                                 .add_enabled(
                                     can_enhance,
@@ -196,7 +205,9 @@ pub fn render(
                             if media.prompt_before_enhance.is_some()
                                 && ui
                                     .add(egui::Button::new(text::note("Undo")).frame(false))
-                                    .on_hover_text("Restore the prompt as it was before the enhancement.")
+                                    .on_hover_text(
+                                        "Restore the prompt as it was before the enhancement.",
+                                    )
                                     .clicked()
                             {
                                 if let Some(prev) = media.prompt_before_enhance.take() {
@@ -216,7 +227,9 @@ pub fn render(
             // ── Generate button + busy state ──────────────────────────
             let inputs_ready = match media.kind {
                 // Image Edit needs an instruction + a source image.
-                MediaKind::ImageEdit => !media.prompt.trim().is_empty() && media.image_edit.source.is_some(),
+                MediaKind::ImageEdit => {
+                    !media.prompt.trim().is_empty() && media.image_edit.source.is_some()
+                }
                 // Transcribe needs only an audio file.
                 MediaKind::Transcribe => media.transcribe.audio.is_some(),
                 MediaKind::Separate => media.separate.audio.is_some(),
@@ -226,8 +239,12 @@ pub fn render(
             ui.horizontal(|ui| {
                 let gen_btn = egui::Button::image_and_text(
                     Icon::Bolt.image(ICON_PT, theme::on_accent()),
-                    text::value(if media.is_generating { "Generating..." } else { "Generate" })
-                        .color(theme::on_accent()),
+                    text::value(if media.is_generating {
+                        "Generating..."
+                    } else {
+                        "Generate"
+                    })
+                    .color(theme::on_accent()),
                 )
                 .fill(theme::accent())
                 .min_size(GENERATE_SIZE);
@@ -268,7 +285,10 @@ pub fn render(
                 if media.kind == MediaKind::Video && !media.is_generating {
                     if let Some(seconds) = media.video_estimate {
                         ui.add_space(widgets::GAP_WIDGETS);
-                        ui.label(text::readout(&format!("{} of denoising", format_estimate(seconds))))
+                        ui.label(text::readout(&format!(
+                            "{} of denoising",
+                            format_estimate(seconds)
+                        )))
                         .on_hover_text(
                             "Expected time in the denoising loop for these settings. \
                              Loading the checkpoint and decoding the frames are on top \
@@ -338,8 +358,11 @@ fn render_params(
         MediaKind::Image => {
             // Every image-gen model the server reports; the selection falls back to
             // the first when the remembered one is gone.
-            let image_models: Vec<&str> =
-                models.iter().filter(|m| m.is_image_gen()).map(|m| m.name.as_str()).collect();
+            let image_models: Vec<&str> = models
+                .iter()
+                .filter(|m| m.is_image_gen())
+                .map(|m| m.name.as_str())
+                .collect();
             if !image_models.is_empty() && !image_models.contains(&media.image.model.as_str()) {
                 media.image.model = image_models[0].to_string();
             }
@@ -627,10 +650,17 @@ fn render_params(
             if !sfx_models.is_empty() && !sfx_models.iter().any(|m| m.name == media.sfx.model) {
                 media.sfx.model = sfx_models[0].name.clone();
             }
-            let sel = sfx_models.iter().find(|m| m.name == media.sfx.model).copied();
+            let sel = sfx_models
+                .iter()
+                .find(|m| m.name == media.sfx.model)
+                .copied();
             let has_loops = sel.map(|m| m.has_capability("loops")).unwrap_or(false);
-            let has_variations = sel.map(|m| m.has_capability("audio-variations")).unwrap_or(false);
-            let max_secs = sel.and_then(|m| m.default_f64("max_seconds")).unwrap_or(30.0) as f32;
+            let has_variations = sel
+                .map(|m| m.has_capability("audio-variations"))
+                .unwrap_or(false);
+            let max_secs = sel
+                .and_then(|m| m.default_f64("max_seconds"))
+                .unwrap_or(30.0) as f32;
             widgets::section_panel(ui, "MODEL", |ui| {
                 param_grid(ui, "media_params_sfx_model", |ui| {
                     param_label(ui, "MODEL");
@@ -660,19 +690,38 @@ fn render_params(
                         .on_hover_text("Engines and their limits come from the server; picking one applies its recommended steps and CFG.");
                     ui.end_row();
                 });
-                widgets::caption_row(ui, "Picking an engine applies its recommended steps and CFG.");
+                widgets::caption_row(
+                    ui,
+                    "Picking an engine applies its recommended steps and CFG.",
+                );
             });
             ui.add_space(widgets::GAP_WIDGETS);
             widgets::section_panel(ui, "RENDERING", |ui| {
                 param_grid(ui, "media_params_sfx_rendering", |ui| {
-                    slider_row(ui, "DURATION", &mut media.sfx.seconds, 1.0..=max_secs, SliderOpts { suffix: " s", decimals: 1, ..Default::default() },
+                    slider_row(
+                        ui,
+                        "DURATION",
+                        &mut media.sfx.seconds,
+                        1.0..=max_secs,
+                        SliderOpts {
+                            suffix: " s",
+                            decimals: 1,
+                            ..Default::default()
+                        },
                         if has_loops {
                             "Clip length; the model's training window caps at ~47 s."
                         } else {
                             "Clip length. The model is trained on short clips (~10 s); long ones lose coherence."
-                        });
-                    slider_row(ui, "STEPS", &mut media.sfx.steps, 1..=200, SliderOpts::default(),
-                        "Diffusion steps: 50-100 is the model's quality regime.");
+                        },
+                    );
+                    slider_row(
+                        ui,
+                        "STEPS",
+                        &mut media.sfx.steps,
+                        1..=200,
+                        SliderOpts::default(),
+                        "Diffusion steps: 50-100 is the model's quality regime.",
+                    );
                     if has_loops {
                         param_label(ui, "LOOP");
                         ui.horizontal(|ui| {
@@ -687,7 +736,10 @@ fn render_params(
                         ui.end_row();
                     }
                 });
-                widgets::caption_row(ui, "50-100 steps is the quality regime; a loop is cut bar-exact.");
+                widgets::caption_row(
+                    ui,
+                    "50-100 steps is the quality regime; a loop is cut bar-exact.",
+                );
             });
             ui.add_space(widgets::GAP_WIDGETS);
             widgets::section_panel(ui, "GUIDANCE", |ui| {
@@ -702,7 +754,9 @@ fn render_params(
                                 .desired_width(f32::INFINITY)
                                 .hint_text("distortion, low quality, muffled..."),
                         )
-                        .on_hover_text("What the sound should avoid; steers the CFG's negative branch.");
+                        .on_hover_text(
+                            "What the sound should avoid; steers the CFG's negative branch.",
+                        );
                         ui.end_row();
                     }
                 });
@@ -728,7 +782,10 @@ fn render_params(
                 param_grid(ui, "media_params_sfx_seed", |ui| {
                     seed_row(ui, media);
                 });
-                widgets::caption_row(ui, "Same seed and settings, same result. Empty is a fresh seed each run.");
+                widgets::caption_row(
+                    ui,
+                    "Same seed and settings, same result. Empty is a fresh seed each run.",
+                );
             });
         }
         MediaKind::Midi => {
@@ -736,26 +793,53 @@ fn render_params(
                 param_grid(ui, "media_params_midi", |ui| {
                     slider_row(ui, "MAX TOKENS", &mut media.midi.max_tokens, 64..=8192, SliderOpts::default(),
                         "Length budget for the score: more tokens is more notes and bars. The model may end earlier.");
-                    slider_row(ui, "TEMPERATURE", &mut media.midi.temperature, 0.1..=2.0, SliderOpts { decimals: 2, ..Default::default() },
-                        "Note-choice randomness: low is predictable, high is surprising.");
-                    slider_row(ui, "TOP-P", &mut media.midi.top_p, 0.1..=1.0, SliderOpts { decimals: 2, ..Default::default() },
-                        "Keeps only the most likely notes at each step; lower is safer.");
+                    slider_row(
+                        ui,
+                        "TEMPERATURE",
+                        &mut media.midi.temperature,
+                        0.1..=2.0,
+                        SliderOpts {
+                            decimals: 2,
+                            ..Default::default()
+                        },
+                        "Note-choice randomness: low is predictable, high is surprising.",
+                    );
+                    slider_row(
+                        ui,
+                        "TOP-P",
+                        &mut media.midi.top_p,
+                        0.1..=1.0,
+                        SliderOpts {
+                            decimals: 2,
+                            ..Default::default()
+                        },
+                        "Keeps only the most likely notes at each step; lower is safer.",
+                    );
                 });
-                widgets::caption_row(ui, "Tokens are the length budget; the model may stop earlier on its own.");
+                widgets::caption_row(
+                    ui,
+                    "Tokens are the length budget; the model may stop earlier on its own.",
+                );
             });
             ui.add_space(widgets::GAP_WIDGETS);
             widgets::section_panel(ui, "SEED", |ui| {
                 param_grid(ui, "media_params_midi_seed", |ui| {
                     seed_row(ui, media);
                 });
-                widgets::caption_row(ui, "Same seed and settings, same result. Empty is a fresh seed each run.");
+                widgets::caption_row(
+                    ui,
+                    "Same seed and settings, same result. Empty is a fresh seed each run.",
+                );
             });
         }
         MediaKind::Video => {
             // The list comes from the server, so a checkpoint dropped in its video
             // directory appears here without a GUI change.
-            let video_models: Vec<&str> =
-                models.iter().filter(|m| m.is_video_gen()).map(|m| m.name.as_str()).collect();
+            let video_models: Vec<&str> = models
+                .iter()
+                .filter(|m| m.is_video_gen())
+                .map(|m| m.name.as_str())
+                .collect();
             if !video_models.is_empty() && !video_models.contains(&media.video.model.as_str()) {
                 media.video.model = video_models[0].to_string();
             }
@@ -915,18 +999,26 @@ fn render_params(
                         }
                         SpeechEngine::Kyutai => {
                             param_label(ui, "VOICE");
-                            ui.add(egui::TextEdit::singleline(&mut media.speech.voice_name)
-                                .hint_text("default (e.g. alba-mackenna)")
-                                .desired_width(FIELD_W))
-                                .on_hover_text("A kyutai/tts-voices name substring; empty is the server default.");
+                            ui.add(
+                                egui::TextEdit::singleline(&mut media.speech.voice_name)
+                                    .hint_text("default (e.g. alba-mackenna)")
+                                    .desired_width(FIELD_W),
+                            )
+                            .on_hover_text(
+                                "A kyutai/tts-voices name substring; empty is the server default.",
+                            );
                             ui.end_row();
                         }
                         SpeechEngine::Piper => {
                             param_label(ui, "VOICE");
-                            ui.add(egui::TextEdit::singleline(&mut media.speech.voice_name)
-                                .hint_text("e.g. fr_FR-tom-medium")
-                                .desired_width(FIELD_W))
-                                .on_hover_text("A Piper voice id installed under <hf_models_dir>/piper/<voice>/.");
+                            ui.add(
+                                egui::TextEdit::singleline(&mut media.speech.voice_name)
+                                    .hint_text("e.g. fr_FR-tom-medium")
+                                    .desired_width(FIELD_W),
+                            )
+                            .on_hover_text(
+                                "A Piper voice id installed under <hf_models_dir>/piper/<voice>/.",
+                            );
                             ui.end_row();
                         }
                     }
@@ -1046,8 +1138,13 @@ fn render_params(
         MediaKind::Transcribe => {
             widgets::section_panel(ui, "INPUT", |ui| {
                 param_grid(ui, "media_params_transcribe_input", |ui| {
-                    audio_picker_row(ui, media, "AUDIO FILE", MediaAudioSlot::TranscribeAudio,
-                        "Pick the audio clip to transcribe (wav/mp3/flac/ogg/m4a)");
+                    audio_picker_row(
+                        ui,
+                        media,
+                        "AUDIO FILE",
+                        MediaAudioSlot::TranscribeAudio,
+                        "Pick the audio clip to transcribe (wav/mp3/flac/ogg/m4a)",
+                    );
                 });
                 widgets::caption_row(ui, "Any common format; the server converts it.");
             });
@@ -1056,7 +1153,9 @@ fn render_params(
                 param_grid(ui, "media_params_transcribe", |ui| {
                     param_label(ui, "MODEL");
                     ui.text_edit_singleline(&mut media.transcribe.model)
-                        .on_hover_text("ASR model id; empty is the server default (whisper, voxtral).");
+                        .on_hover_text(
+                            "ASR model id; empty is the server default (whisper, voxtral).",
+                        );
                     ui.end_row();
                     // Detection is the default and not free of mistakes: a short clip, an
                     // accent, music under the voice.
@@ -1081,7 +1180,9 @@ fn render_params(
                     ui.end_row();
                     param_label(ui, "TRANSLATE");
                     ui.checkbox(&mut media.transcribe.translate, "to English")
-                        .on_hover_text("Translate the transcription to English (Whisper translate task).");
+                        .on_hover_text(
+                            "Translate the transcription to English (Whisper translate task).",
+                        );
                     ui.end_row();
                 });
                 widgets::caption_row(ui, "Detection can mishear a short clip or an accent; naming the language fixes it.");
@@ -1090,10 +1191,18 @@ fn render_params(
         MediaKind::Separate => {
             widgets::section_panel(ui, "INPUT", |ui| {
                 param_grid(ui, "media_params_separate_input", |ui| {
-                    audio_picker_row(ui, media, "TRACK", MediaAudioSlot::SeparateAudio,
-                        "Pick the song to split (wav/mp3/flac/ogg/m4a)");
+                    audio_picker_row(
+                        ui,
+                        media,
+                        "TRACK",
+                        MediaAudioSlot::SeparateAudio,
+                        "Pick the song to split (wav/mp3/flac/ogg/m4a)",
+                    );
                 });
-                widgets::caption_row(ui, "Any common format; it is converted to the model's 44.1 kHz stereo.");
+                widgets::caption_row(
+                    ui,
+                    "Any common format; it is converted to the model's 44.1 kHz stereo.",
+                );
             });
             ui.add_space(widgets::GAP_WIDGETS);
             widgets::section_panel(ui, "STEMS", |ui| {
@@ -1111,7 +1220,9 @@ fn render_params(
                             }
                         })
                         .response
-                        .on_hover_text("Which stems to return. Both adds back to the original exactly.");
+                        .on_hover_text(
+                            "Which stems to return. Both adds back to the original exactly.",
+                        );
                     ui.end_row();
                 });
                 widgets::caption_row(ui, "Both stems add back to the original exactly, so what was taken out can be heard.");
@@ -1209,11 +1320,14 @@ pub(crate) fn decode_oriented(bytes: &[u8]) -> Option<image::DynamicImage> {
     // call to resolve. Without this the file compiles everywhere it is not called and
     // fails only here - which is how a rotation fix shipped that had never once run.
     use image::ImageDecoder as _;
-    let reader = image::ImageReader::new(std::io::Cursor::new(bytes)).with_guessed_format().ok()?;
+    let reader = image::ImageReader::new(std::io::Cursor::new(bytes))
+        .with_guessed_format()
+        .ok()?;
     let mut decoder = reader.into_decoder().ok()?;
     // A missing or unreadable tag is not an error: it means no rotation.
-    let orientation =
-        decoder.orientation().unwrap_or(image::metadata::Orientation::NoTransforms);
+    let orientation = decoder
+        .orientation()
+        .unwrap_or(image::metadata::Orientation::NoTransforms);
     let mut img = image::DynamicImage::from_decoder(decoder).ok()?;
     img.apply_orientation(orientation);
     Some(img)
@@ -1246,7 +1360,6 @@ fn thumbnail_for(
     media.thumbnails.0.insert(key, tex.clone());
     Some(tex)
 }
-
 
 #[cfg(test)]
 mod oversize_tests {
@@ -1325,7 +1438,10 @@ fn oversize_message(path: &std::path::Path) -> Option<String> {
     if len <= crate::modality::CHAT_ATTACHMENT_MAX_BYTES {
         return None;
     }
-    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("that file");
+    let name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("that file");
     Some(format!(
         "{name} is {:.1} MB; the limit is {} MB. Resize it or export at a lower quality.",
         len as f64 / (1024.0 * 1024.0),
@@ -1363,7 +1479,9 @@ fn audio_picker_row(
     param_label(ui, caps);
     ui.horizontal(|ui| {
         // One dialog at a time: a second would clobber the first's result.
-        let busy = media.dialog_in_flight.load(std::sync::atomic::Ordering::Relaxed);
+        let busy = media
+            .dialog_in_flight
+            .load(std::sync::atomic::Ordering::Relaxed);
         let choose = if busy {
             "Choosing..."
         } else if slot.is_image() {
@@ -1374,7 +1492,10 @@ fn audio_picker_row(
         if ui
             .add_enabled(
                 !busy,
-                egui::Button::image_and_text(Icon::Folder.image(ICON_PT_SMALL, theme::ink()), text::note(choose)),
+                egui::Button::image_and_text(
+                    Icon::Folder.image(ICON_PT_SMALL, theme::ink()),
+                    text::note(choose),
+                ),
             )
             .on_hover_text(hover)
             .clicked()
@@ -1434,7 +1555,11 @@ fn audio_picker_row(
             }
         }
         // Built before `current` borrows the slot: the cache lives in the same state.
-        let thumb = if slot.is_image() { thumbnail_for(ui.ctx(), media, slot) } else { None };
+        let thumb = if slot.is_image() {
+            thumbnail_for(ui.ctx(), media, slot)
+        } else {
+            None
+        };
         let current = match slot {
             MediaAudioSlot::EditImage => &media.image_edit.source,
             MediaAudioSlot::TranscribeAudio => &media.transcribe.audio,
@@ -1447,8 +1572,12 @@ fn audio_picker_row(
             Some((name, bytes)) => {
                 // The picture itself, so the user can tell it is the right one.
                 if let Some(tex) = &thumb {
-                    ui.add(egui::Image::new(tex).max_height(THUMBNAIL_HEIGHT).corner_radius(theme::RADIUS))
-                        .on_hover_text(name.clone());
+                    ui.add(
+                        egui::Image::new(tex)
+                            .max_height(THUMBNAIL_HEIGHT)
+                            .corner_radius(theme::RADIUS),
+                    )
+                    .on_hover_text(name.clone());
                 }
                 ui.label(text::note(&format!("{name} ({} KB)", bytes.len() / 1024)));
             }
@@ -1487,7 +1616,10 @@ fn shape_row(ui: &mut egui::Ui, width: &mut u32, height: &mut u32) {
         .selected_text(current)
         .show_ui(ui, |ui| {
             for (name, w, h) in IMAGE_SHAPES {
-                if ui.selectable_label(*width == w && *height == h, name).clicked() {
+                if ui
+                    .selectable_label(*width == w && *height == h, name)
+                    .clicked()
+                {
                     *width = w;
                     *height = h;
                 }
@@ -1525,14 +1657,29 @@ fn file_format_row(ui: &mut egui::Ui, fmt: &mut crate::state::ImageFileFormat) {
 }
 
 /// The paired width x height row; Image and Video share it, only the range differs.
-fn size_row(ui: &mut egui::Ui, width: &mut u32, height: &mut u32, range: std::ops::RangeInclusive<u32>) {
+fn size_row(
+    ui: &mut egui::Ui,
+    width: &mut u32,
+    height: &mut u32,
+    range: std::ops::RangeInclusive<u32>,
+) {
     param_label(ui, "SIZE");
     ui.horizontal(|ui| {
         ui.scope(|ui| {
             ui.style_mut().override_font_id = Some(egui::FontId::monospace(text::VALUE_PT));
-            widgets::drag_fixed(ui, egui::DragValue::new(width).range(range.clone()).speed(SIZE_STEP), widgets::READOUT_W);
+            widgets::drag_fixed(
+                ui,
+                egui::DragValue::new(width)
+                    .range(range.clone())
+                    .speed(SIZE_STEP),
+                widgets::READOUT_W,
+            );
             ui.label(text::label("x"));
-            widgets::drag_fixed(ui, egui::DragValue::new(height).range(range).speed(SIZE_STEP), widgets::READOUT_W);
+            widgets::drag_fixed(
+                ui,
+                egui::DragValue::new(height).range(range).speed(SIZE_STEP),
+                widgets::READOUT_W,
+            );
         });
     })
     .response
@@ -1551,7 +1698,11 @@ const SIZE_STEP: f64 = 16.0;
 /// reported, so a family becomes visible here by being served, not by being added to a
 /// list in the GUI.
 fn model_family_of(models: &[crate::api::types::ModelInfo], name: &str) -> String {
-    models.iter().find(|m| m.name == name).map(|m| m.family.clone()).unwrap_or_default()
+    models
+        .iter()
+        .find(|m| m.name == name)
+        .map(|m| m.family.clone())
+        .unwrap_or_default()
 }
 
 fn family_takes_loras(models: &[crate::api::types::ModelInfo], name: &str) -> bool {
@@ -1593,11 +1744,17 @@ fn region_rows(ui: &mut egui::Ui, regions: &mut Vec<crate::state::ImageRegion>) 
                 );
                 widgets::drag_fixed(
                     ui,
-                    egui::DragValue::new(&mut r.strength).speed(0.05).range(0.0..=8.0).fixed_decimals(2),
+                    egui::DragValue::new(&mut r.strength)
+                        .speed(0.05)
+                        .range(0.0..=8.0)
+                        .fixed_decimals(2),
                     widgets::READOUT_W,
                 )
                 .on_hover_text("How hard this region's prompt outweighs the base one there.");
-                if widgets::close_button(ui, REGION_CLOSE_PX).on_hover_text("Remove this region").clicked() {
+                if widgets::close_button(ui, REGION_CLOSE_PX)
+                    .on_hover_text("Remove this region")
+                    .clicked()
+                {
                     remove = Some(i);
                 }
             });
@@ -1605,10 +1762,20 @@ fn region_rows(ui: &mut egui::Ui, regions: &mut Vec<crate::state::ImageRegion>) 
         if let Some(i) = remove {
             regions.remove(i);
         }
-        if ui.add(egui::Button::new(text::note("Add a region"))).clicked() {
+        if ui
+            .add(egui::Button::new(text::note("Add a region")))
+            .clicked()
+        {
             // A second region defaults to the opposite half.
-            let area = if regions.len() == 1 { RegionArea::Right } else { RegionArea::Left };
-            regions.push(ImageRegion { area, ..Default::default() });
+            let area = if regions.len() == 1 {
+                RegionArea::Right
+            } else {
+                RegionArea::Left
+            };
+            regions.push(ImageRegion {
+                area,
+                ..Default::default()
+            });
         }
     });
     ui.end_row();
@@ -1710,7 +1877,11 @@ fn solver_rows(ui: &mut egui::Ui, sampler: &mut String, scheduler: &mut String) 
         ("exponential", "Exponential"),
     ];
     let pick = |ui: &mut egui::Ui, id: &str, cur: &mut String, opts: &[(&str, &str)], tip: &str| {
-        let label = opts.iter().find(|(v, _)| v == cur).map(|(_, l)| *l).unwrap_or("Default");
+        let label = opts
+            .iter()
+            .find(|(v, _)| v == cur)
+            .map(|(_, l)| *l)
+            .unwrap_or("Default");
         egui::ComboBox::from_id_salt(id)
             .selected_text(label)
             .show_ui(ui, |ui| {
@@ -1736,10 +1907,16 @@ fn seed_row(ui: &mut egui::Ui, media: &mut MediaState) {
     param_label(ui, "SEED");
     ui.scope(|ui| {
         ui.style_mut().override_font_id = Some(egui::FontId::monospace(text::VALUE_PT));
-        ui.add(egui::TextEdit::singleline(&mut media.seed).hint_text("random").desired_width(SEED_W))
+        ui.add(
+            egui::TextEdit::singleline(&mut media.seed)
+                .hint_text("random")
+                .desired_width(SEED_W),
+        )
     })
     .inner
-    .on_hover_text("Same seed and settings, the exact same result. Empty is a fresh random seed each run.");
+    .on_hover_text(
+        "Same seed and settings, the exact same result. Empty is a fresh random seed each run.",
+    );
     ui.end_row();
 }
 
@@ -1756,7 +1933,10 @@ fn render_status(ui: &mut egui::Ui, media: &MediaState) {
 
     if let Some((step, total)) = media.progress {
         let frac = step as f32 / total.max(1) as f32;
-        let elapsed = media.started_at.map(|t| t.elapsed().as_secs_f32()).unwrap_or(0.0);
+        let elapsed = media
+            .started_at
+            .map(|t| t.elapsed().as_secs_f32())
+            .unwrap_or(0.0);
         let eta = if step > 0 && frac > 0.0 {
             let per = elapsed / step as f32;
             let remaining = per * (total.saturating_sub(step)) as f32;
@@ -1776,7 +1956,10 @@ fn render_status(ui: &mut egui::Ui, media: &MediaState) {
         ui.add_space(widgets::GAP_LABEL);
         surface::meter(ui, frac, widgets::METER_SIZE, theme::accent());
     } else if media.is_generating {
-        let elapsed = media.started_at.map(|t| t.elapsed().as_secs_f32()).unwrap_or(0.0);
+        let elapsed = media
+            .started_at
+            .map(|t| t.elapsed().as_secs_f32())
+            .unwrap_or(0.0);
         ui.horizontal(|ui| {
             widgets::lamp_inline(ui, true, theme::accent());
             let label = if media.status.is_empty() {
@@ -1791,7 +1974,8 @@ fn render_status(ui: &mut egui::Ui, media: &MediaState) {
         // generation shows a moving meter.
         let sweep = (elapsed / SWEEP_PERIOD_S).fract();
         surface::meter(ui, sweep, widgets::METER_SIZE, theme::accent_dim());
-        ui.ctx().request_repaint_after(std::time::Duration::from_millis(SWEEP_REPAINT_MS));
+        ui.ctx()
+            .request_repaint_after(std::time::Duration::from_millis(SWEEP_REPAINT_MS));
     } else if !media.status.is_empty() {
         ui.horizontal(|ui| {
             widgets::lamp_inline(ui, true, theme::success());
@@ -1821,7 +2005,11 @@ fn overlay_button(
     let id = ui.id().with(("media_overlay", role, index));
     let resp = ui.interact(rect, id, egui::Sense::click());
     let hovered = enabled && resp.hovered();
-    let fill = if hovered { theme::accent() } else { OVERLAY_BUTTON_SCRIM };
+    let fill = if hovered {
+        theme::accent()
+    } else {
+        OVERLAY_BUTTON_SCRIM
+    };
     ui.painter().rect_filled(rect, theme::RADIUS, fill);
     let text_col = if hovered {
         theme::on_accent()
@@ -1861,281 +2049,298 @@ fn render_results(
 
     ui.add_space(widgets::GAP_WIDGETS);
     widgets::section_panel(ui, "RESULT", |ui| {
-    // Text (Transcribe).
-    if let Some(result) = &media.result_text {
-        let mut shown = result.clone();
-        widgets::well(ui, |ui| {
-            ui.add(
-                egui::TextEdit::multiline(&mut shown)
-                    .frame(egui::Frame::NONE)
-                    .desired_rows(TRANSCRIPT_ROWS)
-                    .desired_width(f32::INFINITY)
-                    .interactive(true),
-            );
-        });
-        ui.horizontal(|ui| {
-            if ui.add(egui::Button::new(text::note("Copy text")).frame(false)).clicked() {
-                ui.ctx().copy_text(result.clone());
-            }
-        });
-        ui.add_space(widgets::GAP_LABEL);
-    }
-
-    // ── Images (inline) ──────────────────────────────────────────────
-    // Results are iterated by reference throughout: these vecs hold
-    // multi-MB base64 payloads, and this runs every repaint. Cloning them per
-    // frame to appease the borrow checker burns allocator bandwidth sixty times a
-    // second; only the clicked item's bytes are cloned, at click time.
-    if !media.result_images.is_empty() {
-        // Collect the textures first so the viewer can be opened on the WHOLE set
-        // (arrow keys then browse the results) and so the hover controls below can
-        // sit on each image instead of in a detached row.
-        let mut texes: Vec<egui::TextureHandle> = Vec::with_capacity(media.result_images.len());
-        for (i, b64) in media.result_images.iter().enumerate() {
-            let key = crate::texture::image_cache_key("media", b64, i);
-            let tex = image_textures
-                .entry(key.clone())
-                .or_insert_with(|| crate::texture::load_base64_texture(ui, b64, &key));
-            texes.push(tex.clone());
-        }
-        // Which image the hover controls acted on, resolved after the borrow ends.
-        let mut edit_idx: Option<usize> = None;
-        let mut save_idx: Option<usize> = None;
-        widgets::screen_well(ui, |ui| {
-        ui.horizontal_wrapped(|ui| {
-            for (i, tex_handle) in texes.iter().enumerate() {
-                let tex_size = tex_handle.size_vec2();
-                let scale = (RESULT_MAX_PX / tex_size.x.max(tex_size.y)).min(1.0);
-                let resp = crate::image_viewer::image_response(
-                    ui,
-                    tex_handle,
-                    tex_size * scale,
-                    "Click to view fullscreen (then use the arrow keys to browse)",
+        // Text (Transcribe).
+        if let Some(result) = &media.result_text {
+            let mut shown = result.clone();
+            widgets::well(ui, |ui| {
+                ui.add(
+                    egui::TextEdit::multiline(&mut shown)
+                        .frame(egui::Frame::NONE)
+                        .desired_rows(TRANSCRIPT_ROWS)
+                        .desired_width(f32::INFINITY)
+                        .interactive(true),
                 );
-                // Controls ON the image, shown while the pointer is over it. The old
-                // row of "Edit #2 / Save #2" buttons sat below ALL the thumbnails, so
-                // hitting the wrong image was a matter of counting - the button never
-                // pointed at anything the eye could check.
-                //
-                // Hover is tested with rect_contains_pointer, not resp.hovered():
-                // once the pointer is over one of these buttons the BUTTON owns the
-                // hover, and the controls would flicker out from under the cursor.
-                let rect = resp.rect;
-                // Capped at a third of the image so the bar can never swallow the
-                // click that opens the viewer.
-                let bar_h = OVERLAY_BAR_H.min(rect.height() / 3.0);
-                let bar = egui::Rect::from_min_max(
-                    egui::pos2(rect.left() + OVERLAY_PAD, rect.bottom() - OVERLAY_PAD - bar_h),
-                    egui::pos2(rect.right() - OVERLAY_PAD, rect.bottom() - OVERLAY_PAD),
-                );
-                // A click on the image opens the viewer - EXCEPT over the control bar,
-                // where it belongs to Edit/Save. Decided here rather than left to widget
-                // ordering, so pressing Edit cannot also throw the fullscreen overlay up.
-                let on_bar = ui.rect_contains_pointer(bar);
-                if resp.clicked() && !on_bar {
-                    crate::image_viewer::request_open_set(ui.ctx(), &texes, i);
-                }
-                if ui.rect_contains_pointer(rect) {
-                    ui.painter().rect_filled(
-                        bar.expand2(egui::vec2(0.0, OVERLAY_GAP / 2.0)),
-                        theme::RADIUS,
-                        OVERLAY_SCRIM,
-                    );
-                    let half = (bar.width() - OVERLAY_GAP) * 0.5;
-                    let left = egui::Rect::from_min_size(bar.min, egui::vec2(half, bar.height()));
-                    let right = egui::Rect::from_min_size(
-                        egui::pos2(bar.min.x + half + OVERLAY_GAP, bar.min.y),
-                        egui::vec2(half, bar.height()),
-                    );
-                    let saving = media.dialog_in_flight.load(std::sync::atomic::Ordering::Relaxed);
-                    if overlay_button(ui, left, i, "edit", "Edit", true)
-                        .on_hover_text("Send THIS image to the Image Edit kind")
-                        .clicked()
-                    {
-                        edit_idx = Some(i);
-                    }
-                    // Mirrors dialog::save_button: a second dialog cannot be opened
-                    // while one is in flight, so say so instead of dropping the click.
-                    if overlay_button(ui, right, i, "save", "Save", !saving)
-                        .on_hover_text(if saving {
-                            "A save dialog is already open"
-                        } else {
-                            "Save THIS image"
-                        })
-                        .clicked()
-                        && !saving
-                    {
-                        save_idx = Some(i);
-                    }
-                }
-            }
-        });
-        });
-        ui.add_space(widgets::GAP_LABEL);
-        // Act on whichever image the hover controls named. Resolved here, after the
-        // borrow of result_images inside the loop has ended.
-        if let Some(i) = edit_idx {
-            if let Some(b64) = media.result_images.get(i) {
-                let bytes = decode_b64(b64);
-                let ts = chrono::Local::now().format("%Y%m%d_%H%M%S");
-                media.image_edit.source = Some((format!("result_{ts}.png"), bytes));
-                media.kind = MediaKind::ImageEdit;
-            }
-        }
-        if let Some(i) = save_idx {
-            if let Some(b64) = media.result_images.get(i) {
-                let bytes = decode_b64(b64);
-                let ts = chrono::Local::now().format("%Y%m%d_%H%M%S");
-                crate::dialog::spawn_save(
-                    ui.ctx().clone(),
-                    media.pending_dialog.clone(),
-                    media.dialog_in_flight.clone(),
-                    crate::modality::output_filename("image", &ts.to_string(), i, "png"),
-                    &["png"],
-                    "PNG image",
-                    bytes,
-                );
-            }
-        }
-    }
-
-    // ── Audio (Play + Save) ──────────────────────────────────────────
-    // Indexed loop (not `.clone().iter()`): the loop body also writes
-    // `media.error`, so a plain `.iter()` borrow would conflict —
-    // indexing keeps each `&media.result_audios[i]` borrow short-lived
-    // instead of cloning the multi-MB base64 WAVs every frame.
-    if !media.result_audios.is_empty() {
-        ui.add_space(widgets::GAP_LABEL);
-        let n_audios = media.result_audios.len();
-        for i in 0..n_audios {
+            });
             ui.horizontal(|ui| {
-                Icon::Music.show(ui, ICON_PT, theme::ink_dim());
-                ui.label(text::note(&if n_audios == 1 {
-                    "Audio".to_string()
-                } else {
-                    format!("Audio #{}", i + 1)
-                }));
-                // Transport: play/pause toggle + stop + seek slider, one row per
-                // result; only the row that owns the current track shows the
-                // position controls.
-                let row_id = format!("media_audio_{i}");
-                let is_current = player.playing_id().as_deref() == Some(row_id.as_str());
-                let playing = is_current && !player.is_paused();
-                let (play_icon, play_tip) = if playing { (Icon::Pause, "Pause") } else { (Icon::Play, "Play") };
-                if widgets::icon_button(ui, play_icon, play_tip).clicked() {
-                    if is_current {
-                        player.toggle_pause();
-                    } else if let Err(e) = player.play(&row_id, &media.result_audios[i]) {
-                        media.error = Some(format!("Playback failed: {e}"));
-                    }
+                if ui
+                    .add(egui::Button::new(text::note("Copy text")).frame(false))
+                    .clicked()
+                {
+                    ui.ctx().copy_text(result.clone());
                 }
-                if is_current {
-                    if widgets::icon_button(ui, Icon::Stop, "Stop").clicked() {
-                        player.stop();
+            });
+            ui.add_space(widgets::GAP_LABEL);
+        }
+
+        // ── Images (inline) ──────────────────────────────────────────────
+        // Results are iterated by reference throughout: these vecs hold
+        // multi-MB base64 payloads, and this runs every repaint. Cloning them per
+        // frame to appease the borrow checker burns allocator bandwidth sixty times a
+        // second; only the clicked item's bytes are cloned, at click time.
+        if !media.result_images.is_empty() {
+            // Collect the textures first so the viewer can be opened on the WHOLE set
+            // (arrow keys then browse the results) and so the hover controls below can
+            // sit on each image instead of in a detached row.
+            let mut texes: Vec<egui::TextureHandle> = Vec::with_capacity(media.result_images.len());
+            for (i, b64) in media.result_images.iter().enumerate() {
+                let key = crate::texture::image_cache_key("media", b64, i);
+                let tex = image_textures
+                    .entry(key.clone())
+                    .or_insert_with(|| crate::texture::load_base64_texture(ui, b64, &key));
+                texes.push(tex.clone());
+            }
+            // Which image the hover controls acted on, resolved after the borrow ends.
+            let mut edit_idx: Option<usize> = None;
+            let mut save_idx: Option<usize> = None;
+            widgets::screen_well(ui, |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    for (i, tex_handle) in texes.iter().enumerate() {
+                        let tex_size = tex_handle.size_vec2();
+                        let scale = (RESULT_MAX_PX / tex_size.x.max(tex_size.y)).min(1.0);
+                        let resp = crate::image_viewer::image_response(
+                            ui,
+                            tex_handle,
+                            tex_size * scale,
+                            "Click to view fullscreen (then use the arrow keys to browse)",
+                        );
+                        // Controls ON the image, shown while the pointer is over it. The old
+                        // row of "Edit #2 / Save #2" buttons sat below ALL the thumbnails, so
+                        // hitting the wrong image was a matter of counting - the button never
+                        // pointed at anything the eye could check.
+                        //
+                        // Hover is tested with rect_contains_pointer, not resp.hovered():
+                        // once the pointer is over one of these buttons the BUTTON owns the
+                        // hover, and the controls would flicker out from under the cursor.
+                        let rect = resp.rect;
+                        // Capped at a third of the image so the bar can never swallow the
+                        // click that opens the viewer.
+                        let bar_h = OVERLAY_BAR_H.min(rect.height() / 3.0);
+                        let bar = egui::Rect::from_min_max(
+                            egui::pos2(
+                                rect.left() + OVERLAY_PAD,
+                                rect.bottom() - OVERLAY_PAD - bar_h,
+                            ),
+                            egui::pos2(rect.right() - OVERLAY_PAD, rect.bottom() - OVERLAY_PAD),
+                        );
+                        // A click on the image opens the viewer - EXCEPT over the control bar,
+                        // where it belongs to Edit/Save. Decided here rather than left to widget
+                        // ordering, so pressing Edit cannot also throw the fullscreen overlay up.
+                        let on_bar = ui.rect_contains_pointer(bar);
+                        if resp.clicked() && !on_bar {
+                            crate::image_viewer::request_open_set(ui.ctx(), &texes, i);
+                        }
+                        if ui.rect_contains_pointer(rect) {
+                            ui.painter().rect_filled(
+                                bar.expand2(egui::vec2(0.0, OVERLAY_GAP / 2.0)),
+                                theme::RADIUS,
+                                OVERLAY_SCRIM,
+                            );
+                            let half = (bar.width() - OVERLAY_GAP) * 0.5;
+                            let left =
+                                egui::Rect::from_min_size(bar.min, egui::vec2(half, bar.height()));
+                            let right = egui::Rect::from_min_size(
+                                egui::pos2(bar.min.x + half + OVERLAY_GAP, bar.min.y),
+                                egui::vec2(half, bar.height()),
+                            );
+                            let saving = media
+                                .dialog_in_flight
+                                .load(std::sync::atomic::Ordering::Relaxed);
+                            if overlay_button(ui, left, i, "edit", "Edit", true)
+                                .on_hover_text("Send THIS image to the Image Edit kind")
+                                .clicked()
+                            {
+                                edit_idx = Some(i);
+                            }
+                            // Mirrors dialog::save_button: a second dialog cannot be opened
+                            // while one is in flight, so say so instead of dropping the click.
+                            if overlay_button(ui, right, i, "save", "Save", !saving)
+                                .on_hover_text(if saving {
+                                    "A save dialog is already open"
+                                } else {
+                                    "Save THIS image"
+                                })
+                                .clicked()
+                                && !saving
+                            {
+                                save_idx = Some(i);
+                            }
+                        }
                     }
-                    let dur = player.duration().max(0.01);
-                    let mut pos = player.position();
-                    let resp = ui
-                        .scope(|ui| {
-                            ui.spacing_mut().slider_width = widgets::SLIDER_TRACK_W;
-                            ui.add(egui::Slider::new(&mut pos, 0.0..=dur).show_value(false))
-                        })
-                        .inner;
-                    if resp.drag_stopped() || (resp.changed() && !resp.dragged()) {
-                        player.seek(pos);
-                    }
-                    widgets::readout(
-                        ui,
-                        widgets::READOUT_WIDE_W,
-                        &format!(
-                            "{}:{:02} / {}:{:02}",
-                            (pos as u32) / 60,
-                            (pos as u32) % 60,
-                            (dur as u32) / 60,
-                            (dur as u32) % 60
-                        ),
-                    );
-                    // The position moves while playing.
-                    ui.ctx().request_repaint_after(std::time::Duration::from_millis(AUDIO_REPAINT_MS));
-                }
-                if crate::dialog::save_button(ui, &media.dialog_in_flight, "Save").clicked() {
-                    let bytes = decode_b64(&media.result_audios[i]);
+                });
+            });
+            ui.add_space(widgets::GAP_LABEL);
+            // Act on whichever image the hover controls named. Resolved here, after the
+            // borrow of result_images inside the loop has ended.
+            if let Some(i) = edit_idx {
+                if let Some(b64) = media.result_images.get(i) {
+                    let bytes = decode_b64(b64);
                     let ts = chrono::Local::now().format("%Y%m%d_%H%M%S");
-                    let default_name = crate::modality::output_filename("audio", &ts.to_string(), i, "wav");
+                    media.image_edit.source = Some((format!("result_{ts}.png"), bytes));
+                    media.kind = MediaKind::ImageEdit;
+                }
+            }
+            if let Some(i) = save_idx {
+                if let Some(b64) = media.result_images.get(i) {
+                    let bytes = decode_b64(b64);
+                    let ts = chrono::Local::now().format("%Y%m%d_%H%M%S");
                     crate::dialog::spawn_save(
                         ui.ctx().clone(),
                         media.pending_dialog.clone(),
                         media.dialog_in_flight.clone(),
-                        default_name,
-                        &["wav"],
-                        "WAV audio",
+                        crate::modality::output_filename("image", &ts.to_string(), i, "png"),
+                        &["png"],
+                        "PNG image",
                         bytes,
                     );
                 }
-            });
+            }
         }
-    }
 
-    // ── Files (MIDI / video — Save + Open) ───────────────────────────
-    // Same indexed pattern as audio: the Open branch writes
-    // `media.error`, so borrow each (name, bytes) briefly per use
-    // rather than cloning every blob every frame. Save still clones —
-    // but only the one clicked file's bytes, at click time.
-    if !media.result_files.is_empty() {
-        ui.add_space(widgets::GAP_LABEL);
-        if render_video_player(ui, video) {
-            media.video_viewer.open = true;
-        }
-        for i in 0..media.result_files.len() {
-            ui.horizontal(|ui| {
-                let (name, bytes) = &media.result_files[i];
-                Icon::Film.show(ui, ICON_PT, theme::ink_dim());
-                ui.label(text::note(&format!(
-                    "{name} ({})",
-                    crate::api::types::format_size(bytes.len() as u64)
-                )));
-                if crate::dialog::save_button(ui, &media.dialog_in_flight, "Save").clicked() {
-                    let ext = std::path::Path::new(name)
-                        .extension()
-                        .and_then(|e| e.to_str())
-                        .unwrap_or("bin")
-                        .to_string();
-                    let ext_static: &[&str] = match ext.as_str() {
-                        "mid" => &["mid"],
-                        "mp4" => &["mp4"],
-                        "gif" => &["gif"],
-                        _ => &["bin"],
+        // ── Audio (Play + Save) ──────────────────────────────────────────
+        // Indexed loop (not `.clone().iter()`): the loop body also writes
+        // `media.error`, so a plain `.iter()` borrow would conflict —
+        // indexing keeps each `&media.result_audios[i]` borrow short-lived
+        // instead of cloning the multi-MB base64 WAVs every frame.
+        if !media.result_audios.is_empty() {
+            ui.add_space(widgets::GAP_LABEL);
+            let n_audios = media.result_audios.len();
+            for i in 0..n_audios {
+                ui.horizontal(|ui| {
+                    Icon::Music.show(ui, ICON_PT, theme::ink_dim());
+                    ui.label(text::note(&if n_audios == 1 {
+                        "Audio".to_string()
+                    } else {
+                        format!("Audio #{}", i + 1)
+                    }));
+                    // Transport: play/pause toggle + stop + seek slider, one row per
+                    // result; only the row that owns the current track shows the
+                    // position controls.
+                    let row_id = format!("media_audio_{i}");
+                    let is_current = player.playing_id().as_deref() == Some(row_id.as_str());
+                    let playing = is_current && !player.is_paused();
+                    let (play_icon, play_tip) = if playing {
+                        (Icon::Pause, "Pause")
+                    } else {
+                        (Icon::Play, "Play")
                     };
-                    crate::dialog::spawn_save(
-                        ui.ctx().clone(),
-                        media.pending_dialog.clone(),
-                        media.dialog_in_flight.clone(),
-                        name.clone(),
-                        ext_static,
-                        "File",
-                        bytes.clone(),
-                    );
-                }
-                // Playing HERE is the point of the in-app decoder; "Open" stays for
-                // handing the file to something else.
-                if name.to_lowercase().ends_with(".mp4")
-                    && widgets::icon_button(ui, Icon::Play, "Decode and play in the app").clicked()
-                {
-                    video.open(i, bytes.clone());
-                }
-                if ui
-                    .add(egui::Button::new(text::note("Open")).frame(false))
-                    .on_hover_text("Write to a temp file and open in the system default app")
-                    .clicked()
-                {
-                    if let Err(e) = open_with_system(name, bytes) {
-                        media.error = Some(format!("Open failed: {e}"));
+                    if widgets::icon_button(ui, play_icon, play_tip).clicked() {
+                        if is_current {
+                            player.toggle_pause();
+                        } else if let Err(e) = player.play(&row_id, &media.result_audios[i]) {
+                            media.error = Some(format!("Playback failed: {e}"));
+                        }
                     }
-                }
-            });
+                    if is_current {
+                        if widgets::icon_button(ui, Icon::Stop, "Stop").clicked() {
+                            player.stop();
+                        }
+                        let dur = player.duration().max(0.01);
+                        let mut pos = player.position();
+                        let resp = ui
+                            .scope(|ui| {
+                                ui.spacing_mut().slider_width = widgets::SLIDER_TRACK_W;
+                                ui.add(egui::Slider::new(&mut pos, 0.0..=dur).show_value(false))
+                            })
+                            .inner;
+                        if resp.drag_stopped() || (resp.changed() && !resp.dragged()) {
+                            player.seek(pos);
+                        }
+                        widgets::readout(
+                            ui,
+                            widgets::READOUT_WIDE_W,
+                            &format!(
+                                "{}:{:02} / {}:{:02}",
+                                (pos as u32) / 60,
+                                (pos as u32) % 60,
+                                (dur as u32) / 60,
+                                (dur as u32) % 60
+                            ),
+                        );
+                        // The position moves while playing.
+                        ui.ctx()
+                            .request_repaint_after(std::time::Duration::from_millis(
+                                AUDIO_REPAINT_MS,
+                            ));
+                    }
+                    if crate::dialog::save_button(ui, &media.dialog_in_flight, "Save").clicked() {
+                        let bytes = decode_b64(&media.result_audios[i]);
+                        let ts = chrono::Local::now().format("%Y%m%d_%H%M%S");
+                        let default_name =
+                            crate::modality::output_filename("audio", &ts.to_string(), i, "wav");
+                        crate::dialog::spawn_save(
+                            ui.ctx().clone(),
+                            media.pending_dialog.clone(),
+                            media.dialog_in_flight.clone(),
+                            default_name,
+                            &["wav"],
+                            "WAV audio",
+                            bytes,
+                        );
+                    }
+                });
+            }
         }
-    }
 
+        // ── Files (MIDI / video — Save + Open) ───────────────────────────
+        // Same indexed pattern as audio: the Open branch writes
+        // `media.error`, so borrow each (name, bytes) briefly per use
+        // rather than cloning every blob every frame. Save still clones —
+        // but only the one clicked file's bytes, at click time.
+        if !media.result_files.is_empty() {
+            ui.add_space(widgets::GAP_LABEL);
+            if render_video_player(ui, video) {
+                media.video_viewer.open = true;
+            }
+            for i in 0..media.result_files.len() {
+                ui.horizontal(|ui| {
+                    let (name, bytes) = &media.result_files[i];
+                    Icon::Film.show(ui, ICON_PT, theme::ink_dim());
+                    ui.label(text::note(&format!(
+                        "{name} ({})",
+                        crate::api::types::format_size(bytes.len() as u64)
+                    )));
+                    if crate::dialog::save_button(ui, &media.dialog_in_flight, "Save").clicked() {
+                        let ext = std::path::Path::new(name)
+                            .extension()
+                            .and_then(|e| e.to_str())
+                            .unwrap_or("bin")
+                            .to_string();
+                        let ext_static: &[&str] = match ext.as_str() {
+                            "mid" => &["mid"],
+                            "mp4" => &["mp4"],
+                            "gif" => &["gif"],
+                            _ => &["bin"],
+                        };
+                        crate::dialog::spawn_save(
+                            ui.ctx().clone(),
+                            media.pending_dialog.clone(),
+                            media.dialog_in_flight.clone(),
+                            name.clone(),
+                            ext_static,
+                            "File",
+                            bytes.clone(),
+                        );
+                    }
+                    // Playing HERE is the point of the in-app decoder; "Open" stays for
+                    // handing the file to something else.
+                    if name.to_lowercase().ends_with(".mp4")
+                        && widgets::icon_button(ui, Icon::Play, "Decode and play in the app")
+                            .clicked()
+                    {
+                        video.open(i, bytes.clone());
+                    }
+                    if ui
+                        .add(egui::Button::new(text::note("Open")).frame(false))
+                        .on_hover_text("Write to a temp file and open in the system default app")
+                        .clicked()
+                    {
+                        if let Err(e) = open_with_system(name, bytes) {
+                            media.error = Some(format!("Open failed: {e}"));
+                        }
+                    }
+                });
+            }
+        }
     });
 
     // Earlier generations, kept so a new run never destroys what came before.
@@ -2164,7 +2369,9 @@ fn render_video_player(ui: &mut egui::Ui, video: &mut crate::video_engine::Video
         ui.label(text::note(&format!("Video: {err}")).color(theme::error()));
         return false;
     }
-    let Some(tex) = video.texture.clone() else { return false };
+    let Some(tex) = video.texture.clone() else {
+        return false;
+    };
 
     let (mut seek_to, mut toggle, mut close) = (None, false, false);
     let mut open_viewer = false;
@@ -2187,13 +2394,9 @@ fn render_video_player(ui: &mut egui::Ui, video: &mut crate::video_engine::Video
     });
     // A frame the decoder refused leaves the PREVIOUS one on screen while the counter
     // walks on: the clip looks frozen and nothing says why. Name it.
-    if let ViewerNotice::Over(notice) | ViewerNotice::Instead(notice) = viewer_notice(
-        true,
-        false,
-        None,
-        video.stale_frame(),
-        video.shown_frame(),
-    ) {
+    if let ViewerNotice::Over(notice) | ViewerNotice::Instead(notice) =
+        viewer_notice(true, false, None, video.stale_frame(), video.shown_frame())
+    {
         ui.label(text::note(&notice).color(theme::warning()));
     }
     let (idx, total, playing, fps, looping, samples, dur) = match &video.player {
@@ -2220,7 +2423,11 @@ fn render_video_player(ui: &mut egui::Ui, video: &mut crate::video_engine::Video
         );
     }
     ui.horizontal(|ui| {
-        let (icon, tip) = if playing { (Icon::Pause, "Pause") } else { (Icon::Play, "Play") };
+        let (icon, tip) = if playing {
+            (Icon::Pause, "Pause")
+        } else {
+            (Icon::Play, "Play")
+        };
         if widgets::icon_button(ui, icon, tip).clicked() {
             toggle = true;
         }
@@ -2245,12 +2452,19 @@ fn render_video_player(ui: &mut egui::Ui, video: &mut crate::video_engine::Video
                 p.looping = !looping;
             }
         }
-        if widgets::icon_button(ui, Icon::Expand, "Fullscreen: zoom, pan and step frame by frame")
-            .clicked()
+        if widgets::icon_button(
+            ui,
+            Icon::Expand,
+            "Fullscreen: zoom, pan and step frame by frame",
+        )
+        .clicked()
         {
             open_viewer = true;
         }
-        if ui.add(egui::Button::new(text::note("Close")).frame(false)).clicked() {
+        if ui
+            .add(egui::Button::new(text::note("Close")).frame(false))
+            .clicked()
+        {
             close = true;
         }
     });
@@ -2302,7 +2516,13 @@ fn render_history(
             ui.horizontal_wrapped(|ui| {
                 for (i, e) in media.history.iter().enumerate() {
                     let label = if e.prompt.chars().count() > HISTORY_LABEL_CHARS {
-                        format!("{}...", e.prompt.chars().take(HISTORY_LABEL_CHARS - 1).collect::<String>())
+                        format!(
+                            "{}...",
+                            e.prompt
+                                .chars()
+                                .take(HISTORY_LABEL_CHARS - 1)
+                                .collect::<String>()
+                        )
                     } else if e.prompt.is_empty() {
                         format!("{:?}", e.kind)
                     } else {
@@ -2312,9 +2532,9 @@ fn render_history(
                     let clicked = match e.images.first() {
                         Some(b64) => {
                             let key = crate::texture::image_cache_key("media_hist", b64, i);
-                            let tex = image_textures
-                                .entry(key.clone())
-                                .or_insert_with(|| crate::texture::load_base64_texture(ui, b64, &key));
+                            let tex = image_textures.entry(key.clone()).or_insert_with(|| {
+                                crate::texture::load_base64_texture(ui, b64, &key)
+                            });
                             ui.add(
                                 egui::Image::new(&*tex)
                                     .fit_to_exact_size(thumb)
@@ -2351,7 +2571,6 @@ fn render_history(
         media.restore_from_history(i);
     }
 }
-
 
 /// Write bytes to a temp file and open them in the system default app
 /// (xdg-open / open / start). Mirrors `play_audio_blob`'s approach for
@@ -2410,7 +2629,10 @@ fn open_with_system(name: &str, bytes: &[u8]) -> Result<(), String> {
         return if rc > 32 {
             Ok(())
         } else {
-            Err(format!("could not open {}: shell error {rc}", path.display()))
+            Err(format!(
+                "could not open {}: shell error {rc}",
+                path.display()
+            ))
         };
     }
 
@@ -2458,11 +2680,11 @@ mod render_tests {
     //! the real egui layout code (no X server, no GPU) so a broken kind — missing match arm,
     //! ID clash, panicking widget — fails CI. Also asserts the new voice panels expose their
     //! distinctive controls in the AccessKit tree.
+    use super::overlay_button;
     use super::render;
     use crate::state::{MediaKind, MediaState, SpeechEngine};
     use egui_kittest::kittest::NodeT;
     use egui_kittest::Harness;
-    use super::overlay_button;
     use std::collections::HashMap;
 
     /// Render one kind (with an optional state tweak) and run a check against the resulting
@@ -2502,7 +2724,15 @@ mod render_tests {
         let mut harness = Harness::new_ui(move |ui| {
             let mut player = crate::audio_playback::AudioPlayer::default();
             let mut video = crate::video_engine::VideoPlayback::default();
-            let _ = render(ui, &mut media, &mut textures, &[], &[], &mut player, &mut video);
+            let _ = render(
+                ui,
+                &mut media,
+                &mut textures,
+                &[],
+                &[],
+                &mut player,
+                &mut video,
+            );
         });
         if busy {
             harness.run_steps(2);
@@ -2515,8 +2745,12 @@ mod render_tests {
         let mut texts: Vec<String> = Vec::new();
         for n in harness.root().children_recursive() {
             let ak = n.accesskit_node();
-            if let Some(l) = ak.label() { texts.push(l.to_lowercase()); }
-            if let Some(v) = ak.value() { texts.push(v.to_lowercase()); }
+            if let Some(l) = ak.label() {
+                texts.push(l.to_lowercase());
+            }
+            if let Some(v) = ak.value() {
+                texts.push(v.to_lowercase());
+            }
         }
         check(&|s: &str| {
             let s = s.to_lowercase();
@@ -2546,7 +2780,10 @@ mod render_tests {
         });
         harness.run();
         let (before, after) = seen.borrow().expect("the ui closure did not run");
-        assert_eq!(before, after, "the overlay controls changed the layout extent");
+        assert_eq!(
+            before, after,
+            "the overlay controls changed the layout extent"
+        );
     }
 
     #[test]
@@ -2554,23 +2791,36 @@ mod render_tests {
         // If any panel's layout code panics or clashes IDs, this fails; the header check
         // confirms the studio actually drew.
         for kind in MediaKind::ALL {
-            on_panel(kind, |_| {}, |has| {
-                assert!(has("Media Studio"), "{kind:?} panel did not render the studio header");
-            });
+            on_panel(
+                kind,
+                |_| {},
+                |has| {
+                    assert!(
+                        has("Media Studio"),
+                        "{kind:?} panel did not render the studio header"
+                    );
+                },
+            );
         }
     }
 
-
-
     #[test]
     fn speech_panel_exposes_engine_selector() {
-        on_panel(MediaKind::Speech, |_| {}, |has| {
-            assert!(has("Engine"), "no engine selector on the Parler default");
-        });
+        on_panel(
+            MediaKind::Speech,
+            |_| {},
+            |has| {
+                assert!(has("Engine"), "no engine selector on the Parler default");
+            },
+        );
         // Kyutai engine shows the free-text voice field.
-        on_panel(MediaKind::Speech, |m| m.speech.engine = SpeechEngine::Kyutai, |has| {
-            assert!(has("Voice"), "kyutai panel missing voice field");
-        });
+        on_panel(
+            MediaKind::Speech,
+            |m| m.speech.engine = SpeechEngine::Kyutai,
+            |has| {
+                assert!(has("Voice"), "kyutai panel missing voice field");
+            },
+        );
     }
 
     /// A synthesis that is still reading its checkpoint SAYS SO.
@@ -2617,7 +2867,6 @@ mod render_tests {
         );
     }
 
-
     /// The cost of a clip is on screen BEFORE the button that starts it - and only once
     /// the server has actually said what it is.
     ///
@@ -2627,20 +2876,32 @@ mod render_tests {
     /// settings that are not.
     #[test]
     fn the_video_panel_states_its_cost_only_once_it_knows_it() {
-        on_panel(MediaKind::Video, |m| m.video_estimate = Some(168.0), |has| {
-            assert!(has("2.8 min"), "the estimate is not shown next to Generate");
-            assert!(
-                has("of denoising"),
-                "the estimate is shown as a TOTAL - it only covers the denoise"
-            );
-        });
-        on_panel(MediaKind::Video, |_| {}, |has| {
-            assert!(!has("of denoising"), "an unanswered estimate was still shown");
-            assert!(!has("~0 s"), "a zero stood in for an answer that had not arrived");
-        });
+        on_panel(
+            MediaKind::Video,
+            |m| m.video_estimate = Some(168.0),
+            |has| {
+                assert!(has("2.8 min"), "the estimate is not shown next to Generate");
+                assert!(
+                    has("of denoising"),
+                    "the estimate is shown as a TOTAL - it only covers the denoise"
+                );
+            },
+        );
+        on_panel(
+            MediaKind::Video,
+            |_| {},
+            |has| {
+                assert!(
+                    !has("of denoising"),
+                    "an unanswered estimate was still shown"
+                );
+                assert!(
+                    !has("~0 s"),
+                    "a zero stood in for an answer that had not arrived"
+                );
+            },
+        );
     }
-
-
 
     /// Fullscreen has to stay a PLAYER, not a still: the transport, the zoom controls and
     /// the way out must all be on screen once the overlay is up.
@@ -2653,11 +2914,19 @@ mod render_tests {
             // A texture stands in for a decoded frame; the viewer refuses to draw without
             // one, which is the state this test is not about.
             let img = egui::ColorImage::from_rgb([2, 2], &[128u8; 12]);
-            let tex = ui.ctx().load_texture("test_clip_frame", img, egui::TextureOptions::LINEAR);
+            let tex = ui
+                .ctx()
+                .load_texture("test_clip_frame", img, egui::TextureOptions::LINEAR);
             let mut video = crate::video_engine::VideoPlayback::with_frame(tex, 0);
-            let mut viewer = crate::state::VideoViewer { open: true, ..Default::default() };
+            let mut viewer = crate::state::VideoViewer {
+                open: true,
+                ..Default::default()
+            };
             super::render_video_viewer(ui.ctx(), &mut viewer, &mut video);
-            assert!(viewer.open, "the viewer dismissed itself with a frame on screen");
+            assert!(
+                viewer.open,
+                "the viewer dismissed itself with a frame on screen"
+            );
         });
         // Stepped rather than run to convergence: the viewer repaints continuously on
         // purpose, so that playback stays smooth, and `run` treats a ui that never settles
@@ -2679,10 +2948,7 @@ mod render_tests {
         assert!(has("frame 1/1"), "the current frame is not stated");
         assert!(has("100%"), "the zoom level is not stated");
     }
-
-
 }
-
 
 #[cfg(test)]
 mod thumbnail_orientation_tests {
@@ -2695,7 +2961,10 @@ mod thumbnail_orientation_tests {
             assert_eq!(w % 16, 0, "{name}: width {w} is not a multiple of 16");
             assert_eq!(h % 16, 0, "{name}: height {h} is not a multiple of 16");
             let mp = (w as f32 * h as f32) / 1_048_576.0;
-            assert!((0.85..=1.15).contains(&mp), "{name}: {mp:.2} MP is off the bucket");
+            assert!(
+                (0.85..=1.15).contains(&mp),
+                "{name}: {mp:.2} MP is off the bucket"
+            );
             let (num, den) = name
                 .rsplit_once(' ')
                 .and_then(|(_, r)| r.split_once(':'))
@@ -2719,7 +2988,9 @@ mod thumbnail_orientation_tests {
                 continue;
             }
             assert!(
-                super::IMAGE_SHAPES.iter().any(|&(_, w2, h2)| w2 == h && h2 == w),
+                super::IMAGE_SHAPES
+                    .iter()
+                    .any(|&(_, w2, h2)| w2 == h && h2 == w),
                 "{name} has no mirrored counterpart"
             );
         }
@@ -2736,10 +3007,16 @@ mod thumbnail_orientation_tests {
     fn jpeg_with_orientation(w: u32, h: u32, orientation: u16) -> Vec<u8> {
         use image::codecs::jpeg::JpegEncoder;
         let img = image::RgbImage::from_fn(w, h, |x, _| {
-            if x < w / 2 { image::Rgb([255, 0, 0]) } else { image::Rgb([0, 0, 255]) }
+            if x < w / 2 {
+                image::Rgb([255, 0, 0])
+            } else {
+                image::Rgb([0, 0, 255])
+            }
         });
         let mut base = Vec::new();
-        JpegEncoder::new(&mut base).encode_image(&img).expect("encode");
+        JpegEncoder::new(&mut base)
+            .encode_image(&img)
+            .expect("encode");
 
         // A minimal TIFF header with one IFD entry: Orientation (0x0112), SHORT, 1.
         let mut exif: Vec<u8> = b"Exif\0\0".to_vec();
@@ -2878,7 +3155,9 @@ fn render_video_viewer(
                 let raw = tex.size_vec2();
                 // Fit first, then the zoom multiplies it - so zoom 1 always means "the
                 // whole frame", whatever the clip's resolution.
-                let fit = (screen.width() / raw.x).min(screen.height() / raw.y).min(VIEWER_FIT_MAX);
+                let fit = (screen.width() / raw.x)
+                    .min(screen.height() / raw.y)
+                    .min(VIEWER_FIT_MAX);
                 let shown = raw * fit * viewer.zoom;
 
                 if resp.dragged() {
@@ -2968,53 +3247,74 @@ fn render_video_viewer(
 
             surface::plate(ui, bar, 0.0);
             let mut seek: Option<usize> = None;
-            ui.scope_builder(egui::UiBuilder::new().max_rect(bar.shrink(widgets::GAP_WIDGETS)), |ui| {
-                ui.horizontal(|ui| {
-                    let (icon, tip) = if playing {
-                        (Icon::Pause, "Pause (Space, or click the picture)")
-                    } else {
-                        (Icon::Play, "Play (Space, or click the picture)")
-                    };
-                    if widgets::icon_button(ui, icon, tip).clicked() {
-                        toggle = true;
-                    }
-                    if widgets::icon_button(ui, Icon::StepBack, "Previous frame (Left)").clicked() {
-                        step -= 1;
-                    }
-                    if widgets::icon_button(ui, Icon::StepForward, "Next frame (Right)").clicked() {
-                        step += 1;
-                    }
-                    if total > 1 {
-                        let mut pos = idx;
-                        if ui
-                            .add(egui::Slider::new(&mut pos, 0..=total - 1).show_value(false))
-                            .changed()
-                        {
-                            seek = Some(pos);
+            ui.scope_builder(
+                egui::UiBuilder::new().max_rect(bar.shrink(widgets::GAP_WIDGETS)),
+                |ui| {
+                    ui.horizontal(|ui| {
+                        let (icon, tip) = if playing {
+                            (Icon::Pause, "Pause (Space, or click the picture)")
+                        } else {
+                            (Icon::Play, "Play (Space, or click the picture)")
+                        };
+                        if widgets::icon_button(ui, icon, tip).clicked() {
+                            toggle = true;
                         }
-                    }
-                    widgets::readout(ui, VIEWER_FRAME_W, &format!("frame {}/{}", idx + 1, total.max(1)));
-                    // The same three zoom controls as the image viewer, in the same order.
-                    if widgets::icon_button(ui, Icon::Minus, "Zoom out").clicked() {
-                        viewer.zoom = (viewer.zoom / VIEWER_ZOOM_STEP).clamp(VIEWER_MIN_ZOOM, VIEWER_MAX_ZOOM);
-                    }
-                    widgets::readout(ui, VIEWER_ZOOM_W, &format!("{:>4.0}%", viewer.zoom * 100.0));
-                    if widgets::icon_button(ui, Icon::Plus, "Zoom in").clicked() {
-                        viewer.zoom = (viewer.zoom * VIEWER_ZOOM_STEP).clamp(VIEWER_MIN_ZOOM, VIEWER_MAX_ZOOM);
-                    }
-                    if ui.add(egui::Button::new(text::note("Fit")).frame(false)).on_hover_text("Reset zoom (R)").clicked() {
-                        viewer.zoom = 1.0;
-                        viewer.pan = (0.0, 0.0);
-                    }
-                    if ui
-                        .add(egui::Button::new(text::note("Close")).frame(false))
-                        .on_hover_text("Escape, or click beside the picture")
-                        .clicked()
-                    {
-                        viewer.open = false;
-                    }
-                });
-            });
+                        if widgets::icon_button(ui, Icon::StepBack, "Previous frame (Left)")
+                            .clicked()
+                        {
+                            step -= 1;
+                        }
+                        if widgets::icon_button(ui, Icon::StepForward, "Next frame (Right)")
+                            .clicked()
+                        {
+                            step += 1;
+                        }
+                        if total > 1 {
+                            let mut pos = idx;
+                            if ui
+                                .add(egui::Slider::new(&mut pos, 0..=total - 1).show_value(false))
+                                .changed()
+                            {
+                                seek = Some(pos);
+                            }
+                        }
+                        widgets::readout(
+                            ui,
+                            VIEWER_FRAME_W,
+                            &format!("frame {}/{}", idx + 1, total.max(1)),
+                        );
+                        // The same three zoom controls as the image viewer, in the same order.
+                        if widgets::icon_button(ui, Icon::Minus, "Zoom out").clicked() {
+                            viewer.zoom = (viewer.zoom / VIEWER_ZOOM_STEP)
+                                .clamp(VIEWER_MIN_ZOOM, VIEWER_MAX_ZOOM);
+                        }
+                        widgets::readout(
+                            ui,
+                            VIEWER_ZOOM_W,
+                            &format!("{:>4.0}%", viewer.zoom * 100.0),
+                        );
+                        if widgets::icon_button(ui, Icon::Plus, "Zoom in").clicked() {
+                            viewer.zoom = (viewer.zoom * VIEWER_ZOOM_STEP)
+                                .clamp(VIEWER_MIN_ZOOM, VIEWER_MAX_ZOOM);
+                        }
+                        if ui
+                            .add(egui::Button::new(text::note("Fit")).frame(false))
+                            .on_hover_text("Reset zoom (R)")
+                            .clicked()
+                        {
+                            viewer.zoom = 1.0;
+                            viewer.pan = (0.0, 0.0);
+                        }
+                        if ui
+                            .add(egui::Button::new(text::note("Close")).frame(false))
+                            .on_hover_text("Escape, or click beside the picture")
+                            .clicked()
+                        {
+                            viewer.open = false;
+                        }
+                    });
+                },
+            );
 
             // A click on the picture pauses it; one beside it leaves. Decided here from
             // the pointer position rather than left to widget ordering, so pressing a
@@ -3181,8 +3481,14 @@ mod viewer_tests {
     #[test]
     fn panning_stops_at_the_edge_of_the_overhang() {
         // Fits the window: pinned.
-        assert_eq!(viewer_clamp_pan((90.0, -40.0), (800.0, 600.0), (800.0, 600.0)), (0.0, 0.0));
-        assert_eq!(viewer_clamp_pan((90.0, -40.0), (400.0, 300.0), (800.0, 600.0)), (0.0, 0.0));
+        assert_eq!(
+            viewer_clamp_pan((90.0, -40.0), (800.0, 600.0), (800.0, 600.0)),
+            (0.0, 0.0)
+        );
+        assert_eq!(
+            viewer_clamp_pan((90.0, -40.0), (400.0, 300.0), (800.0, 600.0)),
+            (0.0, 0.0)
+        );
         // Twice the window: half the overhang each way is 400 x 300.
         assert_eq!(
             viewer_clamp_pan((9999.0, -9999.0), (1600.0, 1200.0), (800.0, 600.0)),
@@ -3194,13 +3500,19 @@ mod viewer_tests {
             (-400.0, 300.0)
         );
         // Inside the limit, untouched.
-        assert_eq!(viewer_clamp_pan((10.0, -20.0), (1600.0, 1200.0), (800.0, 600.0)), (10.0, -20.0));
+        assert_eq!(
+            viewer_clamp_pan((10.0, -20.0), (1600.0, 1200.0), (800.0, 600.0)),
+            (10.0, -20.0)
+        );
     }
 
     /// A degenerate zoom must not produce NaN pans that then poison the clamp.
     #[test]
     fn a_degenerate_zoom_is_declined_rather_than_propagated() {
-        assert_eq!(viewer_zoom_about((5.0, 6.0), 0.0, 2.0, (1.0, 1.0), (0.0, 0.0)), (5.0, 6.0));
+        assert_eq!(
+            viewer_zoom_about((5.0, 6.0), 0.0, 2.0, (1.0, 1.0), (0.0, 0.0)),
+            (5.0, 6.0)
+        );
     }
 
     /// A clip still being decoded must KEEP the viewer, and say what it is waiting for.
@@ -3230,7 +3542,10 @@ mod viewer_tests {
         match viewer_notice(true, false, None, Some(41), Some(12)) {
             ViewerNotice::Over(t) => {
                 assert!(t.contains("42"), "the frame asked for is not named: {t}");
-                assert!(t.contains("13"), "the frame actually shown is not named: {t}");
+                assert!(
+                    t.contains("13"),
+                    "the frame actually shown is not named: {t}"
+                );
             }
             other => panic!("a stale picture went unannounced: {other:?}"),
         }
@@ -3240,24 +3555,36 @@ mod viewer_tests {
     /// is always on screen is a warning nobody reads.
     #[test]
     fn a_frame_that_is_on_screen_draws_no_warning() {
-        assert_eq!(viewer_notice(true, false, None, None, Some(7)), ViewerNotice::Clear);
+        assert_eq!(
+            viewer_notice(true, false, None, None, Some(7)),
+            ViewerNotice::Clear
+        );
     }
 
     /// Nothing loaded, nothing decoding, no error: there is nothing to look at, and
     /// holding the screen with a black rectangle is worse than closing.
     #[test]
     fn an_empty_viewer_dismisses_itself() {
-        assert_eq!(viewer_notice(false, false, None, None, None), ViewerNotice::Dismiss);
+        assert_eq!(
+            viewer_notice(false, false, None, None, None),
+            ViewerNotice::Dismiss
+        );
     }
 
     /// And the viewer acts on that decision: opened over nothing, it closes.
     #[test]
     fn the_viewer_closes_when_there_is_nothing_behind_it() {
         let ctx = egui::Context::default();
-        let mut viewer = crate::state::VideoViewer { open: true, ..Default::default() };
+        let mut viewer = crate::state::VideoViewer {
+            open: true,
+            ..Default::default()
+        };
         let mut video = crate::video_engine::VideoPlayback::default();
         super::render_video_viewer(&ctx, &mut viewer, &mut video);
-        assert!(!viewer.open, "the viewer held the screen with nothing on it");
+        assert!(
+            !viewer.open,
+            "the viewer held the screen with nothing on it"
+        );
     }
 
     /// The very first picture failing is not the same message as a picture mid-clip

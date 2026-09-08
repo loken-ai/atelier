@@ -44,9 +44,7 @@ pub(crate) const ATTACH_KEY_PREFIX: &str = "attach_";
 /// vec moves into the chat bubble, so the chip-side cache is
 /// stale). Lifted out of those sites so a future re-namespace of
 /// the texture key can update one place, not five.
-pub(crate) fn clear_attach_chip_textures(
-    image_textures: &mut HashMap<String, TextureHandle>,
-) {
+pub(crate) fn clear_attach_chip_textures(image_textures: &mut HashMap<String, TextureHandle>) {
     image_textures.retain(|k, _| !k.starts_with(ATTACH_KEY_PREFIX));
 }
 
@@ -61,15 +59,21 @@ pub(crate) fn clear_attach_chip_textures(
 /// and spam the log + waste CPU. The placeholder renders invisibly
 /// in the bubble's image slot, which is the same UX outcome as
 /// rendering nothing.
-pub(crate) fn load_base64_texture(ui: &mut egui::Ui, base64_data: &str, name: &str) -> TextureHandle {
+pub(crate) fn load_base64_texture(
+    ui: &mut egui::Ui,
+    base64_data: &str,
+    name: &str,
+) -> TextureHandle {
     use base64::Engine;
     let bytes = match base64::engine::general_purpose::STANDARD.decode(base64_data) {
         Ok(b) => b,
         Err(e) => {
-            warn_once_per_texture(name, || format!(
-                "image texture {name}: base64 decode failed ({e}) — \
+            warn_once_per_texture(name, || {
+                format!(
+                    "image texture {name}: base64 decode failed ({e}) — \
                  server returned non-base64 payload or it was truncated"
-            ));
+                )
+            });
             return transparent_placeholder_texture(ui, name);
         }
     };
@@ -84,11 +88,13 @@ pub(crate) fn load_base64_texture(ui: &mut egui::Ui, base64_data: &str, name: &s
         Ok(i) => i,
         Err(e) => {
             let _ = e;
-            warn_once_per_texture(name, || format!(
-                "image texture {name}: decode failed - {} bytes of \
+            warn_once_per_texture(name, || {
+                format!(
+                    "image texture {name}: decode failed - {} bytes of \
                  unrecognised or corrupt image data",
-                bytes.len(),
-            ));
+                    bytes.len(),
+                )
+            });
             return transparent_placeholder_texture(ui, name);
         }
     };
@@ -96,7 +102,8 @@ pub(crate) fn load_base64_texture(ui: &mut egui::Ui, base64_data: &str, name: &s
     let size = [rgba.width() as usize, rgba.height() as usize];
     let pixels = rgba.into_raw();
     let color_image = ColorImage::from_rgba_unmultiplied(size, &pixels);
-    ui.ctx().load_texture(name, color_image, egui::TextureOptions::LINEAR)
+    ui.ctx()
+        .load_texture(name, color_image, egui::TextureOptions::LINEAR)
 }
 
 /// Emit a tracing warning at most once per texture-name across the
@@ -149,10 +156,12 @@ mod tests {
     fn image_cache_key_distinguishes_different_payloads() {
         let a = image_cache_key("gen", "iVBORw0KGgoFIRST", 0);
         let b = image_cache_key("gen", "iVBORw0KGgoSECOND", 0);
-        assert_ne!(a, b,
+        assert_ne!(
+            a, b,
             "two distinct image payloads must yield distinct cache keys, \
              even at the same kind+index — otherwise the second image \
-             renders the first one's pixels (the bug this guards against)");
+             renders the first one's pixels (the bug this guards against)"
+        );
     }
 
     #[test]
@@ -233,14 +242,21 @@ mod tests {
         // instead of only the first.
         use std::sync::atomic::{AtomicUsize, Ordering};
         let counter = AtomicUsize::new(0);
-        for key in ["distinct_keys_test_a", "distinct_keys_test_b", "distinct_keys_test_c"] {
+        for key in [
+            "distinct_keys_test_a",
+            "distinct_keys_test_b",
+            "distinct_keys_test_c",
+        ] {
             warn_once_per_texture(key, || {
                 counter.fetch_add(1, Ordering::SeqCst);
                 "boom".to_string()
             });
         }
-        assert_eq!(counter.load(Ordering::SeqCst), 3,
-            "three distinct keys should produce three warnings");
+        assert_eq!(
+            counter.load(Ordering::SeqCst),
+            3,
+            "three distinct keys should produce three warnings"
+        );
     }
 
     #[test]
@@ -277,17 +293,22 @@ mod tests {
         let keys: Vec<String> = vec![
             image_cache_key("attach", "a-payload", 0),
             image_cache_key("attach", "b-payload", 1),
-            image_cache_key("msg",    "c-payload", 0),
-            image_cache_key("gen",    "d-payload", 0),
-            image_cache_key("gen",    "e-payload", 1),
+            image_cache_key("msg", "c-payload", 0),
+            image_cache_key("gen", "d-payload", 0),
+            image_cache_key("gen", "e-payload", 1),
         ];
         let mut survivors: std::collections::HashSet<String> = keys.iter().cloned().collect();
         survivors.retain(|k| !k.starts_with(ATTACH_KEY_PREFIX));
-        assert_eq!(survivors.len(), 3,
-            "exactly the 3 non-attach keys should survive the prefix retain");
+        assert_eq!(
+            survivors.len(),
+            3,
+            "exactly the 3 non-attach keys should survive the prefix retain"
+        );
         for k in &survivors {
-            assert!(!k.starts_with(ATTACH_KEY_PREFIX),
-                "survivor {k:?} should not be in the attach namespace");
+            assert!(
+                !k.starts_with(ATTACH_KEY_PREFIX),
+                "survivor {k:?} should not be in the attach namespace"
+            );
         }
     }
 }

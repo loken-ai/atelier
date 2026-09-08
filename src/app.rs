@@ -16,7 +16,8 @@ use crate::config::{ApiType, AppConfig};
 use crate::log_buffer::LogBuffer;
 use crate::settings::{SettingsAction, SettingsState};
 use crate::state::{
-    ActionStatus, CLIOutput, CLIState, ChatMessage, ChatState, ConnectionStatus, MediaKind, ModelState, Section, ServerState, ServerStatus,
+    ActionStatus, CLIOutput, CLIState, ChatMessage, ChatState, ConnectionStatus, MediaKind,
+    ModelState, Section, ServerState, ServerStatus,
 };
 use crate::task::{MediaOutput, TaskResult};
 use crate::theme;
@@ -40,10 +41,7 @@ fn time_seed() -> u64 {
 /// `MediaOutput`, dispatching each item by its `content_type`:
 /// images render inline, WAV audio plays, and MIDI / video become
 /// downloadable (filename, bytes) blobs.
-fn media_data_to_output(
-    data: Vec<crate::api::types::MediaDatum>,
-    status: String,
-) -> MediaOutput {
+fn media_data_to_output(data: Vec<crate::api::types::MediaDatum>, status: String) -> MediaOutput {
     use base64::Engine;
     let decode = |b64: &str| {
         base64::engine::general_purpose::STANDARD
@@ -104,13 +102,23 @@ fn validate_enhanced_prompt(text: &str, original: &str) -> Result<String, String
         "output the rewritten",
     ] {
         if low.contains(marker) {
-            return Err("the model echoed the instruction instead of rewriting the prompt".to_string());
+            return Err(
+                "the model echoed the instruction instead of rewriting the prompt".to_string(),
+            );
         }
     }
     // Addressed the user / refused instead of producing a prompt.
-    for marker in ["i'm sorry", "i am sorry", "as an ai", "how can i help", "what is your question"] {
+    for marker in [
+        "i'm sorry",
+        "i am sorry",
+        "as an ai",
+        "how can i help",
+        "what is your question",
+    ] {
         if low.starts_with(marker) || low.contains(marker) {
-            return Err("the model answered conversationally instead of rewriting the prompt".to_string());
+            return Err(
+                "the model answered conversationally instead of rewriting the prompt".to_string(),
+            );
         }
     }
     let words = t.split_whitespace().count();
@@ -180,8 +188,15 @@ async fn stream_media(
     let batch = body.get("n").and_then(|x| x.as_u64()).unwrap_or(1).max(1);
     let result = match client.post_stream(path, body).await {
         Ok(response) => {
-            consume_media_stream(response, batch, &tasks, &egui_ctx, &status_label, &render_id)
-                .await
+            consume_media_stream(
+                response,
+                batch,
+                &tasks,
+                &egui_ctx,
+                &status_label,
+                &render_id,
+            )
+            .await
         }
         Err(e) => Err(e.to_string()),
     };
@@ -327,16 +342,15 @@ async fn consume_media_stream(
                                     batch * total,
                                 ));
                                 egui_ctx.request_repaint();
-                            } else if let Some(text) =
-                                v.get("response").and_then(|x| x.as_str())
-                            {
+                            } else if let Some(text) = v.get("response").and_then(|x| x.as_str()) {
                                 // A loading stage, in the server's own words, before any
                                 // step exists to count.
                                 if !text.is_empty() {
-                                    tasks
-                                        .lock()
-                                        .unwrap()
-                                        .push(TaskResult::MediaProgress(text.to_string(), 0, 0));
+                                    tasks.lock().unwrap().push(TaskResult::MediaProgress(
+                                        text.to_string(),
+                                        0,
+                                        0,
+                                    ));
                                     egui_ctx.request_repaint();
                                 }
                             }
@@ -802,7 +816,10 @@ impl LLMGuiApp {
         candidates.truncate(3);
         let model = candidates.first().cloned();
         if model.is_none() {
-            self.toast(ToastSeverity::Error, "No chat-capable model available to enhance the prompt.".to_string());
+            self.toast(
+                ToastSeverity::Error,
+                "No chat-capable model available to enhance the prompt.".to_string(),
+            );
             return;
         }
         self.spawn_enhance(ctx, candidates)
@@ -876,9 +893,10 @@ impl LLMGuiApp {
                     Err(e) => last_err = format!("{cand}: {e}"),
                 }
             }
-            tasks.lock().unwrap().push(TaskResult::MediaPromptEnhanced(
-                result.ok_or(last_err),
-            ));
+            tasks
+                .lock()
+                .unwrap()
+                .push(TaskResult::MediaPromptEnhanced(result.ok_or(last_err)));
             egui_ctx.request_repaint();
         });
     }
@@ -889,10 +907,7 @@ impl LLMGuiApp {
             return;
         }
         if self.media.prompt.trim().is_empty()
-            && !matches!(
-                self.media.kind,
-                MediaKind::Transcribe | MediaKind::Separate
-            )
+            && !matches!(self.media.kind, MediaKind::Transcribe | MediaKind::Separate)
         {
             self.media.error = Some("Enter a prompt first.".to_string());
             return;
@@ -914,7 +929,10 @@ impl LLMGuiApp {
                 let controls = crate::api::types::RenderControls {
                     loras: m.loras.clone(),
                     regions: m.regions.clone(),
-                    control: m.control.as_ref().map(|(_, b)| (b.clone(), m.control_scale)),
+                    control: m
+                        .control
+                        .as_ref()
+                        .map(|(_, b)| (b.clone(), m.control_scale)),
                     sampler: m.sampler.clone(),
                     scheduler: m.scheduler.clone(),
                     output_format: m.file_format.wire().to_string(),
@@ -925,26 +943,22 @@ impl LLMGuiApp {
                 // progress. The server already ran the variation loop itself, which is why
                 // the client no longer does: doing both offsets every seed twice.
                 let mut body = crate::api::client::image_request_body(
-                    &m.model,
-                    &prompt,
-                    m.width,
-                    m.height,
-                    m.n,
-                    m.steps,
-                    guidance,
-                    seed,
-                    &controls,
+                    &m.model, &prompt, m.width, m.height, m.n, m.steps, guidance, seed, &controls,
                 );
                 body["stream"] = serde_json::json!(true);
-                self.media.generation_abort = Some(self.rt.spawn(stream_media(
-                    client,
-                    "/v1/images/generations",
-                    body,
-                    tasks,
-                    egui_ctx,
-                    "Image generated.".to_string(),
-                    self.media.render_id.clone(),
-                )).abort_handle());
+                self.media.generation_abort = Some(
+                    self.rt
+                        .spawn(stream_media(
+                            client,
+                            "/v1/images/generations",
+                            body,
+                            tasks,
+                            egui_ctx,
+                            "Image generated.".to_string(),
+                            self.media.render_id.clone(),
+                        ))
+                        .abort_handle(),
+                );
             }
             MediaKind::Music => {
                 let m = self.media.music.clone();
@@ -975,15 +989,19 @@ impl LLMGuiApp {
                         body[key] = serde_json::json!(val);
                     }
                 }
-                self.media.generation_abort = Some(self.rt.spawn(stream_media(
-                    client,
-                    "/v1/audio/generations",
-                    body,
-                    tasks,
-                    egui_ctx,
-                    "Music generated.".to_string(),
-                    self.media.render_id.clone(),
-                )).abort_handle());
+                self.media.generation_abort = Some(
+                    self.rt
+                        .spawn(stream_media(
+                            client,
+                            "/v1/audio/generations",
+                            body,
+                            tasks,
+                            egui_ctx,
+                            "Music generated.".to_string(),
+                            self.media.render_id.clone(),
+                        ))
+                        .abort_handle(),
+                );
             }
             MediaKind::Sfx => {
                 let s = &self.media.sfx;
@@ -1015,27 +1033,35 @@ impl LLMGuiApp {
                         body["bars"] = serde_json::json!(s.loop_bars);
                         body["bpm"] = serde_json::json!(s.loop_bpm);
                     }
-                    self.media.generation_abort = Some(self.rt.spawn(stream_media(
-                        client,
-                        "/v1/audio/generations",
-                        body,
-                        tasks,
-                        egui_ctx,
-                        "Sound generated.".to_string(),
-                        self.media.render_id.clone(),
-                    )).abort_handle());
+                    self.media.generation_abort = Some(
+                        self.rt
+                            .spawn(stream_media(
+                                client,
+                                "/v1/audio/generations",
+                                body,
+                                tasks,
+                                egui_ctx,
+                                "Sound generated.".to_string(),
+                                self.media.render_id.clone(),
+                            ))
+                            .abort_handle(),
+                    );
                 } else {
                     // EzAudio streams per-step progress too (same SSE shape).
                     body["stream"] = serde_json::json!(true);
-                    self.media.generation_abort = Some(self.rt.spawn(stream_media(
-                        client,
-                        "/v1/audio/generations",
-                        body,
-                        tasks,
-                        egui_ctx,
-                        "Sound effect generated.".to_string(),
-                        self.media.render_id.clone(),
-                    )).abort_handle());
+                    self.media.generation_abort = Some(
+                        self.rt
+                            .spawn(stream_media(
+                                client,
+                                "/v1/audio/generations",
+                                body,
+                                tasks,
+                                egui_ctx,
+                                "Sound effect generated.".to_string(),
+                                self.media.render_id.clone(),
+                            ))
+                            .abort_handle(),
+                    );
                 }
             }
             MediaKind::Speech => {
@@ -1044,13 +1070,24 @@ impl LLMGuiApp {
                 // voice, Kyutai/Piper by voice embedded in the model id.
                 let vname = self.media.speech.voice_name.trim().to_string();
                 let (model, voice) = match self.media.speech.engine {
-                    SpeechEngine::Parler => ("parler-tts-mini-v1".to_string(), self.media.speech.voice.clone()),
+                    SpeechEngine::Parler => (
+                        "parler-tts-mini-v1".to_string(),
+                        self.media.speech.voice.clone(),
+                    ),
                     SpeechEngine::Kyutai => (
-                        if vname.is_empty() { "kyutai".to_string() } else { format!("kyutai-{vname}") },
+                        if vname.is_empty() {
+                            "kyutai".to_string()
+                        } else {
+                            format!("kyutai-{vname}")
+                        },
                         String::new(),
                     ),
                     SpeechEngine::Piper => (
-                        if vname.is_empty() { "piper".to_string() } else { format!("piper/{vname}") },
+                        if vname.is_empty() {
+                            "piper".to_string()
+                        } else {
+                            format!("piper/{vname}")
+                        },
                         String::new(),
                     ),
                 };
@@ -1066,18 +1103,25 @@ impl LLMGuiApp {
                     voice_opt,
                     desc_opt.as_deref(),
                 );
-                self.media.generation_abort = Some(self.rt.spawn(stream_speech(
-                    client,
-                    body,
-                    tasks,
-                    egui_ctx,
-                    "Speech generated.".to_string(),
-                    self.media.render_id.clone(),
-                )).abort_handle());
+                self.media.generation_abort = Some(
+                    self.rt
+                        .spawn(stream_speech(
+                            client,
+                            body,
+                            tasks,
+                            egui_ctx,
+                            "Speech generated.".to_string(),
+                            self.media.render_id.clone(),
+                        ))
+                        .abort_handle(),
+                );
             }
             MediaKind::Midi => {
-                let (max_tokens, temperature, top_p) =
-                    (self.media.midi.max_tokens, self.media.midi.temperature, self.media.midi.top_p);
+                let (max_tokens, temperature, top_p) = (
+                    self.media.midi.max_tokens,
+                    self.media.midi.temperature,
+                    self.media.midi.top_p,
+                );
                 let seed_val = seed.unwrap_or_else(time_seed);
                 let body = serde_json::json!({
                     "model": "midi",
@@ -1087,13 +1131,14 @@ impl LLMGuiApp {
                     "top_p": top_p,
                     "seed": seed_val,
                 });
-                self.media.generation_abort = Some(spawn_media_result(&self.rt, tasks, egui_ctx, async move {
-                    client
-                        .audio_generate(body)
-                        .await
-                        .map(|data| media_data_to_output(data, "MIDI generated.".to_string()))
-                        .map_err(|e| e.to_string())
-                }));
+                self.media.generation_abort =
+                    Some(spawn_media_result(&self.rt, tasks, egui_ctx, async move {
+                        client
+                            .audio_generate(body)
+                            .await
+                            .map(|data| media_data_to_output(data, "MIDI generated.".to_string()))
+                            .map_err(|e| e.to_string())
+                    }));
             }
             MediaKind::Video => {
                 let (frames, w, h, steps, cfg) = (
@@ -1132,113 +1177,144 @@ impl LLMGuiApp {
                 // but only if the tab can send the picture at all, and it could not.
                 if let Some((_, bytes)) = self.media.video.start_image.as_ref() {
                     use base64::Engine as _;
-                    body["image"] = serde_json::json!(
-                        base64::engine::general_purpose::STANDARD.encode(bytes)
-                    );
+                    body["image"] =
+                        serde_json::json!(base64::engine::general_purpose::STANDARD.encode(bytes));
                 }
-                self.media.generation_abort = Some(self.rt.spawn(stream_media(
-                    client,
-                    "/v1/video/generations",
-                    body,
-                    tasks,
-                    egui_ctx,
-                    "Video generated.".to_string(),
-                    self.media.render_id.clone(),
-                )).abort_handle());
+                self.media.generation_abort = Some(
+                    self.rt
+                        .spawn(stream_media(
+                            client,
+                            "/v1/video/generations",
+                            body,
+                            tasks,
+                            egui_ctx,
+                            "Video generated.".to_string(),
+                            self.media.render_id.clone(),
+                        ))
+                        .abort_handle(),
+                );
             }
             MediaKind::ImageEdit => {
                 let p = self.media.image_edit.clone();
                 let partial_tasks = tasks.clone();
                 let partial_ctx = egui_ctx.clone();
-                self.media.generation_abort = Some(spawn_media_result(&self.rt, tasks, egui_ctx, async move {
-                    let Some((name, bytes)) = p.source else {
-                        return Err("Choose a source image first.".to_string());
-                    };
-                    if p.n <= 1 {
-                        return client
-                            .images_edit(
-                                &p.model, &prompt, &name, bytes, p.strength, p.steps,
-                                p.guidance, p.n, seed, &p.loras,
-                                &p.negative_prompt,
-                            )
-                            .await
-                            .map(|(images, ms, j)| MediaOutput {
-                                images,
-                                status: format!("Image edited.{}", format_consumption(ms, j)),
-                                ..Default::default()
-                            })
-                            .map_err(|e| e.to_string());
-                    }
-                    // Multi-variation edits: one request per output, streamed to
-                    // the panel as they finish (seed+i mirrors the batch seeding).
-                    let base_seed = seed.unwrap_or_else(time_seed);
-                    let mut images: Vec<String> = Vec::new();
-                    let (mut ms_sum, mut j_sum) = (0u64, 0f64);
-                    for i in 0..p.n {
-                        let (mut imgs, ms, j) = client
-                            .images_edit(
-                                &p.model, &prompt, &name, bytes.clone(), p.strength,
-                                p.steps, p.guidance, 1, Some(base_seed + i as u64),
-                                &p.loras,
-                                &p.negative_prompt,
-                            )
-                            .await
-                            .map_err(|e| format!("variation {}/{}: {e}", i + 1, p.n))?;
-                        images.append(&mut imgs);
-                        ms_sum += ms.unwrap_or(0);
-                        j_sum += j.unwrap_or(0.0);
-                        if i + 1 < p.n {
-                            partial_tasks.lock().unwrap().push(TaskResult::MediaPartial(MediaOutput {
-                                images: images.clone(),
-                                status: format!("Variation {}/{} done — rendering the next…", i + 1, p.n),
-                                ..Default::default()
-                            }));
-                            partial_ctx.request_repaint();
+                self.media.generation_abort =
+                    Some(spawn_media_result(&self.rt, tasks, egui_ctx, async move {
+                        let Some((name, bytes)) = p.source else {
+                            return Err("Choose a source image first.".to_string());
+                        };
+                        if p.n <= 1 {
+                            return client
+                                .images_edit(
+                                    &p.model,
+                                    &prompt,
+                                    &name,
+                                    bytes,
+                                    p.strength,
+                                    p.steps,
+                                    p.guidance,
+                                    p.n,
+                                    seed,
+                                    &p.loras,
+                                    &p.negative_prompt,
+                                )
+                                .await
+                                .map(|(images, ms, j)| MediaOutput {
+                                    images,
+                                    status: format!("Image edited.{}", format_consumption(ms, j)),
+                                    ..Default::default()
+                                })
+                                .map_err(|e| e.to_string());
                         }
-                    }
-                    let ms = (ms_sum > 0).then_some(ms_sum);
-                    let j = (j_sum > 0.0).then_some(j_sum);
-                    Ok(MediaOutput {
-                        images,
-                        status: format!("{} edit variations generated.{}", p.n, format_consumption(ms, j)),
-                        ..Default::default()
-                    })
-                }));
+                        // Multi-variation edits: one request per output, streamed to
+                        // the panel as they finish (seed+i mirrors the batch seeding).
+                        let base_seed = seed.unwrap_or_else(time_seed);
+                        let mut images: Vec<String> = Vec::new();
+                        let (mut ms_sum, mut j_sum) = (0u64, 0f64);
+                        for i in 0..p.n {
+                            let (mut imgs, ms, j) = client
+                                .images_edit(
+                                    &p.model,
+                                    &prompt,
+                                    &name,
+                                    bytes.clone(),
+                                    p.strength,
+                                    p.steps,
+                                    p.guidance,
+                                    1,
+                                    Some(base_seed + i as u64),
+                                    &p.loras,
+                                    &p.negative_prompt,
+                                )
+                                .await
+                                .map_err(|e| format!("variation {}/{}: {e}", i + 1, p.n))?;
+                            images.append(&mut imgs);
+                            ms_sum += ms.unwrap_or(0);
+                            j_sum += j.unwrap_or(0.0);
+                            if i + 1 < p.n {
+                                partial_tasks.lock().unwrap().push(TaskResult::MediaPartial(
+                                    MediaOutput {
+                                        images: images.clone(),
+                                        status: format!(
+                                            "Variation {}/{} done — rendering the next…",
+                                            i + 1,
+                                            p.n
+                                        ),
+                                        ..Default::default()
+                                    },
+                                ));
+                                partial_ctx.request_repaint();
+                            }
+                        }
+                        let ms = (ms_sum > 0).then_some(ms_sum);
+                        let j = (j_sum > 0.0).then_some(j_sum);
+                        Ok(MediaOutput {
+                            images,
+                            status: format!(
+                                "{} edit variations generated.{}",
+                                p.n,
+                                format_consumption(ms, j)
+                            ),
+                            ..Default::default()
+                        })
+                    }));
             }
             MediaKind::Separate => {
                 let p = self.media.separate.clone();
-                self.media.generation_abort = Some(spawn_media_result(&self.rt, tasks, egui_ctx, async move {
-                    let Some((name, bytes)) = p.audio else {
-                        return Err("Choose the track to split first.".to_string());
-                    };
-                    let stems = client
-                        .audio_separate(&name, bytes, p.stems.wire())
-                        .await
-                        .map_err(|e| e.to_string())?;
-                    let labels: Vec<&str> = stems.iter().map(|(k, _)| k.as_str()).collect();
-                    Ok(MediaOutput {
-                        audios: stems.iter().map(|(_, b64)| b64.clone()).collect(),
-                        status: format!("Separated: {}.", labels.join(" + ")),
-                        ..Default::default()
-                    })
-                }));
+                self.media.generation_abort =
+                    Some(spawn_media_result(&self.rt, tasks, egui_ctx, async move {
+                        let Some((name, bytes)) = p.audio else {
+                            return Err("Choose the track to split first.".to_string());
+                        };
+                        let stems = client
+                            .audio_separate(&name, bytes, p.stems.wire())
+                            .await
+                            .map_err(|e| e.to_string())?;
+                        let labels: Vec<&str> = stems.iter().map(|(k, _)| k.as_str()).collect();
+                        Ok(MediaOutput {
+                            audios: stems.iter().map(|(_, b64)| b64.clone()).collect(),
+                            status: format!("Separated: {}.", labels.join(" + ")),
+                            ..Default::default()
+                        })
+                    }));
             }
             MediaKind::Transcribe => {
                 let p = self.media.transcribe.clone();
-                self.media.generation_abort = Some(spawn_media_result(&self.rt, tasks, egui_ctx, async move {
-                    match p.audio {
-                        Some((name, bytes)) => client
-                            .audio_transcribe(&p.model, &name, bytes, p.translate, &p.language)
-                            .await
-                            .map(|text| MediaOutput {
-                                text: Some(text),
-                                status: "Transcribed.".to_string(),
-                                ..Default::default()
-                            })
-                            .map_err(|e| e.to_string()),
-                        None => Err("Choose an audio file first.".to_string()),
-                    }
-                }));
+                self.media.generation_abort =
+                    Some(spawn_media_result(&self.rt, tasks, egui_ctx, async move {
+                        match p.audio {
+                            Some((name, bytes)) => client
+                                .audio_transcribe(&p.model, &name, bytes, p.translate, &p.language)
+                                .await
+                                .map(|text| MediaOutput {
+                                    text: Some(text),
+                                    status: "Transcribed.".to_string(),
+                                    ..Default::default()
+                                })
+                                .map_err(|e| e.to_string()),
+                            None => Err("Choose an audio file first.".to_string()),
+                        }
+                    }));
             }
         }
     }
@@ -1251,13 +1327,14 @@ impl LLMGuiApp {
         let egui_ctx = ctx.clone();
         self.rt.spawn(async move {
             if let Ok(voices) = client.list_voices().await {
-                tasks.lock().unwrap().push(TaskResult::MediaVoicesFetched(voices));
+                tasks
+                    .lock()
+                    .unwrap()
+                    .push(TaskResult::MediaVoicesFetched(voices));
                 egui_ctx.request_repaint();
             }
         });
     }
-
-
 
     /// Keep the Media Studio's video estimate in step with the settings on screen.
     ///
@@ -1279,7 +1356,11 @@ impl LLMGuiApp {
         }
         // A failure asked for again, but not at once: the tab recovers on its own when the
         // server comes back, without turning an unreachable one into a request per frame.
-        if self.media.estimate_retry_after.is_some_and(|t| std::time::Instant::now() < t) {
+        if self
+            .media
+            .estimate_retry_after
+            .is_some_and(|t| std::time::Instant::now() < t)
+        {
             return;
         }
         self.media.estimate_retry_after = None;
@@ -1394,7 +1475,10 @@ impl LLMGuiApp {
         let is_ollama = self.config.server_url.contains(":11434");
 
         // Unload all other loaded models first to free GPU memory
-        let models_to_unload: Vec<String> = self.models.loaded_models.iter()
+        let models_to_unload: Vec<String> = self
+            .models
+            .loaded_models
+            .iter()
             .filter(|m| **m != model_name)
             .cloned()
             .collect();
@@ -1512,9 +1596,11 @@ impl LLMGuiApp {
             return;
         }
         if self.chat.abort_generation() {
-            self.chat.messages.push_back(crate::state::ChatMessage::system(
-                format!("[Generation cancelled — model {target_model} unloaded]"),
-            ));
+            self.chat
+                .messages
+                .push_back(crate::state::ChatMessage::system(format!(
+                    "[Generation cancelled — model {target_model} unloaded]"
+                )));
         }
     }
 
@@ -1535,9 +1621,11 @@ impl LLMGuiApp {
             _ => {}
         }
         if self.chat.abort_generation() {
-            self.chat.messages.push_back(crate::state::ChatMessage::system(
-                format!("[Generation cancelled — loading {incoming_model}]"),
-            ));
+            self.chat
+                .messages
+                .push_back(crate::state::ChatMessage::system(format!(
+                    "[Generation cancelled — loading {incoming_model}]"
+                )));
         }
     }
 
@@ -1558,7 +1646,8 @@ impl LLMGuiApp {
         let source_str = source.to_string();
 
         self.models.action_started_at = Some(std::time::Instant::now());
-        self.models.action_status = ActionStatus::InProgress(format!("Pulling {} from {}...", model_name, source));
+        self.models.action_status =
+            ActionStatus::InProgress(format!("Pulling {} from {}...", model_name, source));
         // Fresh pull → clear any stale progress from a previous download so
         // the bar starts in the indeterminate manifest phase.
         self.models.pull_progress = None;
@@ -1659,7 +1748,9 @@ impl LLMGuiApp {
         // (chat_tab.rs::chat_send_allowed). Same helper drives both
         // surfaces so the gate can't drift on which modality / input /
         // attachment combinations are sendable.
-        let modality_for_guard = self.models.selected_model
+        let modality_for_guard = self
+            .models
+            .selected_model
             .as_deref()
             .map(crate::modality::ModelModality::from_model_name)
             .unwrap_or(crate::modality::ModelModality::Text);
@@ -1843,7 +1934,7 @@ impl LLMGuiApp {
             // options.height; absence falls back to image_model_defaults
             // (Flux 512², Z-Image 1024²).
             if let Some((w, h)) = self.chat.image_size {
-                insert_option_field(&mut options, "width",  serde_json::json!(w));
+                insert_option_field(&mut options, "width", serde_json::json!(w));
                 insert_option_field(&mut options, "height", serde_json::json!(h));
             }
         }
@@ -1853,10 +1944,7 @@ impl LLMGuiApp {
         // image-gen overrides so a stale TTS preference from a
         // previous chat doesn't leak into a follow-up text/image
         // request.
-        if matches!(
-            modality_for_send,
-            crate::modality::ModelModality::AudioTts,
-        ) {
+        if matches!(modality_for_send, crate::modality::ModelModality::AudioTts,) {
             if let Some(ref voice) = self.chat.tts_voice {
                 insert_option_field(&mut options, "voice", serde_json::json!(voice));
             }
@@ -1925,7 +2013,9 @@ impl LLMGuiApp {
                                     }
 
                                     // Try parsing as chat response first, then as generic JSON (for image gen)
-                                    if let Ok(mut chunk_resp) = serde_json::from_str::<OllamaChatResponse>(json_str) {
+                                    if let Ok(mut chunk_resp) =
+                                        serde_json::from_str::<OllamaChatResponse>(json_str)
+                                    {
                                         // TTS path: server's handle_chat_tts returns
                                         // a single non-streaming response with
                                         // message.audios populated. Pull them into
@@ -1946,14 +2036,20 @@ impl LLMGuiApp {
                                                 }
                                             }
                                         }
-                                        let thought = chunk_resp.thinking.as_deref().unwrap_or_default();
-                                        if !chunk_resp.message.content.is_empty() || !thought.is_empty() {
+                                        let thought =
+                                            chunk_resp.thinking.as_deref().unwrap_or_default();
+                                        if !chunk_resp.message.content.is_empty()
+                                            || !thought.is_empty()
+                                        {
                                             thinking_acc.push_str(thought);
                                             accumulated.push_str(&chunk_resp.message.content);
                                             // The shared buffer carries the thought ahead of the
                                             // answer, in the one form the chat reads.
                                             if let Ok(mut buf) = streaming_text.lock() {
-                                                *buf = crate::modality::with_thinking(&thinking_acc, &accumulated);
+                                                *buf = crate::modality::with_thinking(
+                                                    &thinking_acc,
+                                                    &accumulated,
+                                                );
                                             }
                                             egui_ctx.request_repaint();
                                         }
@@ -1963,7 +2059,8 @@ impl LLMGuiApp {
                                                 (chunk_resp.eval_count, chunk_resp.eval_duration)
                                             {
                                                 let duration_ms = eval_duration / 1_000_000;
-                                                let duration_sec = eval_duration as f32 / 1_000_000_000.0;
+                                                let duration_sec =
+                                                    eval_duration as f32 / 1_000_000_000.0;
                                                 let tokens_per_sec = if duration_sec > 0.0 {
                                                     eval_count as f32 / duration_sec
                                                 } else {
@@ -1978,11 +2075,14 @@ impl LLMGuiApp {
                                             done = true;
                                             break;
                                         }
-                                    } else if let Ok(mut val) = serde_json::from_str::<serde_json::Value>(json_str) {
+                                    } else if let Ok(mut val) =
+                                        serde_json::from_str::<serde_json::Value>(json_str)
+                                    {
                                         // Image generation response (generate format, not chat)
                                         // Progress update: {"completed": N, "total": M, "done": false}
                                         if let (Some(completed), Some(total)) = (
-                                            val.get("completed").and_then(serde_json::Value::as_u64),
+                                            val.get("completed")
+                                                .and_then(serde_json::Value::as_u64),
                                             val.get("total").and_then(serde_json::Value::as_u64),
                                         ) {
                                             is_image_gen = true;
@@ -1991,14 +2091,19 @@ impl LLMGuiApp {
                                             // (chat_tab.rs) parses this exact format, so
                                             // round-tripping through the helper keeps
                                             // synthesiser and parser locked together.
-                                            let progress_text = crate::modality::format_image_step_progress(completed, total);
+                                            let progress_text =
+                                                crate::modality::format_image_step_progress(
+                                                    completed, total,
+                                                );
                                             if let Ok(mut buf) = streaming_text.lock() {
                                                 *buf = progress_text;
                                             }
                                             egui_ctx.request_repaint();
                                         }
                                         // Loading status: {"response": "Loading T5...", "done": false}
-                                        else if let Some(resp) = val.get("response").and_then(|v| v.as_str()) {
+                                        else if let Some(resp) =
+                                            val.get("response").and_then(|v| v.as_str())
+                                        {
                                             if !resp.is_empty() {
                                                 is_image_gen = true;
                                                 if let Ok(mut buf) = streaming_text.lock() {
@@ -2008,7 +2113,11 @@ impl LLMGuiApp {
                                             }
                                         }
                                         // Final image: {"done": true, "images": [...]}
-                                        if val.get("done").and_then(serde_json::Value::as_bool).unwrap_or(false) {
+                                        if val
+                                            .get("done")
+                                            .and_then(serde_json::Value::as_bool)
+                                            .unwrap_or(false)
+                                        {
                                             // Drain the images array out of `val`
                                             // and pattern-match Value::String to
                                             // move the inner String instead of
@@ -2016,7 +2125,9 @@ impl LLMGuiApp {
                                             // PNG is ~500 KB for 512² / ~2 MB for
                                             // 1024², so per-image clones added up
                                             // for batched gen responses.
-                                            if let Some(images) = val.get_mut("images").and_then(|v| v.as_array_mut()) {
+                                            if let Some(images) =
+                                                val.get_mut("images").and_then(|v| v.as_array_mut())
+                                            {
                                                 is_image_gen = true;
                                                 for img in images.drain(..) {
                                                     if let serde_json::Value::String(s) = img {
@@ -2028,7 +2139,8 @@ impl LLMGuiApp {
                                             break;
                                         }
                                         // Error
-                                        if let Some(err) = val.get("error").and_then(|v| v.as_str()) {
+                                        if let Some(err) = val.get("error").and_then(|v| v.as_str())
+                                        {
                                             accumulated = format!("Error: {}", err);
                                             done = true;
                                             break;
@@ -2096,7 +2208,8 @@ impl LLMGuiApp {
                             .strip_prefix("data: ")
                             .or_else(|| remaining.strip_prefix("data:"))
                             .unwrap_or(&remaining);
-                        if let Ok(mut chunk_resp) = serde_json::from_str::<OllamaChatResponse>(json_str)
+                        if let Ok(mut chunk_resp) =
+                            serde_json::from_str::<OllamaChatResponse>(json_str)
                         {
                             // TTS audio capture, mirroring the in-loop
                             // parser above. A non-streaming TTS response
@@ -2143,9 +2256,10 @@ impl LLMGuiApp {
 
                     if is_image_gen && !generated_images.is_empty() {
                         // Image generation completed — return images
-                        return tasks.lock().unwrap().push(
-                            TaskResult::ImageGenResponse(Ok(generated_images))
-                        );
+                        return tasks
+                            .lock()
+                            .unwrap()
+                            .push(TaskResult::ImageGenResponse(Ok(generated_images)));
                     }
                     // Image-gen format detected but no images produced —
                     // surface as an explicit error rather than falling
@@ -2156,11 +2270,15 @@ impl LLMGuiApp {
                         let msg = if accumulated.is_empty() {
                             "Image generation produced no images".to_string()
                         } else {
-                            format!("Image generation produced no images. Last status: {}", accumulated)
+                            format!(
+                                "Image generation produced no images. Last status: {}",
+                                accumulated
+                            )
                         };
-                        return tasks.lock().unwrap().push(
-                            TaskResult::ImageGenResponse(Err(msg))
-                        );
+                        return tasks
+                            .lock()
+                            .unwrap()
+                            .push(TaskResult::ImageGenResponse(Err(msg)));
                     }
 
                     // Post-process: strip instruction/template tags that the model may generate
@@ -2212,7 +2330,9 @@ impl LLMGuiApp {
                             o["seed"] = serde_json::json!(p.seed);
                         }
                         // stop: comma-separated → array; skip when empty.
-                        let stops: Vec<String> = p.stop.split(',')
+                        let stops: Vec<String> = p
+                            .stop
+                            .split(',')
                             .map(|s| s.trim().to_string())
                             .filter(|s| !s.is_empty())
                             .collect();
@@ -2247,7 +2367,10 @@ impl LLMGuiApp {
         // The deadline must outlast a LEGITIMATE load (a 13 GB checkpoint takes
         // minutes), so it only catches gates that will never resolve.
         const GATE_DEADLINE: std::time::Duration = std::time::Duration::from_secs(300);
-        match (self.models.action_started_at, self.models.action_status.is_in_progress()) {
+        match (
+            self.models.action_started_at,
+            self.models.action_status.is_in_progress(),
+        ) {
             (Some(t0), true) if t0.elapsed() > GATE_DEADLINE => {
                 self.models.action_status = ActionStatus::Failed(
                     "the previous action never reported back (server restarted?)".to_string(),
@@ -2279,12 +2402,22 @@ impl LLMGuiApp {
                 TaskResult::LorasFetched(names) => {
                     // Drop any selection the server no longer offers, so a request can
                     // never carry a name that would come back as a 400.
-                    self.media.image.loras.retain(|(n, _)| names.iter().any(|(a, _)| a == n));
-                    self.media.image_edit.loras.retain(|(n, _)| names.iter().any(|(a, _)| a == n));
+                    self.media
+                        .image
+                        .loras
+                        .retain(|(n, _)| names.iter().any(|(a, _)| a == n));
+                    self.media
+                        .image_edit
+                        .loras
+                        .retain(|(n, _)| names.iter().any(|(a, _)| a == n));
                     self.available_loras = names;
                 }
                 TaskResult::ModelsFetched(available, loaded) => {
-                    info!("Fetched {} available models, {} loaded", available.len(), loaded.len());
+                    info!(
+                        "Fetched {} available models, {} loaded",
+                        available.len(),
+                        loaded.len()
+                    );
                     self.models.available_models = available;
                     self.models.loaded_models = loaded;
                     self.models.select_best_model();
@@ -2322,7 +2455,12 @@ impl LLMGuiApp {
                         // Save model selection to config for auto-loading on next startup
                         self.config.selected_model = Some(resp.model.clone());
                         // Try to find the source from available models
-                        if let Some(model_info) = self.models.available_models.iter().find(|m| m.name == resp.model) {
+                        if let Some(model_info) = self
+                            .models
+                            .available_models
+                            .iter()
+                            .find(|m| m.name == resp.model)
+                        {
                             self.config.selected_model_source = Some(model_info.source.clone());
                         }
                         self.config.save();
@@ -2330,19 +2468,28 @@ impl LLMGuiApp {
                         // Success banner (set Idle) so it doesn't linger on
                         // the Models tab until the next action.
                         self.models.action_status = ActionStatus::Idle;
-                        self.toast(ToastSeverity::Success, format!("Model {} loaded", model_name));
+                        self.toast(
+                            ToastSeverity::Success,
+                            format!("Model {} loaded", model_name),
+                        );
                         // Refresh hardware topology after model load
                     }
                     Err(e) => {
                         error!("Failed to load model '{}': {}", model_name, e);
                         self.models.action_status = ActionStatus::Idle;
-                        self.toast(ToastSeverity::Error, format!("Failed to load {}: {}", model_name, e));
+                        self.toast(
+                            ToastSeverity::Error,
+                            format!("Failed to load {}: {}", model_name, e),
+                        );
                     }
                 },
                 TaskResult::ModelDeleted(result, model_name) => match result {
                     Ok(()) => {
                         self.models.action_status = ActionStatus::Idle;
-                        self.toast(ToastSeverity::Success, format!("Model {} deleted", model_name));
+                        self.toast(
+                            ToastSeverity::Success,
+                            format!("Model {} deleted", model_name),
+                        );
                         // If the deleted model was the active selection,
                         // clear it so the chat header doesn't keep
                         // displaying a model the server no longer has.
@@ -2364,7 +2511,10 @@ impl LLMGuiApp {
                     }
                     Err(e) => {
                         self.models.action_status = ActionStatus::Idle;
-                        self.toast(ToastSeverity::Error, format!("Failed to delete {}: {}", model_name, e));
+                        self.toast(
+                            ToastSeverity::Error,
+                            format!("Failed to delete {}: {}", model_name, e),
+                        );
                     }
                 },
                 TaskResult::PullProgress(completed, total) => {
@@ -2380,12 +2530,18 @@ impl LLMGuiApp {
                         Ok(()) => {
                             self.models.pull_model_input.clear();
                             self.models.action_status = ActionStatus::Idle;
-                            self.toast(ToastSeverity::Success, format!("Model {} pulled successfully", model_name));
+                            self.toast(
+                                ToastSeverity::Success,
+                                format!("Model {} pulled successfully", model_name),
+                            );
                             self.refresh_models();
                         }
                         Err(e) => {
                             self.models.action_status = ActionStatus::Idle;
-                            self.toast(ToastSeverity::Error, format!("Failed to pull {}: {}", model_name, e));
+                            self.toast(
+                                ToastSeverity::Error,
+                                format!("Failed to pull {}: {}", model_name, e),
+                            );
                         }
                     }
                 }
@@ -2403,7 +2559,8 @@ impl LLMGuiApp {
                     if let Ok(mut buf) = self.streaming_text.lock() {
                         buf.clear();
                     }
-                    match result {                        Ok((content, timing_info, generated_audios)) => {
+                    match result {
+                        Ok((content, timing_info, generated_audios)) => {
                             self.chat.messages.push_back(ChatMessage {
                                 role: "assistant".to_string(),
                                 content,
@@ -2414,9 +2571,9 @@ impl LLMGuiApp {
                             });
                         }
                         Err(e) => {
-                            self.chat.messages.push_back(ChatMessage::system(
-                                format!("Error: {}", e),
-                            ));
+                            self.chat
+                                .messages
+                                .push_back(ChatMessage::system(format!("Error: {}", e)));
                         }
                     }
                 }
@@ -2443,9 +2600,10 @@ impl LLMGuiApp {
                             });
                         }
                         Err(e) => {
-                            self.chat.messages.push_back(ChatMessage::system(
-                                format!("Image generation error: {}", e),
-                            ));
+                            self.chat.messages.push_back(ChatMessage::system(format!(
+                                "Image generation error: {}",
+                                e
+                            )));
                         }
                     }
                 }
@@ -2467,7 +2625,11 @@ impl LLMGuiApp {
                                 format!(
                                     "Auto: {} via {} ({})",
                                     out.route,
-                                    if out.model.is_empty() { "server default" } else { &out.model },
+                                    if out.model.is_empty() {
+                                        "server default"
+                                    } else {
+                                        &out.model
+                                    },
                                     out.routed_by
                                 ),
                             );
@@ -2505,10 +2667,14 @@ impl LLMGuiApp {
                     self.media.enhancing_prompt = false;
                     match result {
                         Ok(text) => {
-                            self.media.prompt_before_enhance = Some(std::mem::take(&mut self.media.prompt));
+                            self.media.prompt_before_enhance =
+                                Some(std::mem::take(&mut self.media.prompt));
                             self.media.prompt = text;
                         }
-                        Err(e) => self.toast(ToastSeverity::Error, format!("Prompt enhancement failed: {e}")),
+                        Err(e) => self.toast(
+                            ToastSeverity::Error,
+                            format!("Prompt enhancement failed: {e}"),
+                        ),
                     }
                 }
                 TaskResult::MediaPartial(out) => {
@@ -2565,7 +2731,8 @@ impl LLMGuiApp {
                     // this path are typically network errors against
                     // /api/tags or /api/ps, which exactly maps to
                     // "can't talk to the server".
-                    self.connection_status = ConnectionStatus::disconnected(format!("Disconnected: {}", e));
+                    self.connection_status =
+                        ConnectionStatus::disconnected(format!("Disconnected: {}", e));
                     // Surface it as a toast, so the failure is visible from whichever
                     // tab the user is on rather than only from Models. Idle clears the
                     // banner so the two do not both linger.
@@ -2628,8 +2795,7 @@ impl LLMGuiApp {
                             self.models.action_status = ActionStatus::Idle;
                             // Update the last output with success
                             if let Some(last) = self.cli.outputs.last_mut() {
-                                last.output =
-                                    format!("Model {} deleted successfully", model_name);
+                                last.output = format!("Model {} deleted successfully", model_name);
                                 last.in_progress = false;
                             }
                             self.refresh_models();
@@ -2652,12 +2818,18 @@ impl LLMGuiApp {
                             // Remove from local loaded list
                             self.models.loaded_models.retain(|m| m != &model_name);
                             self.models.action_status = ActionStatus::Idle;
-                            self.toast(ToastSeverity::Success, format!("Model {} unloaded", model_name));
+                            self.toast(
+                                ToastSeverity::Success,
+                                format!("Model {} unloaded", model_name),
+                            );
                             // Refresh hardware topology after model unload
                         }
                         Err(e) => {
                             self.models.action_status = ActionStatus::Idle;
-                            self.toast(ToastSeverity::Error, format!("Failed to unload {}: {}", model_name, e));
+                            self.toast(
+                                ToastSeverity::Error,
+                                format!("Failed to unload {}: {}", model_name, e),
+                            );
                         }
                     }
                 }
@@ -3044,7 +3216,9 @@ impl eframe::App for LLMGuiApp {
                     // start so the progress bar can show an ETA based
                     // on mean step duration so far. Parser lives in
                     // chat_tab so the wire format is unit-tested.
-                    if let Some((completed, total)) = crate::modality::parse_image_step_progress(&buf) {
+                    if let Some((completed, total)) =
+                        crate::modality::parse_image_step_progress(&buf)
+                    {
                         self.chat.image_gen_progress = Some((completed, total));
                         // Anchor the ETA clock on the FIRST real step
                         // completion (completed >= 1), not the synthetic
@@ -3113,7 +3287,6 @@ impl eframe::App for LLMGuiApp {
             }
         }
 
-
         // ── GLOBAL KEYBOARD NAV ──
         // Ctrl/Cmd + 1..7 jump straight to a section, in the same order
         // as the sidebar NAV_ITEMS. `modifiers.command` is Ctrl on
@@ -3158,7 +3331,11 @@ impl eframe::App for LLMGuiApp {
             .chat
             .image_gen_progress
             .map(|(done, total)| done as f32 / total.max(1) as f32)
-            .or_else(|| self.media.progress.map(|(step, total)| step as f32 / total.max(1) as f32));
+            .or_else(|| {
+                self.media
+                    .progress
+                    .map(|(step, total)| step as f32 / total.max(1) as f32)
+            });
         let top_out = crate::ui::layout::top_bar(
             ui,
             &crate::ui::layout::TopBarInput {
@@ -3186,11 +3363,8 @@ impl eframe::App for LLMGuiApp {
         }
 
         // ── LEFT SIDEBAR ──
-        let sidebar_toggled = crate::ui::layout::sidebar(
-            ui,
-            &mut self.current_section,
-            self.sidebar_expanded,
-        );
+        let sidebar_toggled =
+            crate::ui::layout::sidebar(ui, &mut self.current_section, self.sidebar_expanded);
         if sidebar_toggled {
             // Flip the runtime flag and mirror it into the persisted
             // config so the collapsed/expanded choice survives restart.
@@ -3201,332 +3375,334 @@ impl eframe::App for LLMGuiApp {
 
         // ── MAIN CONTENT AREA ──
         egui::CentralPanel::default()
-            .frame(egui::Frame::NONE.fill(theme::bg()).inner_margin(FLOOR_MARGIN))
+            .frame(
+                egui::Frame::NONE
+                    .fill(theme::bg())
+                    .inner_margin(FLOOR_MARGIN),
+            )
             .show(ui, |ui| {
-            ui.set_width(ui.available_width());
+                ui.set_width(ui.available_width());
 
-            match self.current_section {
-                Section::Chat => {
-                    let crate::chat_tab::ChatRenderOutput {
-                        send_clicked,
-                        modality: modality_for_gate,
-                    } = crate::chat_tab::render(
-                        ui,
-                        &mut self.chat,
-                        &mut self.models,
-                        self.config.selected_profile.as_ref(),
-                        &self.config.profiles,
-                        &mut self.markdown_cache,
-                        &mut self.image_textures,
-                    );
-
-                    // Persist a dropdown-driven model change so it
-                    // survives restarts. Mirrors the persistence done in
-                    // TaskResult::ModelLoaded (load via Models tab) — both
-                    // entry points end at the same config layout, so a
-                    // user who picks via the chat header doesn't get a
-                    // surprise revert on the next session.
-                    //
-                    // Compare models.selected_model against config rather
-                    // than against a pre-render clone: in steady state the
-                    // two are in sync (TaskResult::ModelLoaded + this very
-                    // block keep them so), and the only path that diverges
-                    // them is the chat-header dropdown firing inside
-                    // chat_tab::render this frame. Dropping the per-frame
-                    // Option<String> clone shaves one allocation off every
-                    // Chat-section paint.
-                    if self.models.selected_model != self.config.selected_model {
-                        self.config.selected_model =
-                            self.models.selected_model.clone();
-                        // Look up the source ("ollama"/"huggingface") so
-                        // auto-load on next startup hits the right
-                        // backend. Skip when the new selection is None
-                        // (a deselect — keep source as None too).
-                        self.config.selected_model_source = self
-                            .models
-                            .selected_model
-                            .as_ref()
-                            .and_then(|name| {
-                                self.models
-                                    .available_models
-                                    .iter()
-                                    .find(|m| &m.name == name)
-                                    .map(|m| m.source.clone())
-                            });
-                        self.config.save();
-                    }
-
-                    // Persist a layer-mode toggle the same way. Cheap
-                    // Copy-type equality check, save only on change
-                    // — so a steady-state idle render doesn't churn
-                    // the config file every frame.
-                    if self.chat.layer_mode != self.config.layer_mode {
-                        self.config.layer_mode = self.chat.layer_mode;
-                        self.config.save();
-                    }
-                    if self.chat.smart_auto != self.config.chat_smart_auto {
-                        self.config.chat_smart_auto = self.chat.smart_auto;
-                        self.config.save();
-                    }
-
-                    // Handle chat send — either Enter or Send-button click
-                    // route through the same send_chat path. Without OR'ing
-                    // in the button click, the rendered Send button looked
-                    // active but did nothing.
-                    // Send on Enter (without Shift). Shift+Enter is the
-                    // multi-line newline shortcut configured on the
-                    // TextEdit via return_key — the gate here prevents
-                    // a Shift+Enter from double-firing as both newline-
-                    // insert AND chat-send.
-                    //
-                    // input_empty reads &self.chat.input directly (was
-                    // a per-frame clone() of a potentially long prompt).
-                    // The clone wasn't needed — the value is only used
-                    // for the bool gate below, and that read can be
-                    // done without owning the String.
-                    let is_generating = self.chat.is_generating;
-                    let enter_pressed = ui.input(|i| {
-                        i.key_pressed(egui::Key::Enter) && !i.modifiers.shift
-                    });
-                    // Match the Send-button gate in chat_tab exactly:
-                    // both surfaces go through chat_send_allowed for
-                    // the modality / input / attachment rules, then
-                    // layer on model_selected + !is_generating. The
-                    // previous inline `!input.trim().is_empty()` was
-                    // an over-approximation that broke ASR: an ASR
-                    // user with an attached audio file but empty text
-                    // could click Send (button allows it via
-                    // chat_send_allowed → has_attachment) but NOT
-                    // press Enter (Enter required non-empty text).
-                    // Inconsistent escape hatch fixed here.
-                    // modality_for_gate came back from chat_tab::render
-                    // above — no need to re-walk ModelModality::from_model_name
-                    // here just to gate the same Enter / Send-button send
-                    // path the chat-tab UI already gates on.
-                    let input_empty = self.chat.input.trim().is_empty();
-                    let has_attachment = !self.chat.attached_images.is_empty();
-                    let model_selected = self.models.selected_model.is_some();
-                    let should_send = (enter_pressed || send_clicked)
-                        && model_selected
-                        && !is_generating
-                        && crate::modality::chat_send_allowed(
-                            modality_for_gate,
-                            input_empty,
-                            has_attachment,
+                match self.current_section {
+                    Section::Chat => {
+                        let crate::chat_tab::ChatRenderOutput {
+                            send_clicked,
+                            modality: modality_for_gate,
+                        } = crate::chat_tab::render(
+                            ui,
+                            &mut self.chat,
+                            &mut self.models,
+                            self.config.selected_profile.as_ref(),
+                            &self.config.profiles,
+                            &mut self.markdown_cache,
+                            &mut self.image_textures,
                         );
 
-                    // Prompt-history navigation via Ctrl+Up / Ctrl+Down.
-                    // Plain Up/Down stays bound to in-text cursor movement
-                    // (the chat input is multi-line so users still need
-                    // it to navigate paragraphs in long pasted prompts).
-                    // Ctrl-modified versions recall the previous / next
-                    // prompt from chat.prompt_history. State mutation
-                    // lives in ChatState::{history_back, history_forward}
-                    // so the logic is unit-tested independently of egui.
-                    let (ctrl_up, ctrl_down) = ui.input(|i| {
-                        (
-                            i.modifiers.ctrl && i.key_pressed(egui::Key::ArrowUp),
-                            i.modifiers.ctrl && i.key_pressed(egui::Key::ArrowDown),
-                        )
-                    });
-                    if !is_generating {
-                        if ctrl_up {
-                            self.chat.history_back();
-                        } else if ctrl_down {
-                            self.chat.history_forward();
+                        // Persist a dropdown-driven model change so it
+                        // survives restarts. Mirrors the persistence done in
+                        // TaskResult::ModelLoaded (load via Models tab) — both
+                        // entry points end at the same config layout, so a
+                        // user who picks via the chat header doesn't get a
+                        // surprise revert on the next session.
+                        //
+                        // Compare models.selected_model against config rather
+                        // than against a pre-render clone: in steady state the
+                        // two are in sync (TaskResult::ModelLoaded + this very
+                        // block keep them so), and the only path that diverges
+                        // them is the chat-header dropdown firing inside
+                        // chat_tab::render this frame. Dropping the per-frame
+                        // Option<String> clone shaves one allocation off every
+                        // Chat-section paint.
+                        if self.models.selected_model != self.config.selected_model {
+                            self.config.selected_model = self.models.selected_model.clone();
+                            // Look up the source ("ollama"/"huggingface") so
+                            // auto-load on next startup hits the right
+                            // backend. Skip when the new selection is None
+                            // (a deselect — keep source as None too).
+                            self.config.selected_model_source =
+                                self.models.selected_model.as_ref().and_then(|name| {
+                                    self.models
+                                        .available_models
+                                        .iter()
+                                        .find(|m| &m.name == name)
+                                        .map(|m| m.source.clone())
+                                });
+                            self.config.save();
                         }
-                    }
 
-                    // Esc cancels the in-flight generation. Mirrors the
-                    // Stop button — same abort + system-message path.
-                    // Gate on is_generating so plain Esc still propagates
-                    // to modal close-handlers when no chat is running.
-                    if is_generating {
-                        let esc_pressed = ui.input(|i| {
-                            i.key_pressed(egui::Key::Escape) && !i.modifiers.any()
+                        // Persist a layer-mode toggle the same way. Cheap
+                        // Copy-type equality check, save only on change
+                        // — so a steady-state idle render doesn't churn
+                        // the config file every frame.
+                        if self.chat.layer_mode != self.config.layer_mode {
+                            self.config.layer_mode = self.chat.layer_mode;
+                            self.config.save();
+                        }
+                        if self.chat.smart_auto != self.config.chat_smart_auto {
+                            self.config.chat_smart_auto = self.chat.smart_auto;
+                            self.config.save();
+                        }
+
+                        // Handle chat send — either Enter or Send-button click
+                        // route through the same send_chat path. Without OR'ing
+                        // in the button click, the rendered Send button looked
+                        // active but did nothing.
+                        // Send on Enter (without Shift). Shift+Enter is the
+                        // multi-line newline shortcut configured on the
+                        // TextEdit via return_key — the gate here prevents
+                        // a Shift+Enter from double-firing as both newline-
+                        // insert AND chat-send.
+                        //
+                        // input_empty reads &self.chat.input directly (was
+                        // a per-frame clone() of a potentially long prompt).
+                        // The clone wasn't needed — the value is only used
+                        // for the bool gate below, and that read can be
+                        // done without owning the String.
+                        let is_generating = self.chat.is_generating;
+                        let enter_pressed =
+                            ui.input(|i| i.key_pressed(egui::Key::Enter) && !i.modifiers.shift);
+                        // Match the Send-button gate in chat_tab exactly:
+                        // both surfaces go through chat_send_allowed for
+                        // the modality / input / attachment rules, then
+                        // layer on model_selected + !is_generating. The
+                        // previous inline `!input.trim().is_empty()` was
+                        // an over-approximation that broke ASR: an ASR
+                        // user with an attached audio file but empty text
+                        // could click Send (button allows it via
+                        // chat_send_allowed → has_attachment) but NOT
+                        // press Enter (Enter required non-empty text).
+                        // Inconsistent escape hatch fixed here.
+                        // modality_for_gate came back from chat_tab::render
+                        // above — no need to re-walk ModelModality::from_model_name
+                        // here just to gate the same Enter / Send-button send
+                        // path the chat-tab UI already gates on.
+                        let input_empty = self.chat.input.trim().is_empty();
+                        let has_attachment = !self.chat.attached_images.is_empty();
+                        let model_selected = self.models.selected_model.is_some();
+                        let should_send = (enter_pressed || send_clicked)
+                            && model_selected
+                            && !is_generating
+                            && crate::modality::chat_send_allowed(
+                                modality_for_gate,
+                                input_empty,
+                                has_attachment,
+                            );
+
+                        // Prompt-history navigation via Ctrl+Up / Ctrl+Down.
+                        // Plain Up/Down stays bound to in-text cursor movement
+                        // (the chat input is multi-line so users still need
+                        // it to navigate paragraphs in long pasted prompts).
+                        // Ctrl-modified versions recall the previous / next
+                        // prompt from chat.prompt_history. State mutation
+                        // lives in ChatState::{history_back, history_forward}
+                        // so the logic is unit-tested independently of egui.
+                        let (ctrl_up, ctrl_down) = ui.input(|i| {
+                            (
+                                i.modifiers.ctrl && i.key_pressed(egui::Key::ArrowUp),
+                                i.modifiers.ctrl && i.key_pressed(egui::Key::ArrowDown),
+                            )
                         });
-                        if esc_pressed && self.chat.abort_generation() {
-                            self.chat.messages.push_back(crate::state::ChatMessage::system(
-                                "[Generation cancelled by user]",
-                            ));
+                        if !is_generating {
+                            if ctrl_up {
+                                self.chat.history_back();
+                            } else if ctrl_down {
+                                self.chat.history_forward();
+                            }
+                        }
+
+                        // Esc cancels the in-flight generation. Mirrors the
+                        // Stop button — same abort + system-message path.
+                        // Gate on is_generating so plain Esc still propagates
+                        // to modal close-handlers when no chat is running.
+                        if is_generating {
+                            let esc_pressed = ui
+                                .input(|i| i.key_pressed(egui::Key::Escape) && !i.modifiers.any());
+                            if esc_pressed && self.chat.abort_generation() {
+                                self.chat
+                                    .messages
+                                    .push_back(crate::state::ChatMessage::system(
+                                        "[Generation cancelled by user]",
+                                    ));
+                            }
+                        }
+
+                        // Ctrl+L clears the chat (terminal-style "clear screen"
+                        // convention). Mirrors the Clear button in the chat
+                        // header — same conversation wipe + texture/markdown
+                        // cache cleanup. Gated on !is_generating because mid-
+                        // stream clears leave the streaming buffer orphaned.
+                        if !is_generating {
+                            let ctrl_l =
+                                ui.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::L));
+                            if ctrl_l
+                                && (!self.chat.messages.is_empty()
+                                    || !self.chat.attached_images.is_empty())
+                            {
+                                self.chat.clear_conversation();
+                                self.image_textures.clear();
+                                self.markdown_cache.clear_scrollable();
+                            }
+                        }
+
+                        if should_send {
+                            self.send_chat(&ctx);
                         }
                     }
+                    Section::Terminal => {
+                        crate::cli_tab::render(ui, &mut self.cli, &self.models);
 
-                    // Ctrl+L clears the chat (terminal-style "clear screen"
-                    // convention). Mirrors the Clear button in the chat
-                    // header — same conversation wipe + texture/markdown
-                    // cache cleanup. Gated on !is_generating because mid-
-                    // stream clears leave the streaming buffer orphaned.
-                    if !is_generating {
-                        let ctrl_l = ui.input(|i| {
-                            i.modifiers.ctrl && i.key_pressed(egui::Key::L)
+                        // Handle CLI command. Plain Up / Down for history
+                        // navigation (single-line input — no conflict with
+                        // in-text cursor movement). Mirrors the chat tab's
+                        // Ctrl+Up / Ctrl+Down history nav (but unmodified
+                        // here since the CLI input doesn't need arrows for
+                        // line nav).
+                        //
+                        // Read `.trim().is_empty()` outside the closure so it captures a
+                        // bool rather than the input String. Capturing the String costs an
+                        // allocation on every frame the CLI tab is visible.
+                        let input_empty = self.cli.input.trim().is_empty();
+                        let (enter, up, down) = ui.input(|i| {
+                            (
+                                i.key_pressed(egui::Key::Enter) && !input_empty,
+                                i.key_pressed(egui::Key::ArrowUp),
+                                i.key_pressed(egui::Key::ArrowDown),
+                            )
                         });
-                        if ctrl_l
-                            && (!self.chat.messages.is_empty()
-                                || !self.chat.attached_images.is_empty())
-                        {
-                            self.chat.clear_conversation();
-                            self.image_textures.clear();
-                            self.markdown_cache.clear_scrollable();
+                        if enter {
+                            self.execute_cli_command();
+                        } else if up {
+                            self.cli.history_back();
+                        } else if down {
+                            self.cli.history_forward();
                         }
                     }
-
-                    if should_send {
-                        self.send_chat(&ctx);
-                    }
-                }
-                Section::Terminal => {
-                    crate::cli_tab::render(ui, &mut self.cli, &self.models);
-
-                    // Handle CLI command. Plain Up / Down for history
-                    // navigation (single-line input — no conflict with
-                    // in-text cursor movement). Mirrors the chat tab's
-                    // Ctrl+Up / Ctrl+Down history nav (but unmodified
-                    // here since the CLI input doesn't need arrows for
-                    // line nav).
-                    //
-                    // Read `.trim().is_empty()` outside the closure so it captures a
-                    // bool rather than the input String. Capturing the String costs an
-                    // allocation on every frame the CLI tab is visible.
-                    let input_empty = self.cli.input.trim().is_empty();
-                    let (enter, up, down) = ui.input(|i| {
-                        (
-                            i.key_pressed(egui::Key::Enter) && !input_empty,
-                            i.key_pressed(egui::Key::ArrowUp),
-                            i.key_pressed(egui::Key::ArrowDown),
-                        )
-                    });
-                    if enter {
-                        self.execute_cli_command();
-                    } else if up {
-                        self.cli.history_back();
-                    } else if down {
-                        self.cli.history_forward();
-                    }
-                }
-                Section::Models => {
-                    let actions = crate::ui::models::render(
-                        ui,
-                        &mut self.models,
-                    );
-                    for action in actions {
-                        match action {
-                            SettingsAction::RefreshModels => self.refresh_models(),
-                            SettingsAction::LoadModel(model) => self.load_model(model),
-                            SettingsAction::UnloadModel(model) => self.unload_model(model),
-                            SettingsAction::DeleteModel(model) => self.delete_model(model),
-                            SettingsAction::PullModel(model, source) => self.pull_model_with_source(&model, &source),
-                            _ => {}
-                        }
-                    }
-                }
-                Section::Settings => {
-                    let config_before = self.config.clone();
-                    let actions = crate::ui::settings::render(
-                        &ctx,
-                        ui,
-                        &mut self.config,
-                        &mut self.settings_state,
-                        self.connection_status.state,
-                    );
-                    for action in actions {
-                        if let SettingsAction::SaveConfig(cfg) = action {
-                            match cfg.save_default() {
-                                Ok(()) => {
-                                    info!("Configuration saved");
-                                    // Clear any prior error banner now
-                                    // that a save succeeded.
-                                    if let Some(editor) = self.settings_state.config_editor.as_mut() {
-                                        editor.error_message = None;
-                                    }
-                                    self.refresh_models();
+                    Section::Models => {
+                        let actions = crate::ui::models::render(ui, &mut self.models);
+                        for action in actions {
+                            match action {
+                                SettingsAction::RefreshModels => self.refresh_models(),
+                                SettingsAction::LoadModel(model) => self.load_model(model),
+                                SettingsAction::UnloadModel(model) => self.unload_model(model),
+                                SettingsAction::DeleteModel(model) => self.delete_model(model),
+                                SettingsAction::PullModel(model, source) => {
+                                    self.pull_model_with_source(&model, &source)
                                 }
-                                Err(e) => {
-                                    // Surface save failure (disk full,
-                                    // read-only mount, permission
-                                    // denied) in the editor error
-                                    // banner instead of just logging
-                                    // to stderr where the user never
-                                    // sees it. The Settings tab's
-                                    // banner picks it up from
-                                    // editor.error_message; a toast
-                                    // makes it visible from any tab too.
-                                    let msg = format!("Failed to save config.toml: {}", e);
-                                    error!("{}", msg);
-                                    self.toast(ToastSeverity::Error, msg.clone());
-                                    if let Some(editor) = self.settings_state.config_editor.as_mut() {
-                                        editor.error_message = Some(msg);
+                                _ => {}
+                            }
+                        }
+                    }
+                    Section::Settings => {
+                        let config_before = self.config.clone();
+                        let actions = crate::ui::settings::render(
+                            &ctx,
+                            ui,
+                            &mut self.config,
+                            &mut self.settings_state,
+                            self.connection_status.state,
+                        );
+                        for action in actions {
+                            if let SettingsAction::SaveConfig(cfg) = action {
+                                match cfg.save_default() {
+                                    Ok(()) => {
+                                        info!("Configuration saved");
+                                        // Clear any prior error banner now
+                                        // that a save succeeded.
+                                        if let Some(editor) =
+                                            self.settings_state.config_editor.as_mut()
+                                        {
+                                            editor.error_message = None;
+                                        }
+                                        self.refresh_models();
+                                    }
+                                    Err(e) => {
+                                        // Surface save failure (disk full,
+                                        // read-only mount, permission
+                                        // denied) in the editor error
+                                        // banner instead of just logging
+                                        // to stderr where the user never
+                                        // sees it. The Settings tab's
+                                        // banner picks it up from
+                                        // editor.error_message; a toast
+                                        // makes it visible from any tab too.
+                                        let msg = format!("Failed to save config.toml: {}", e);
+                                        error!("{}", msg);
+                                        self.toast(ToastSeverity::Error, msg.clone());
+                                        if let Some(editor) =
+                                            self.settings_state.config_editor.as_mut()
+                                        {
+                                            editor.error_message = Some(msg);
+                                        }
                                     }
                                 }
                             }
                         }
+                        if config_before != self.config {
+                            self.config.save();
+                            // If the user changed the server URL, the
+                            // existing models / hardware / connection
+                            // status all point at the OLD server. Without
+                            // an auto-refresh the user has to remember
+                            // to bounce to the Models tab and click
+                            // Refresh — that's a confusing dead state
+                            // ("I changed servers, why is everything the
+                            // same?"). Refresh against the new URL the
+                            // moment we detect the change so the rest
+                            // of the GUI catches up.
+                            if config_before.server_url != self.config.server_url {
+                                self.connection_status = ConnectionStatus::connecting();
+                                self.toast(
+                                    ToastSeverity::Success,
+                                    format!("Connecting to {}", self.config.server_url),
+                                );
+                                self.refresh_models();
+                            }
+                        }
                     }
-                    if config_before != self.config {
-                        self.config.save();
-                        // If the user changed the server URL, the
-                        // existing models / hardware / connection
-                        // status all point at the OLD server. Without
-                        // an auto-refresh the user has to remember
-                        // to bounce to the Models tab and click
-                        // Refresh — that's a confusing dead state
-                        // ("I changed servers, why is everything the
-                        // same?"). Refresh against the new URL the
-                        // moment we detect the change so the rest
-                        // of the GUI catches up.
-                        if config_before.server_url != self.config.server_url {
-                            self.connection_status = ConnectionStatus::connecting();
-                            self.toast(
-                                ToastSeverity::Success,
-                                format!("Connecting to {}", self.config.server_url),
-                            );
-                            self.refresh_models();
+                    Section::ServerLog => {
+                        crate::server_log_tab::render(
+                            ui,
+                            &mut self.server,
+                            self.embedded_port,
+                            &self.log_buffer,
+                        );
+                    }
+                    Section::MediaStudio => {
+                        let out = crate::media_tab::render(
+                            ui,
+                            &mut self.media,
+                            &mut self.image_textures,
+                            &self.models.available_models,
+                            &self.available_loras,
+                            &mut self.audio_player,
+                            &mut self.video,
+                        );
+                        if out.generate_clicked {
+                            self.send_media(&ctx);
+                        }
+                        // Price the settings on screen, so the wait is known before it is
+                        // started rather than after. Only for the kind that can cost an hour;
+                        // the others answer in seconds and would just be traffic.
+                        if self.media.kind == crate::state::MediaKind::Video {
+                            self.refresh_video_estimate(&ctx);
+                        }
+                        // Tell the SERVER to stop. Dropping the request only ends this side of
+                        // it: the render carries on to completion otherwise, holding the cards.
+                        if let Some(id) = self.media.pending_cancel.take() {
+                            let client = self.get_client();
+                            self.rt.spawn(async move {
+                                let _ = client.cancel_render(&id).await;
+                            });
+                        }
+                        if out.refresh_voices_clicked {
+                            self.refresh_media_voices(&ctx);
+                        }
+                        if out.enhance_clicked {
+                            self.enhance_media_prompt(&ctx);
                         }
                     }
                 }
-                Section::ServerLog => {
-                    crate::server_log_tab::render(
-                        ui,
-                        &mut self.server,
-                        self.embedded_port,
-                        &self.log_buffer,
-                    );
-                }
-                Section::MediaStudio => {
-                    let out = crate::media_tab::render(
-                        ui,
-                        &mut self.media,
-                        &mut self.image_textures,
-                        &self.models.available_models,
-                        &self.available_loras,
-                        &mut self.audio_player,
-                        &mut self.video,
-                    );
-                    if out.generate_clicked {
-                        self.send_media(&ctx);
-                    }
-                    // Price the settings on screen, so the wait is known before it is
-                    // started rather than after. Only for the kind that can cost an hour;
-                    // the others answer in seconds and would just be traffic.
-                    if self.media.kind == crate::state::MediaKind::Video {
-                        self.refresh_video_estimate(&ctx);
-                    }
-                    // Tell the SERVER to stop. Dropping the request only ends this side of
-                    // it: the render carries on to completion otherwise, holding the cards.
-                    if let Some(id) = self.media.pending_cancel.take() {
-                        let client = self.get_client();
-                        self.rt.spawn(async move {
-                            let _ = client.cancel_render(&id).await;
-                        });
-                    }
-                    if out.refresh_voices_clicked {
-                        self.refresh_media_voices(&ctx);
-                    }
-                    if out.enhance_clicked {
-                        self.enhance_media_prompt(&ctx);
-                    }
-                }
-            }
-        });
+            });
 
         // ── TOASTS ──
         // Rendered after the CentralPanel so the bottom-right stack
@@ -3582,7 +3758,8 @@ impl eframe::App for LLMGuiApp {
             if (new_w - old_w).abs() >= 1.0 || (new_h - old_h).abs() >= 1.0 {
                 self.config.window_width = Some(new_w);
                 self.config.window_height = Some(new_h);
-                let should_save = self.last_window_size_save
+                let should_save = self
+                    .last_window_size_save
                     .is_none_or(|t| t.elapsed() >= std::time::Duration::from_secs(1));
                 if should_save {
                     self.config.save();
@@ -3682,7 +3859,10 @@ mod tests {
         });
         let (label, step, total) = progress_from_event(&ev);
         assert_eq!((step, total), (0, 0));
-        assert_eq!(media_progress_status(&label, step, total), "Loading the model");
+        assert_eq!(
+            media_progress_status(&label, step, total),
+            "Loading the model"
+        );
     }
 
     #[test]
@@ -3724,7 +3904,10 @@ mod tests {
             "status": "started", "model": "piper", "render_id": "s1", "format": "wav"
         });
         assert_eq!(render_name(&started), Some("s1"));
-        assert_eq!(render_name(&json!({"status": "started", "id": "r7"})), Some("r7"));
+        assert_eq!(
+            render_name(&json!({"status": "started", "id": "r7"})),
+            Some("r7")
+        );
         // A progress event carries no name, and must not erase the one already held.
         assert_eq!(render_name(&json!({"status": "loading", "step": 0})), None);
     }
@@ -3732,7 +3915,9 @@ mod tests {
     #[test]
     fn an_event_stream_is_recognised_by_its_content_type() {
         assert!(speech_reply_is_events(Some("text/event-stream")));
-        assert!(speech_reply_is_events(Some("text/event-stream; charset=utf-8")));
+        assert!(speech_reply_is_events(Some(
+            "text/event-stream; charset=utf-8"
+        )));
         assert!(speech_reply_is_events(Some("TEXT/EVENT-STREAM")));
     }
 
@@ -3743,7 +3928,9 @@ mod tests {
         // reports "stream ended without a result" for a clip that arrived intact, which
         // is the user losing TTS to a server they have not restarted yet.
         assert!(!speech_reply_is_events(Some("audio/wav")));
-        assert!(!speech_reply_is_events(Some("audio/L16; rate=22050; channels=1")));
+        assert!(!speech_reply_is_events(Some(
+            "audio/L16; rate=22050; channels=1"
+        )));
         assert!(!speech_reply_is_events(None));
     }
 
@@ -3751,7 +3938,11 @@ mod tests {
     fn a_refused_field_is_retried_without_it() {
         // A server that REFUSES the field rather than ignoring it answers 4xx. The user
         // must still get their speech, so the same body goes back without it.
-        for status in ["400 Bad Request", "422 Unprocessable Entity", "404 Not Found"] {
+        for status in [
+            "400 Bad Request",
+            "422 Unprocessable Entity",
+            "404 Not Found",
+        ] {
             let e = format!("/v1/audio/speech failed with status {status}: unknown field");
             assert!(speech_retry_without_events(&e), "{status} should retry");
         }
@@ -3844,8 +4035,10 @@ mod tests {
         assert_eq!(obj.get("temperature"), Some(&json!(0.7)));
         assert_eq!(obj.get("seed"), Some(&json!(42)));
         assert!(!obj.contains_key("early_exit_threshold"));
-        assert!(!obj.contains_key("cuda_only"),
-            "cuda_only must never appear — server never read it");
+        assert!(
+            !obj.contains_key("cuda_only"),
+            "cuda_only must never appear — server never read it"
+        );
     }
 
     #[test]
@@ -3874,7 +4067,11 @@ mod tests {
         insert_option_field(&mut opts, "seed", json!(42));
         let obj = opts.as_ref().and_then(|v| v.as_object()).unwrap();
         assert_eq!(obj.get("seed"), Some(&json!(42)));
-        assert_eq!(obj.len(), 1, "freshly-allocated options should contain only the inserted key");
+        assert_eq!(
+            obj.len(),
+            1,
+            "freshly-allocated options should contain only the inserted key"
+        );
     }
 
     #[test]
@@ -3882,8 +4079,11 @@ mod tests {
         let mut opts = Some(json!({"temperature": 0.7}));
         insert_option_field(&mut opts, "seed", json!(42));
         let obj = opts.as_ref().and_then(|v| v.as_object()).unwrap();
-        assert_eq!(obj.get("temperature"), Some(&json!(0.7)),
-            "existing keys must survive a later insert");
+        assert_eq!(
+            obj.get("temperature"),
+            Some(&json!(0.7)),
+            "existing keys must survive a later insert"
+        );
         assert_eq!(obj.get("seed"), Some(&json!(42)));
     }
 
@@ -3906,7 +4106,11 @@ mod tests {
         // promotes this to a panic is caught.
         let mut opts = Some(json!(42));
         insert_option_field(&mut opts, "seed", json!(7));
-        assert_eq!(opts, Some(json!(42)), "non-object options should be left alone");
+        assert_eq!(
+            opts,
+            Some(json!(42)),
+            "non-object options should be left alone"
+        );
     }
 
     #[test]

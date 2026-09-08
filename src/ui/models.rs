@@ -3,14 +3,14 @@
 //!
 //! Reads/writes: ModelState.
 
-use eframe::egui;
 use crate::api::ModelInfo;
 use crate::icons::Icon;
-use crate::state::{ActionStatus, ModelState, ModelSortDirection, ModelSortField};
+use crate::modality::ModelModality;
 use crate::settings::SettingsAction;
+use crate::state::{ActionStatus, ModelSortDirection, ModelSortField, ModelState};
 use crate::theme::{self, text, HAIRLINE};
 use crate::ui::{surface, widgets};
-use crate::modality::ModelModality;
+use eframe::egui;
 
 /// Popular models for suggestions
 const POPULAR_MODELS: &[(&str, &str)] = &[
@@ -46,10 +46,7 @@ const SWEEP_HZ: f64 = 0.55;
 const CLEAR_PX: f32 = 16.0;
 
 /// Render the models section, returning any actions to perform
-pub fn render(
-    ui: &mut egui::Ui,
-    models: &mut ModelState,
-) -> Vec<SettingsAction> {
+pub fn render(ui: &mut egui::Ui, models: &mut ModelState) -> Vec<SettingsAction> {
     let mut actions = Vec::new();
 
     // Delete is two steps: the name is stashed, a centred window asks, and the
@@ -120,8 +117,7 @@ pub fn render(
         .get_sorted_models()
         .into_iter()
         .filter(|m| {
-            filter.is_empty()
-                || crate::log_buffer::contains_ascii_ci(&m.name, filter.as_bytes())
+            filter.is_empty() || crate::log_buffer::contains_ascii_ci(&m.name, filter.as_bytes())
         })
         .map(|m| {
             let modality = ModelModality::from_model_name(&m.name);
@@ -147,7 +143,8 @@ pub fn render(
                 .desired_width(FILTER_W),
         );
         // Clearing drops the name filter and the kind together.
-        let any_filter_active = !models.list_filter.is_empty() || models.list_modality_filter.is_some();
+        let any_filter_active =
+            !models.list_filter.is_empty() || models.list_modality_filter.is_some();
         if any_filter_active
             && widgets::close_button(ui, CLEAR_PX)
                 .on_hover_text("Clear name and kind filters")
@@ -205,7 +202,9 @@ pub fn render(
         widgets::fixed_label(ui, SORT_DIR_W, text::label(direction));
 
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if widgets::icon_button(ui, Icon::Refresh, "Reload the model list from the server").clicked() {
+            if widgets::icon_button(ui, Icon::Refresh, "Reload the model list from the server")
+                .clicked()
+            {
                 actions.push(SettingsAction::RefreshModels);
             }
             ui.add_space(widgets::GAP_WIDGETS);
@@ -280,7 +279,8 @@ pub fn render(
     }
 
     // The list, in a well that keeps room for the import panel under it.
-    let list_height = (ui.available_height() - FOOTER_RESERVE - 2.0 * widgets::SECTION_PADDING).max(LIST_MIN_H);
+    let list_height =
+        (ui.available_height() - FOOTER_RESERVE - 2.0 * widgets::SECTION_PADDING).max(LIST_MIN_H);
     widgets::well(ui, |ui| {
         egui::ScrollArea::vertical()
             .id_salt("models_list_scroll")
@@ -311,7 +311,11 @@ pub fn render(
                     // top of them and take their clicks. A click that no button took
                     // selects.
                     let mut acted = false;
-                    let fill = if is_selected { theme::raised() } else { egui::Color32::TRANSPARENT };
+                    let fill = if is_selected {
+                        theme::raised()
+                    } else {
+                        egui::Color32::TRANSPARENT
+                    };
                     let row = egui::Frame::NONE
                         .fill(fill)
                         .corner_radius(theme::RADIUS)
@@ -320,11 +324,19 @@ pub fn render(
                             ui.set_min_width(ui.available_width());
                             ui.horizontal(|ui| {
                                 widgets::lamp_inline(ui, is_loaded, theme::success())
-                                    .on_hover_text(if is_loaded { "Loaded in memory" } else { "On disk, not loaded" });
+                                    .on_hover_text(if is_loaded {
+                                        "Loaded in memory"
+                                    } else {
+                                        "On disk, not loaded"
+                                    });
                                 ui.label(text::value(&model.name));
                                 if modality != ModelModality::Text {
-                                    widgets::fixed_label(ui, MODALITY_W, text::note(modality.label()))
-                                        .on_hover_text(modality.tooltip());
+                                    widgets::fixed_label(
+                                        ui,
+                                        MODALITY_W,
+                                        text::note(modality.label()),
+                                    )
+                                    .on_hover_text(modality.tooltip());
                                 }
                                 if !model.source.is_empty() {
                                     let src_label = match model.source.as_str() {
@@ -332,50 +344,67 @@ pub fn render(
                                         "huggingface" => "HF",
                                         other => other,
                                     };
-                                    widgets::fixed_label(ui, SOURCE_W, text::note(src_label)).on_hover_ui(|ui| {
-                                        ui.label(format!("Source registry: {}", model.source));
-                                    });
+                                    widgets::fixed_label(ui, SOURCE_W, text::note(src_label))
+                                        .on_hover_ui(|ui| {
+                                            ui.label(format!("Source registry: {}", model.source));
+                                        });
                                 }
 
                                 // The actions, in the tail. Load waits on any action in
                                 // flight; Unload never does, it is what a user reaches for
                                 // when something else is stuck.
                                 let action_busy = models.action_status.is_in_progress();
-                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                    if !is_loaded {
+                                ui.with_layout(
+                                    egui::Layout::right_to_left(egui::Align::Center),
+                                    |ui| {
+                                        if !is_loaded {
+                                            let resp = ui.add_enabled(
+                                                !action_busy,
+                                                egui::Button::new(text::note("Delete"))
+                                                    .frame(false),
+                                            );
+                                            let tip = if action_busy {
+                                                "Another model action is in progress"
+                                            } else {
+                                                "Delete this model from disk"
+                                            };
+                                            if resp.on_hover_text(tip).clicked() {
+                                                acted = true;
+                                                models.delete_confirm_pending =
+                                                    Some(model.name.clone());
+                                            }
+                                        }
+                                        let (label, tip) = if is_loaded {
+                                            ("Unload", "Unload from memory (keeps the file)")
+                                        } else {
+                                            ("Load", "Load into memory for inference")
+                                        };
+                                        let gated = action_busy && !is_loaded;
                                         let resp = ui.add_enabled(
-                                            !action_busy,
-                                            egui::Button::new(text::note("Delete")).frame(false),
+                                            !gated,
+                                            egui::Button::new(text::note(label)),
                                         );
-                                        let tip = if action_busy {
+                                        let hover = if gated {
                                             "Another model action is in progress"
                                         } else {
-                                            "Delete this model from disk"
+                                            tip
                                         };
-                                        if resp.on_hover_text(tip).clicked() {
+                                        if resp.on_hover_text(hover).clicked() {
                                             acted = true;
-                                            models.delete_confirm_pending = Some(model.name.clone());
+                                            if is_loaded {
+                                                actions.push(SettingsAction::UnloadModel(
+                                                    model.name.clone(),
+                                                ));
+                                            } else {
+                                                actions.push(SettingsAction::LoadModel(
+                                                    model.name.clone(),
+                                                ));
+                                            }
                                         }
-                                    }
-                                    let (label, tip) = if is_loaded {
-                                        ("Unload", "Unload from memory (keeps the file)")
-                                    } else {
-                                        ("Load", "Load into memory for inference")
-                                    };
-                                    let gated = action_busy && !is_loaded;
-                                    let resp = ui.add_enabled(!gated, egui::Button::new(text::note(label)));
-                                    let hover = if gated { "Another model action is in progress" } else { tip };
-                                    if resp.on_hover_text(hover).clicked() {
-                                        acted = true;
-                                        if is_loaded {
-                                            actions.push(SettingsAction::UnloadModel(model.name.clone()));
-                                        } else {
-                                            actions.push(SettingsAction::LoadModel(model.name.clone()));
-                                        }
-                                    }
-                                    ui.add_space(widgets::GAP_LABEL);
-                                    widgets::readout(ui, SIZE_W, &model.size);
-                                });
+                                        ui.add_space(widgets::GAP_LABEL);
+                                        widgets::readout(ui, SIZE_W, &model.size);
+                                    },
+                                );
                             });
                         });
                     let rect = row.response.rect;
@@ -387,7 +416,8 @@ pub fn render(
                         rect.bottom() + HAIRLINE / 2.0,
                         egui::Stroke::new(HAIRLINE, theme::border()),
                     );
-                    let row_hover = ui.interact(rect, row.response.id.with("select"), egui::Sense::hover());
+                    let row_hover =
+                        ui.interact(rect, row.response.id.with("select"), egui::Sense::hover());
                     let clicked_in_row =
                         row_hover.contains_pointer() && ui.input(|i| i.pointer.primary_clicked());
                     row_hover.on_hover_text("Click to select this model");
@@ -414,17 +444,22 @@ pub fn render(
             let resp = ui.add(
                 egui::TextEdit::singleline(&mut models.pull_model_input)
                     .hint_text("model:tag (e.g. llama3.2:latest)")
-                    .desired_width((ui.available_width() - PULL_BUTTON_RESERVE).max(PULL_FIELD_MIN_W)),
+                    .desired_width(
+                        (ui.available_width() - PULL_BUTTON_RESERVE).max(PULL_FIELD_MIN_W),
+                    ),
             );
             let has_input = !models.pull_model_input.trim().is_empty();
             // The same gate as Load: app.rs refuses a pull while another action
             // is in flight.
             let action_busy = models.action_status.is_in_progress();
             let pull_enabled = has_input && !action_busy;
-            let pull_btn = egui::Button::new(text::value("Pull").color(theme::on_accent())).fill(theme::accent());
+            let pull_btn = egui::Button::new(text::value("Pull").color(theme::on_accent()))
+                .fill(theme::accent());
             let pull_resp = ui.add_enabled(pull_enabled, pull_btn);
             if action_busy {
-                pull_resp.clone().on_hover_text("Another model action is in progress");
+                pull_resp
+                    .clone()
+                    .on_hover_text("Another model action is in progress");
             }
             let pull_clicked = pull_resp.clicked();
             let enter_pressed = resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
@@ -454,7 +489,9 @@ pub fn render(
                 ui.label(text::label("QUICK INSTALL"));
                 let pills_busy = models.action_status.is_in_progress();
                 for (name, desc) in pending {
-                    let resp = ui.add_enabled_ui(!pills_busy, |ui| widgets::selector_pill(ui, name, false)).inner;
+                    let resp = ui
+                        .add_enabled_ui(!pills_busy, |ui| widgets::selector_pill(ui, name, false))
+                        .inner;
                     let tip = if pills_busy {
                         "Another model action is in progress".to_string()
                     } else {
@@ -462,7 +499,11 @@ pub fn render(
                             "{}\nPull {} from {}",
                             desc,
                             name,
-                            if models.pull_source == "huggingface" { "HuggingFace" } else { "Ollama" },
+                            if models.pull_source == "huggingface" {
+                                "HuggingFace"
+                            } else {
+                                "Ollama"
+                            },
                         )
                     };
                     if resp.on_hover_text(tip).clicked() {
@@ -522,6 +563,10 @@ mod tests {
             .filter(|a| matches!(a, SettingsAction::LoadModel(_)))
             .count();
         assert_eq!(loads, 1, "one Load, from the button");
-        assert_eq!(selected.borrow().as_deref(), Some("llama3.2:1b"), "the row click selected");
+        assert_eq!(
+            selected.borrow().as_deref(),
+            Some("llama3.2:1b"),
+            "the row click selected"
+        );
     }
 }

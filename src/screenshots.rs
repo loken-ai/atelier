@@ -37,7 +37,9 @@ const NO_SERVER: &str = "http://127.0.0.1:9";
 /// parallel; every test here holds this for its duration.
 fn render_lock() -> std::sync::MutexGuard<'static, ()> {
     static RENDER: std::sync::Mutex<()> = std::sync::Mutex::new(());
-    RENDER.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    RENDER
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 fn model(name: &str, size: &str, family: &str, caps: &[&str]) -> ModelInfo {
@@ -73,7 +75,10 @@ fn shoot_skin(
         .build_eframe(move |cc| {
             let mut app = LLMGuiApp::new(
                 cc,
-                Args { model: None, server: Some(NO_SERVER.to_string()) },
+                Args {
+                    model: None,
+                    server: Some(NO_SERVER.to_string()),
+                },
                 LogBuffer::new(256),
             );
             app.config = AppConfig::default();
@@ -128,16 +133,32 @@ fn light_skin() {
             role: "assistant".into(),
             content: "It holds the keys and values already computed for every token.".into(),
             timestamp: "14:02".into(),
-            timing: Some(MessageTiming { tokens_per_sec: 148.6, duration_ms: 1240, token_count: 184 }),
+            timing: Some(MessageTiming {
+                tokens_per_sec: 148.6,
+                duration_ms: 1240,
+                token_count: 184,
+            }),
             ..Default::default()
         });
     });
-    shoot_skin(LIGHT_OUT, "atelier-media", false, Section::MediaStudio, |app| {
-        app.media.kind = crate::state::MediaKind::Image;
-        app.media.prompt = "a lighthouse on a basalt shore, low sun, long exposure".into();
-    });
+    shoot_skin(
+        LIGHT_OUT,
+        "atelier-media",
+        false,
+        Section::MediaStudio,
+        |app| {
+            app.media.kind = crate::state::MediaKind::Image;
+            app.media.prompt = "a lighthouse on a basalt shore, low sun, long exposure".into();
+        },
+    );
     shoot_skin(LIGHT_OUT, "atelier-models", false, Section::Models, |_| {});
-    shoot_skin(LIGHT_OUT, "atelier-settings", false, Section::Settings, |_| {});
+    shoot_skin(
+        LIGHT_OUT,
+        "atelier-settings",
+        false,
+        Section::Settings,
+        |_| {},
+    );
 }
 
 /// Every documented view, then the light renders. One test rather than one per view: the
@@ -211,14 +232,54 @@ fn models() {
 fn logs() {
     shoot("atelier-logs", Section::ServerLog, |app| {
         let lines: [(LogLevel, &str, &str, &str); 8] = [
-            (LogLevel::Info, "14:02:03.118", "atelier::api", "GET /api/tags 200 in 12 ms"),
-            (LogLevel::Info, "14:02:03.402", "atelier::models", "3 models listed, 1 loaded"),
-            (LogLevel::Debug, "14:02:11.204", "atelier::chat", "streaming reply from qwen3:8b"),
-            (LogLevel::Trace, "14:02:11.219", "atelier::api", "chunk 1 of the reply, 24 bytes"),
-            (LogLevel::Info, "14:02:12.480", "atelier::chat", "reply complete: 184 tokens in 1.2 s"),
-            (LogLevel::Warn, "14:02:40.011", "atelier::models", "z-image is not loaded; the first render will load it"),
-            (LogLevel::Error, "14:03:02.377", "atelier::api", "POST /v1/images/generations 503: no free device"),
-            (LogLevel::Info, "14:03:05.000", "atelier::media", "render cancelled by the user"),
+            (
+                LogLevel::Info,
+                "14:02:03.118",
+                "atelier::api",
+                "GET /api/tags 200 in 12 ms",
+            ),
+            (
+                LogLevel::Info,
+                "14:02:03.402",
+                "atelier::models",
+                "3 models listed, 1 loaded",
+            ),
+            (
+                LogLevel::Debug,
+                "14:02:11.204",
+                "atelier::chat",
+                "streaming reply from qwen3:8b",
+            ),
+            (
+                LogLevel::Trace,
+                "14:02:11.219",
+                "atelier::api",
+                "chunk 1 of the reply, 24 bytes",
+            ),
+            (
+                LogLevel::Info,
+                "14:02:12.480",
+                "atelier::chat",
+                "reply complete: 184 tokens in 1.2 s",
+            ),
+            (
+                LogLevel::Warn,
+                "14:02:40.011",
+                "atelier::models",
+                "z-image is not loaded; the first render will load it",
+            ),
+            (
+                LogLevel::Error,
+                "14:03:02.377",
+                "atelier::api",
+                "POST /v1/images/generations 503: no free device",
+            ),
+            (
+                LogLevel::Info,
+                "14:03:05.000",
+                "atelier::media",
+                "render cancelled by the user",
+            ),
         ];
         for (level, at, target, message) in lines {
             let mut entry = LogEntry::new(level, target.into(), message.into());

@@ -434,7 +434,6 @@ pub struct ImagesGenerationResponse {
     pub energy_j: Option<f64>,
 }
 
-
 /// One item in a media-generation `data` array. `b64_json` is the
 /// base64 payload (PNG for images, WAV for audio, .mid bytes for MIDI,
 /// mp4/gif for video). `content_type` disambiguates when present.
@@ -480,13 +479,13 @@ mod size_tests {
     fn format_size_boundary_transitions() {
         // The boundary between units (e.g. 1023 -> 1024) is where
         // off-by-one bugs hide. Pin every transition:
-        assert_eq!(format_size(1023), "1023 B");           // just under KB
-        assert_eq!(format_size(1024), "1.0 KB");           // exactly KB
+        assert_eq!(format_size(1023), "1023 B"); // just under KB
+        assert_eq!(format_size(1024), "1.0 KB"); // exactly KB
         assert_eq!(format_size(1024 * 1024 - 1), "1024.0 KB"); // just under MB
-        assert_eq!(format_size(1024 * 1024), "1.0 MB");    // exactly MB
+        assert_eq!(format_size(1024 * 1024), "1.0 MB"); // exactly MB
         assert_eq!(format_size(1024_u64.pow(3) - 1), "1024.0 MB"); // just under GB
         assert_eq!(format_size(1024_u64.pow(3)), "1.00 GB"); // exactly GB
-        // Far end - 100 TB stays in TB unit, doesn't roll over to PB.
+                                                             // Far end - 100 TB stays in TB unit, doesn't roll over to PB.
         assert_eq!(format_size(100 * 1024_u64.pow(4)), "100.00 TB");
     }
 }
@@ -504,7 +503,11 @@ impl ListModelsResponse {
 
     pub fn from_ollama(resp: OllamaListModelsResponse) -> Self {
         Self {
-            models: resp.models.into_iter().map(ModelInfo::from_ollama).collect(),
+            models: resp
+                .models
+                .into_iter()
+                .map(ModelInfo::from_ollama)
+                .collect(),
         }
     }
 }
@@ -935,8 +938,10 @@ mod device_record_tests {
         });
         let d: OllamaModelDetails = serde_json::from_value(without_quant).expect("without quant");
         assert_eq!(d.format, "safetensors");
-        assert!(d.quantization_level.is_none(),
-            "quantization_level must be None when wire payload omits it");
+        assert!(
+            d.quantization_level.is_none(),
+            "quantization_level must be None when wire payload omits it"
+        );
     }
 
     #[test]
@@ -949,23 +954,35 @@ mod device_record_tests {
         //     +1 yields 1 - not a crash. Documents the safety net
         //     for a future server bug emitting bogus ranges.
         let one_layer = LayerDistribution {
-            device_type: "CPU".into(), device_id: 0,
-            layer_start: 5, layer_end: 5, memory_bytes: 0,
+            device_type: "CPU".into(),
+            device_id: 0,
+            layer_start: 5,
+            layer_end: 5,
+            memory_bytes: 0,
         };
         assert_eq!(one_layer.layer_count(), 1);
 
         let normal = LayerDistribution {
-            device_type: "CUDA".into(), device_id: 0,
-            layer_start: 0, layer_end: 47, memory_bytes: 0,
+            device_type: "CUDA".into(),
+            device_id: 0,
+            layer_start: 0,
+            layer_end: 47,
+            memory_bytes: 0,
         };
         assert_eq!(normal.layer_count(), 48);
 
         let inverted = LayerDistribution {
-            device_type: "CUDA".into(), device_id: 0,
-            layer_start: 10, layer_end: 3, memory_bytes: 0,
+            device_type: "CUDA".into(),
+            device_id: 0,
+            layer_start: 10,
+            layer_end: 3,
+            memory_bytes: 0,
         };
-        assert_eq!(inverted.layer_count(), 1,
-            "inverted range must saturate, not underflow-panic");
+        assert_eq!(
+            inverted.layer_count(),
+            1,
+            "inverted range must saturate, not underflow-panic"
+        );
     }
 
     #[test]
@@ -983,8 +1000,10 @@ mod device_record_tests {
             "What is in this image?".to_string(),
         );
         let json = serde_json::to_value(&req).expect("serialize w/o images");
-        assert!(json.get("images").is_none(),
-            "images field leaked when None");
+        assert!(
+            json.get("images").is_none(),
+            "images field leaked when None"
+        );
 
         req.images = Some(vec!["iVBORw0KGgo".to_string()]);
         let json = serde_json::to_value(&req).expect("serialize w/ images");
@@ -1007,8 +1026,8 @@ mod device_record_tests {
         let raw = f.arguments.expect("arguments present");
         // raw is the JSON-encoded string - confirm it's still a
         // parseable JSON object (caller's responsibility to parse).
-        let parsed: serde_json::Value = serde_json::from_str(&raw)
-            .expect("arguments parses as JSON");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&raw).expect("arguments parses as JSON");
         assert_eq!(parsed["city"], "Paris");
         assert_eq!(parsed["unit"], "celsius");
 
@@ -1017,8 +1036,10 @@ mod device_record_tests {
         let no_args = serde_json::json!({ "name": "ping" });
         let f: ToolCallFunction = serde_json::from_value(no_args).expect("no args");
         assert_eq!(f.name, "ping");
-        assert!(f.arguments.is_none(),
-            "arguments must be None when the wire payload omits it");
+        assert!(
+            f.arguments.is_none(),
+            "arguments must be None when the wire payload omits it"
+        );
     }
 
     #[test]
@@ -1075,8 +1096,14 @@ mod device_record_tests {
         // Optional fields dropped (skip_serializing_if) so the wire
         // payload doesn't carry \"description\":null which the
         // OpenAI strict mode rejects.
-        assert!(json.get("description").is_none(), "description leaked when None");
-        assert!(json.get("parameters").is_none(), "parameters leaked when None");
+        assert!(
+            json.get("description").is_none(),
+            "description leaked when None"
+        );
+        assert!(
+            json.get("parameters").is_none(),
+            "parameters leaked when None"
+        );
 
         let full = ToolFunction {
             name: "get_weather".to_string(),
@@ -1118,7 +1145,10 @@ mod device_record_tests {
         let json = serde_json::to_value(&with_imgs).expect("serialize w/ images");
         assert_eq!(json["images"][0], "b64-blob");
         // audios still absent
-        assert!(json.get("audios").is_none(), "audios should still be skipped");
+        assert!(
+            json.get("audios").is_none(),
+            "audios should still be skipped"
+        );
     }
 
     #[test]
@@ -1155,10 +1185,7 @@ mod device_record_tests {
         // when prompt is empty (handle_model_unload). Pin the wire
         // shape so a future rename of keep_alive breaks the load/
         // unload flow visibly.
-        let mut load = OllamaGenerateRequest::new(
-            "qwen3:latest".to_string(),
-            String::new(),
-        );
+        let mut load = OllamaGenerateRequest::new("qwen3:latest".to_string(), String::new());
         load.keep_alive = Some("5m".to_string());
         let json = serde_json::to_value(&load).expect("serialize load");
         assert_eq!(json["model"], "qwen3:latest");
@@ -1166,10 +1193,7 @@ mod device_record_tests {
         assert_eq!(json["keep_alive"], "5m");
         assert_eq!(json["stream"], false);
 
-        let mut unload = OllamaGenerateRequest::new(
-            "qwen3:latest".to_string(),
-            String::new(),
-        );
+        let mut unload = OllamaGenerateRequest::new("qwen3:latest".to_string(), String::new());
         unload.keep_alive = Some("0".to_string());
         let json = serde_json::to_value(&unload).expect("serialize unload");
         assert_eq!(json["keep_alive"], "0");
@@ -1188,8 +1212,10 @@ mod device_record_tests {
         assert_eq!(r.name, "qwen3:latest");
         assert!(!r.stream, "stream must default to false when absent");
         assert!(r.insecure.is_none());
-        assert_eq!(r.source, "ollama",
-            "source must default to 'ollama' when absent - pinned by default_model_source");
+        assert_eq!(
+            r.source, "ollama",
+            "source must default to 'ollama' when absent - pinned by default_model_source"
+        );
     }
 
     #[test]
@@ -1205,8 +1231,10 @@ mod device_record_tests {
         assert_eq!(json["source"], "ollama");
         // insecure must be skipped when None - not emitted as
         // {\"insecure\":null} which some Ollama clients reject.
-        assert!(json.get("insecure").is_none(),
-            "insecure leaked into wire payload");
+        assert!(
+            json.get("insecure").is_none(),
+            "insecure leaked into wire payload"
+        );
 
         let mut hf_req = OllamaPullRequest::new("Qwen/Qwen3-7B".to_string());
         hf_req.source = "huggingface".to_string();
@@ -1267,11 +1295,11 @@ mod device_record_tests {
         assert_eq!(json["messages"][0]["content"], "hi");
         assert_eq!(json["stream"], false);
         // Optional fields absent (skip_serializing_if on each Option)
-        assert!(json.get("format").is_none(),       "format leaked");
-        assert!(json.get("options").is_none(),      "options leaked");
-        assert!(json.get("keep_alive").is_none(),   "keep_alive leaked");
-        assert!(json.get("thinking").is_none(),     "thinking leaked");
-        assert!(json.get("tools").is_none(),        "tools leaked");
+        assert!(json.get("format").is_none(), "format leaked");
+        assert!(json.get("options").is_none(), "options leaked");
+        assert!(json.get("keep_alive").is_none(), "keep_alive leaked");
+        assert!(json.get("thinking").is_none(), "thinking leaked");
+        assert!(json.get("tools").is_none(), "tools leaked");
         // Message optional Vecs also skipped
         assert!(json["messages"][0].get("images").is_none(), "images leaked");
         assert!(json["messages"][0].get("audios").is_none(), "audios leaked");
@@ -1315,7 +1343,7 @@ mod device_record_tests {
         let wire = OllamaModel {
             name: "qwen3:latest".to_string(),
             modified_at: "2026-05-17T01:00:00Z".to_string(),
-            size: 4_500_000_000,  // ~4.19 GB after KB/MB/GB rounding
+            size: 4_500_000_000, // ~4.19 GB after KB/MB/GB rounding
             digest: "sha256:abc".to_string(),
             details: None,
             source: "ollama".to_string(),
@@ -1348,8 +1376,10 @@ mod device_record_tests {
         // Reverse direction: serialize must emit \"type\" too.
         let back = serde_json::to_value(&tc).expect("serialize");
         assert_eq!(back.get("type").and_then(|v| v.as_str()), Some("function"));
-        assert!(back.get("r#type").is_none(),
-            "r# prefix must not leak into the JSON key");
+        assert!(
+            back.get("r#type").is_none(),
+            "r# prefix must not leak into the JSON key"
+        );
     }
 
     #[test]
@@ -1410,7 +1440,10 @@ mod device_record_tests {
         });
         let r: OllamaChatResponse =
             serde_json::from_value(chunk).expect("thinking chunk deserialize");
-        assert_eq!(r.thinking.as_deref(), Some("Let me reason about this step by step..."));
+        assert_eq!(
+            r.thinking.as_deref(),
+            Some("Let me reason about this step by step...")
+        );
         assert_eq!(r.thinking_duration, Some(2_500_000_000));
     }
 
@@ -1454,8 +1487,7 @@ mod device_record_tests {
             },
             "done": true
         });
-        let r: OllamaChatResponse =
-            serde_json::from_value(chunk).expect("tts chunk deserialize");
+        let r: OllamaChatResponse = serde_json::from_value(chunk).expect("tts chunk deserialize");
         assert!(r.done);
         let audios = r.message.audios.expect("audios present");
         assert_eq!(audios.len(), 1);
@@ -1589,8 +1621,7 @@ mod device_record_tests {
                 }
             ]
         });
-        let resp: OllamaListModelsResponse =
-            serde_json::from_value(payload).expect("deserialize");
+        let resp: OllamaListModelsResponse = serde_json::from_value(payload).expect("deserialize");
         assert_eq!(resp.models.len(), 2);
 
         let first = &resp.models[0];
@@ -1650,8 +1681,7 @@ mod device_record_tests {
                 }
             ]
         });
-        let resp: ListLoadedModelsResponse =
-            serde_json::from_value(payload).expect("deserialize");
+        let resp: ListLoadedModelsResponse = serde_json::from_value(payload).expect("deserialize");
         assert_eq!(resp.models.len(), 2);
         let first = &resp.models[0];
         assert_eq!(first.model, "qwen3-coder:latest");
@@ -1661,7 +1691,7 @@ mod device_record_tests {
         assert_eq!(dist.len(), 2);
         assert_eq!(dist[0].layer_count(), 32); // 0..=31 = 32 layers
         assert_eq!(dist[1].layer_count(), 16); // 32..=47 = 16 layers
-        // Minimal entry: all topology fields absent -> all Option::None.
+                                               // Minimal entry: all topology fields absent -> all Option::None.
         let second = &resp.models[1];
         assert_eq!(second.model, "openai/whisper-small");
         assert!(second.device.is_none());

@@ -120,7 +120,11 @@ pub fn is_dark() -> bool {
 }
 
 pub fn palette() -> &'static Palette {
-    if is_dark() { &DARK } else { &LIGHT }
+    if is_dark() {
+        &DARK
+    } else {
+        &LIGHT
+    }
 }
 
 /// The skin is one process-wide value, and the test binary runs its tests
@@ -129,21 +133,47 @@ pub fn palette() -> &'static Palette {
 #[cfg(test)]
 pub(crate) fn skin_lock() -> std::sync::MutexGuard<'static, ()> {
     static SKIN_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-    SKIN_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    SKIN_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
-pub fn bg() -> Color32 { palette().bg }
-pub fn panel() -> Color32 { palette().panel }
-pub fn raised() -> Color32 { palette().raised }
-pub fn border() -> Color32 { palette().border }
-pub fn ink() -> Color32 { palette().ink }
-pub fn ink_dim() -> Color32 { palette().ink_dim }
-pub fn success() -> Color32 { palette().success }
-pub fn warning() -> Color32 { palette().warning }
-pub fn error() -> Color32 { palette().error }
-pub fn accent() -> Color32 { palette().accent }
-pub fn accent_dim() -> Color32 { palette().accent_dim }
-pub fn on_accent() -> Color32 { palette().on_accent }
+pub fn bg() -> Color32 {
+    palette().bg
+}
+pub fn panel() -> Color32 {
+    palette().panel
+}
+pub fn raised() -> Color32 {
+    palette().raised
+}
+pub fn border() -> Color32 {
+    palette().border
+}
+pub fn ink() -> Color32 {
+    palette().ink
+}
+pub fn ink_dim() -> Color32 {
+    palette().ink_dim
+}
+pub fn success() -> Color32 {
+    palette().success
+}
+pub fn warning() -> Color32 {
+    palette().warning
+}
+pub fn error() -> Color32 {
+    palette().error
+}
+pub fn accent() -> Color32 {
+    palette().accent
+}
+pub fn accent_dim() -> Color32 {
+    palette().accent_dim
+}
+pub fn on_accent() -> Color32 {
+    palette().on_accent
+}
 
 /// Build a tinted (unmultiplied-alpha) variant of `color`. `alpha` is the
 /// unmultiplied alpha byte (0 = transparent, 255 = opaque); typical values
@@ -207,7 +237,12 @@ pub fn apply(ctx: &egui::Context, dark: bool) {
 
 /// One widget state: a fill, a weaker fill for buttons, a border and an ink.
 /// No expansion, so nothing grows under the pointer.
-fn wv(bg_fill: Color32, weak_bg_fill: Color32, bg_stroke: Color32, fg: Color32) -> egui::style::WidgetVisuals {
+fn wv(
+    bg_fill: Color32,
+    weak_bg_fill: Color32,
+    bg_stroke: Color32,
+    fg: Color32,
+) -> egui::style::WidgetVisuals {
     egui::style::WidgetVisuals {
         bg_fill,
         weak_bg_fill,
@@ -232,7 +267,11 @@ fn hairline_shadow(p: &Palette) -> egui::epaint::Shadow {
 /// sunk in the well, buttons stand on the raised fill, and the accent appears
 /// as a ring on hover and a wash when pressed.
 pub fn visuals_for(p: &Palette) -> egui::Visuals {
-    let mut v = if p.dark { egui::Visuals::dark() } else { egui::Visuals::light() };
+    let mut v = if p.dark {
+        egui::Visuals::dark()
+    } else {
+        egui::Visuals::light()
+    };
     v.panel_fill = p.panel;
     v.window_fill = p.panel;
     v.extreme_bg_color = p.well;
@@ -251,7 +290,12 @@ pub fn visuals_for(p: &Palette) -> egui::Visuals {
     v.error_fg_color = p.error;
     v.widgets.noninteractive = wv(p.panel, p.panel, p.border, p.ink);
     v.widgets.inactive = wv(p.well, p.raised, p.border, p.ink);
-    v.widgets.hovered = wv(p.raised, p.raised, p.accent.gamma_multiply(FOCUS_RING_HOVER_GAMMA), p.ink);
+    v.widgets.hovered = wv(
+        p.raised,
+        p.raised,
+        p.accent.gamma_multiply(FOCUS_RING_HOVER_GAMMA),
+        p.ink,
+    );
     let wash = tinted(p.accent, ACTIVE_WASH_A);
     v.widgets.active = wv(wash, wash, p.accent, p.ink);
     v.widgets.open = wv(p.raised, p.raised, p.accent, p.ink);
@@ -307,11 +351,26 @@ pub mod text {
     /// egui's named styles on the same scale.
     pub fn styles() -> BTreeMap<TextStyle, FontId> {
         [
-            (TextStyle::Body, FontId::new(BODY_PT, FontFamily::Proportional)),
-            (TextStyle::Button, FontId::new(VALUE_PT, FontFamily::Proportional)),
-            (TextStyle::Heading, FontId::new(TITLE_PT, FontFamily::Proportional)),
-            (TextStyle::Monospace, FontId::new(MONO_PT, FontFamily::Monospace)),
-            (TextStyle::Small, FontId::new(LABEL_PT, FontFamily::Proportional)),
+            (
+                TextStyle::Body,
+                FontId::new(BODY_PT, FontFamily::Proportional),
+            ),
+            (
+                TextStyle::Button,
+                FontId::new(VALUE_PT, FontFamily::Proportional),
+            ),
+            (
+                TextStyle::Heading,
+                FontId::new(TITLE_PT, FontFamily::Proportional),
+            ),
+            (
+                TextStyle::Monospace,
+                FontId::new(MONO_PT, FontFamily::Monospace),
+            ),
+            (
+                TextStyle::Small,
+                FontId::new(LABEL_PT, FontFamily::Proportional),
+            ),
         ]
         .into()
     }
@@ -320,22 +379,37 @@ pub mod text {
         RichText::new(caps).size(LABEL_PT).color(palette().ink_dim)
     }
     pub fn value(s: &str) -> RichText {
-        RichText::new(s).size(VALUE_PT).strong().color(palette().ink)
+        RichText::new(s)
+            .size(VALUE_PT)
+            .strong()
+            .color(palette().ink)
     }
     pub fn section(caps: &str) -> RichText {
-        RichText::new(caps).size(SECTION_PT).strong().color(palette().accent)
+        RichText::new(caps)
+            .size(SECTION_PT)
+            .strong()
+            .color(palette().accent)
     }
     pub fn title(s: &str) -> RichText {
-        RichText::new(s).size(TITLE_PT).strong().color(palette().ink)
+        RichText::new(s)
+            .size(TITLE_PT)
+            .strong()
+            .color(palette().ink)
     }
     pub fn note(s: &str) -> RichText {
         RichText::new(s).size(VALUE_PT).color(palette().ink_dim)
     }
     pub fn mono(s: &str) -> RichText {
-        RichText::new(s).monospace().size(MONO_PT).color(palette().ink)
+        RichText::new(s)
+            .monospace()
+            .size(MONO_PT)
+            .color(palette().ink)
     }
     pub fn readout(s: &str) -> RichText {
-        RichText::new(s).monospace().size(READOUT_PT).color(palette().ink_dim)
+        RichText::new(s)
+            .monospace()
+            .size(READOUT_PT)
+            .color(palette().ink_dim)
     }
 }
 
@@ -360,13 +434,14 @@ mod tests {
         // asserted directly.
         for &color in &[LIGHT.accent, DARK.success, DARK.warning, DARK.error] {
             for alpha in [0u8, 1, 18, 25, 30, 180, 200, 255] {
-                let expected = Color32::from_rgba_unmultiplied(
-                    color.r(), color.g(), color.b(), alpha,
-                );
+                let expected =
+                    Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha);
                 let got = tinted(color, alpha);
-                assert_eq!(got, expected,
+                assert_eq!(
+                    got, expected,
                     "tinted({color:?}, {alpha}) must equal the direct \
-                     Color32::from_rgba_unmultiplied call it replaces");
+                     Color32::from_rgba_unmultiplied call it replaces"
+                );
             }
         }
     }
@@ -387,8 +462,11 @@ mod tests {
     fn rel_luminance(c: Color32) -> f64 {
         fn chan(v: u8) -> f64 {
             let s = v as f64 / 255.0;
-            if s <= 0.03928 { s / 12.92 }
-            else { ((s + 0.055) / 1.055).powf(2.4) }
+            if s <= 0.03928 {
+                s / 12.92
+            } else {
+                ((s + 0.055) / 1.055).powf(2.4)
+            }
         }
         0.2126 * chan(c.r()) + 0.7152 * chan(c.g()) + 0.0722 * chan(c.b())
     }
@@ -434,7 +512,10 @@ mod tests {
             for (i, (na, ca)) in named.iter().enumerate() {
                 for (nb, cb) in named.iter().skip(i + 1) {
                     let d = rgb_distance(*ca, *cb);
-                    assert!(d > HUE_APART, "{skin}: {na} and {nb} are {d} apart, under {HUE_APART}");
+                    assert!(
+                        d > HUE_APART,
+                        "{skin}: {na} and {nb} are {d} apart, under {HUE_APART}"
+                    );
                 }
             }
         }
@@ -455,21 +536,35 @@ mod tests {
         // other takes half of those sites under the floor.
         for (skin, p) in SKINS {
             assert_contrast(&format!("{skin} ink_dim on bg"), p.ink_dim, p.bg, AA_TEXT);
-            assert_contrast(&format!("{skin} ink_dim on panel"), p.ink_dim, p.panel, AA_TEXT);
+            assert_contrast(
+                &format!("{skin} ink_dim on panel"),
+                p.ink_dim,
+                p.panel,
+                AA_TEXT,
+            );
         }
     }
 
     #[test]
     fn ink_dim_reads_on_the_plate() {
         for (skin, p) in SKINS {
-            assert_contrast(&format!("{skin} ink_dim on plate_top"), p.ink_dim, p.plate_top, AA_TEXT);
+            assert_contrast(
+                &format!("{skin} ink_dim on plate_top"),
+                p.ink_dim,
+                p.plate_top,
+                AA_TEXT,
+            );
         }
     }
 
     #[test]
     fn status_reads_on_bg_and_panel_both_palettes() {
         for (skin, p) in SKINS {
-            for (name, c) in [("success", p.success), ("warning", p.warning), ("error", p.error)] {
+            for (name, c) in [
+                ("success", p.success),
+                ("warning", p.warning),
+                ("error", p.error),
+            ] {
                 assert_contrast(&format!("{skin} {name} on bg"), c, p.bg, AA_COMPONENT);
                 assert_contrast(&format!("{skin} {name} on panel"), c, p.panel, AA_COMPONENT);
             }
@@ -479,7 +574,12 @@ mod tests {
     #[test]
     fn on_accent_reads_on_the_accent() {
         for (skin, p) in SKINS {
-            assert_contrast(&format!("{skin} on_accent on accent"), p.on_accent, p.accent, AA_TEXT);
+            assert_contrast(
+                &format!("{skin} on_accent on accent"),
+                p.on_accent,
+                p.accent,
+                AA_TEXT,
+            );
         }
     }
 
@@ -498,10 +598,15 @@ mod tests {
             for pair in order.windows(2) {
                 let (na, a) = pair[0];
                 let (nb, b) = pair[1];
-                assert!(byte_lum(a) < byte_lum(b), "{skin}: {na} must be darker than {nb}");
+                assert!(
+                    byte_lum(a) < byte_lum(b),
+                    "{skin}: {na} must be darker than {nb}"
+                );
             }
-            assert!(byte_lum(p.plate_bottom) < byte_lum(p.plate_top),
-                "{skin}: the plate must be lighter at its top");
+            assert!(
+                byte_lum(p.plate_bottom) < byte_lum(p.plate_top),
+                "{skin}: the plate must be lighter at its top"
+            );
         }
     }
 
@@ -515,18 +620,33 @@ mod tests {
 
     #[test]
     fn the_light_skin_inverts_only_the_ink() {
-        let surfaces = |p: &Palette| [
-            p.bg, p.panel, p.raised, p.border, p.plate_top, p.plate_bottom,
-            p.plate_edge, p.well, p.well_edge, p.lamp_off,
-        ];
+        let surfaces = |p: &Palette| {
+            [
+                p.bg,
+                p.panel,
+                p.raised,
+                p.border,
+                p.plate_top,
+                p.plate_bottom,
+                p.plate_edge,
+                p.well,
+                p.well_edge,
+                p.lamp_off,
+            ]
+        };
         for (d, l) in surfaces(&DARK).iter().zip(surfaces(&LIGHT).iter()) {
-            assert!(byte_lum(*l) > byte_lum(*d), "every light surface is lighter than its dark twin");
+            assert!(
+                byte_lum(*l) > byte_lum(*d),
+                "every light surface is lighter than its dark twin"
+            );
         }
         for (d, l) in [(DARK.ink, LIGHT.ink), (DARK.ink_dim, LIGHT.ink_dim)] {
-            assert!(byte_lum(l) < byte_lum(d), "every light ink is darker than its dark twin");
+            assert!(
+                byte_lum(l) < byte_lum(d),
+                "every light ink is darker than its dark twin"
+            );
         }
     }
-
 
     #[test]
     fn apply_installs_the_palette() {
@@ -537,7 +657,10 @@ mod tests {
         assert_eq!(ctx.global_style().visuals.panel_fill, LIGHT.panel);
         assert_eq!(ctx.global_style().visuals.extreme_bg_color, LIGHT.well);
         assert_eq!(ctx.global_style().spacing.interact_size.y, CONTROL_H);
-        assert_eq!(ctx.global_style().text_styles[&egui::TextStyle::Body].size, text::BODY_PT);
+        assert_eq!(
+            ctx.global_style().text_styles[&egui::TextStyle::Body].size,
+            text::BODY_PT
+        );
         apply(&ctx, true);
         assert!(is_dark());
         assert_eq!(ctx.global_style().visuals.panel_fill, DARK.panel);

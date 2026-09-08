@@ -11,11 +11,14 @@
 //! +------+----------------------------------------------+
 //! ```
 
-use eframe::egui::{self, Align2, Color32, FontId, Pos2, Rect, Response, Sense, Stroke, Vec2, WidgetInfo, WidgetType};
-use crate::theme::{self, text, HAIRLINE};
-use crate::state::Section;
 use crate::icons::Icon;
+use crate::state::Section;
+use crate::theme::{self, text, HAIRLINE};
 use crate::ui::{surface, widgets};
+use eframe::egui::{
+    self, Align2, Color32, FontId, Pos2, Rect, Response, Sense, Stroke, Vec2, WidgetInfo,
+    WidgetType,
+};
 
 /// Sidebar width (icon + label when expanded)
 const SIDEBAR_WIDTH: f32 = 56.0;
@@ -66,12 +69,42 @@ enum NavIcon {
 }
 
 const NAV_ITEMS: &[NavItem] = &[
-    NavItem { icon: NavIcon::Svg(Icon::Chat),    label: "Chat",     tip: "Talk to a loaded model — text, vision, image-gen, TTS / ASR.", section: Section::Chat },
-    NavItem { icon: NavIcon::Text(">_"),         label: "Terminal", tip: "REPL for model commands: list / load / unload / pull / ps.",   section: Section::Terminal },
-    NavItem { icon: NavIcon::Svg(Icon::Package), label: "Models",   tip: "Browse, install, load, and delete local models.",              section: Section::Models },
-    NavItem { icon: NavIcon::Svg(Icon::Gear),    label: "Settings", tip: "Server URL, API profiles, theme, config.toml editor.",         section: Section::Settings },
-    NavItem { icon: NavIcon::Svg(Icon::Bolt),    label: "Studio",   tip: "Media Studio — generate images, music, SFX, MIDI, video, speech.", section: Section::MediaStudio },
-    NavItem { icon: NavIcon::Svg(Icon::Server),  label: "Logs",     tip: "Live server log stream with level + search filters.",          section: Section::ServerLog },
+    NavItem {
+        icon: NavIcon::Svg(Icon::Chat),
+        label: "Chat",
+        tip: "Talk to a loaded model — text, vision, image-gen, TTS / ASR.",
+        section: Section::Chat,
+    },
+    NavItem {
+        icon: NavIcon::Text(">_"),
+        label: "Terminal",
+        tip: "REPL for model commands: list / load / unload / pull / ps.",
+        section: Section::Terminal,
+    },
+    NavItem {
+        icon: NavIcon::Svg(Icon::Package),
+        label: "Models",
+        tip: "Browse, install, load, and delete local models.",
+        section: Section::Models,
+    },
+    NavItem {
+        icon: NavIcon::Svg(Icon::Gear),
+        label: "Settings",
+        tip: "Server URL, API profiles, theme, config.toml editor.",
+        section: Section::Settings,
+    },
+    NavItem {
+        icon: NavIcon::Svg(Icon::Bolt),
+        label: "Studio",
+        tip: "Media Studio — generate images, music, SFX, MIDI, video, speech.",
+        section: Section::MediaStudio,
+    },
+    NavItem {
+        icon: NavIcon::Svg(Icon::Server),
+        label: "Logs",
+        tip: "Live server log stream with level + search filters.",
+        section: Section::ServerLog,
+    },
 ];
 
 /// Render the top bar
@@ -116,7 +149,10 @@ pub struct TopBarOutput {
 /// meter and the loaded count as a monospace readout.
 #[allow(deprecated)]
 pub fn top_bar(ui: &mut egui::Ui, input: &TopBarInput) -> TopBarOutput {
-    let mut out = TopBarOutput { refresh_clicked: false, theme_toggle_clicked: false };
+    let mut out = TopBarOutput {
+        refresh_clicked: false,
+        theme_toggle_clicked: false,
+    };
     let margin = egui::Margin::symmetric(widgets::CHROME_MARGIN_X, widgets::CHROME_MARGIN_Y);
 
     egui::Panel::top("top_bar")
@@ -137,8 +173,10 @@ pub fn top_bar(ui: &mut egui::Ui, input: &TopBarInput) -> TopBarOutput {
 
                 match input.active_model {
                     Some(model) => {
-                        let shown = crate::modality::truncate_with_ellipsis(model, MODEL_READOUT_CHARS);
-                        let cell = widgets::fixed_label(ui, MODEL_READOUT_W, text::value(shown.as_ref()));
+                        let shown =
+                            crate::modality::truncate_with_ellipsis(model, MODEL_READOUT_CHARS);
+                        let cell =
+                            widgets::fixed_label(ui, MODEL_READOUT_W, text::value(shown.as_ref()));
                         if model.len() > shown.len() {
                             cell.on_hover_text(model);
                         }
@@ -161,9 +199,20 @@ pub fn top_bar(ui: &mut egui::Ui, input: &TopBarInput) -> TopBarOutput {
 
                     if input.refreshing {
                         ui.add_enabled_ui(false, |ui| {
-                            widgets::icon_button_lit(ui, Icon::Refresh, "Refreshing model list and hardware info", true);
+                            widgets::icon_button_lit(
+                                ui,
+                                Icon::Refresh,
+                                "Refreshing model list and hardware info",
+                                true,
+                            );
                         });
-                    } else if widgets::icon_button(ui, Icon::Refresh, "Refresh model list and hardware info").clicked() {
+                    } else if widgets::icon_button(
+                        ui,
+                        Icon::Refresh,
+                        "Refresh model list and hardware info",
+                    )
+                    .clicked()
+                    {
                         out.refresh_clicked = true;
                     }
                     ui.add_space(CHROME_TAIL_GAP);
@@ -193,7 +242,11 @@ pub fn top_bar(ui: &mut egui::Ui, input: &TopBarInput) -> TopBarOutput {
 /// is identified.
 #[allow(deprecated)] // see top_bar — Panel::show(&Context) until eframe top-level Ui exists.
 pub fn sidebar(ui: &mut egui::Ui, current: &mut Section, expanded: bool) -> bool {
-    let width = if expanded { SIDEBAR_WIDTH_EXPANDED } else { SIDEBAR_WIDTH };
+    let width = if expanded {
+        SIDEBAR_WIDTH_EXPANDED
+    } else {
+        SIDEBAR_WIDTH
+    };
     let margin = egui::Margin::symmetric(SIDEBAR_PAD_X, SIDEBAR_PAD_Y);
     let mut toggle_clicked = false;
 
@@ -241,7 +294,11 @@ fn sidebar_toggle(ui: &mut egui::Ui, expanded: bool) -> Response {
     if hovered {
         ui.painter().rect_filled(rect, NAV_RADIUS, theme::raised());
     }
-    let ink = if hovered { theme::ink() } else { theme::ink_dim() };
+    let ink = if hovered {
+        theme::ink()
+    } else {
+        theme::ink_dim()
+    };
     let glyph = Rect::from_center_size(rect.center(), Vec2::splat(CHEVRON_W));
     surface::chevron(ui, glyph, dir, Stroke::new(CHEVRON_STROKE_W, ink));
     response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, tip));
@@ -371,10 +428,15 @@ mod tests {
         // from the ConnectionState enum, so they can't desync.
         use crate::state::ConnectionState;
         let status = classify_top_bar_status(ConnectionState::Connecting, false);
-        assert_eq!(status.color, theme::warning(),
-            "Connecting state must use the theme amber, not red");
-        assert_eq!(status.caps, "CONNECTING",
-            "label must say Connecting, not Offline, during handshake");
+        assert_eq!(
+            status.color,
+            theme::warning(),
+            "Connecting state must use the theme amber, not red"
+        );
+        assert_eq!(
+            status.caps, "CONNECTING",
+            "label must say Connecting, not Offline, during handshake"
+        );
         assert!(status.lit);
     }
 

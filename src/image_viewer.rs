@@ -36,8 +36,17 @@ pub struct FullscreenImage {
 
 impl FullscreenImage {
     fn new(texes: Vec<egui::TextureHandle>, idx: usize) -> Self {
-        let idx = if texes.is_empty() { 0 } else { idx.min(texes.len() - 1) };
-        Self { texes, idx, zoom: 1.0, pan: Vec2::ZERO }
+        let idx = if texes.is_empty() {
+            0
+        } else {
+            idx.min(texes.len() - 1)
+        };
+        Self {
+            texes,
+            idx,
+            zoom: 1.0,
+            pan: Vec2::ZERO,
+        }
     }
 
     fn current(&self) -> &egui::TextureHandle {
@@ -84,7 +93,10 @@ pub fn request_open_set(ctx: &egui::Context, texes: &[egui::TextureHandle], idx:
         return;
     }
     ctx.data_mut(|d| {
-        d.insert_temp(Id::new(REQUEST_ID), OpenRequest(Some((texes.to_vec(), idx))))
+        d.insert_temp(
+            Id::new(REQUEST_ID),
+            OpenRequest(Some((texes.to_vec(), idx))),
+        )
     });
 }
 
@@ -108,7 +120,9 @@ pub fn image_response(
 ) -> egui::Response {
     let image = egui::Image::new(egui::load::SizedTexture::new(tex.id(), display_size))
         .sense(Sense::click());
-    ui.add(image).on_hover_cursor(CursorIcon::PointingHand).on_hover_text(hint.to_owned())
+    ui.add(image)
+        .on_hover_cursor(CursorIcon::PointingHand)
+        .on_hover_text(hint.to_owned())
 }
 
 /// As [`clickable_image`], but the viewer it opens can step through `texes`.
@@ -129,7 +143,10 @@ pub fn clickable_image_in_set(
     } else {
         "Click to view fullscreen"
     };
-    let resp = ui.add(image).on_hover_cursor(CursorIcon::PointingHand).on_hover_text(hint);
+    let resp = ui
+        .add(image)
+        .on_hover_cursor(CursorIcon::PointingHand)
+        .on_hover_text(hint);
     if resp.clicked() {
         request_open_set(ui.ctx(), texes, idx);
     }
@@ -185,7 +202,10 @@ pub fn show(ctx: &egui::Context, state: &mut Option<FullscreenImage>) {
 
             // A click that lands outside the image dismisses the viewer.
             if bg.clicked() {
-                let inside = bg.interact_pointer_pos().map(|p| rect.contains(p)).unwrap_or(false);
+                let inside = bg
+                    .interact_pointer_pos()
+                    .map(|p| rect.contains(p))
+                    .unwrap_or(false);
                 if !inside {
                     close = true;
                 }
@@ -202,11 +222,19 @@ pub fn show(ctx: &egui::Context, state: &mut Option<FullscreenImage>) {
                     // Browsing first: with several results open, stepping is the thing
                     // reached for most.
                     if fs.texes.len() > 1 {
-                        if widgets::icon_button(ui, Icon::StepBack, "Previous image (Left arrow)").clicked() {
+                        if widgets::icon_button(ui, Icon::StepBack, "Previous image (Left arrow)")
+                            .clicked()
+                        {
                             step = -1;
                         }
-                        widgets::readout(ui, COUNTER_W, &format!("{} / {}", fs.idx + 1, fs.texes.len()));
-                        if widgets::icon_button(ui, Icon::StepForward, "Next image (Right arrow)").clicked() {
+                        widgets::readout(
+                            ui,
+                            COUNTER_W,
+                            &format!("{} / {}", fs.idx + 1, fs.texes.len()),
+                        );
+                        if widgets::icon_button(ui, Icon::StepForward, "Next image (Right arrow)")
+                            .clicked()
+                        {
                             step = 1;
                         }
                         ui.separator();
@@ -219,7 +247,11 @@ pub fn show(ctx: &egui::Context, state: &mut Option<FullscreenImage>) {
                         fs.zoom = (fs.zoom * ZOOM_STEP).clamp(MIN_ZOOM, MAX_ZOOM);
                     }
                     ui.separator();
-                    if ui.add(egui::Button::new(text::note("Fit")).frame(false)).on_hover_text("Reset zoom").clicked() {
+                    if ui
+                        .add(egui::Button::new(text::note("Fit")).frame(false))
+                        .on_hover_text("Reset zoom")
+                        .clicked()
+                    {
                         fs.zoom = 1.0;
                         fs.pan = Vec2::ZERO;
                     }

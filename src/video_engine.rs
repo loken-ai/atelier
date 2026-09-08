@@ -35,8 +35,7 @@ fn yuv_to_frame(f: &rusty_h264::YuvFrame) -> Frame {
             // that panic happens inside the paint loop, so the window simply disappears:
             // the failure a viewer sees is "it crashed when I pressed play", with nothing
             // to point at. Missing luma reads as black rather than taking the window down.
-            let yy = (f.y.get(y * w + x).copied().unwrap_or(16) as f32 - 16.0)
-                * (255.0 / 219.0);
+            let yy = (f.y.get(y * w + x).copied().unwrap_or(16) as f32 - 16.0) * (255.0 / 219.0);
             let ci = (y / 2) * cw + (x / 2);
             let cb = f.u.get(ci).copied().unwrap_or(128) as f32 - 128.0;
             let cr = f.v.get(ci).copied().unwrap_or(128) as f32 - 128.0;
@@ -46,7 +45,11 @@ fn yuv_to_frame(f: &rusty_h264::YuvFrame) -> Frame {
             rgb[o + 2] = (yy + 1.772 * cb).clamp(0.0, 255.0) as u8;
         }
     }
-    Frame { rgb, width: w, height: h }
+    Frame {
+        rgb,
+        width: w,
+        height: h,
+    }
 }
 
 /// One decoded frame, interleaved RGB8.
@@ -184,7 +187,10 @@ impl Clip {
                 Err(_) => return None,
             }
         }
-        st.cache.iter().find(|(i, _)| *i == idx).map(|(_, f)| f.clone())
+        st.cache
+            .iter()
+            .find(|(i, _)| *i == idx)
+            .map(|(_, f)| f.clone())
     }
 }
 
@@ -208,7 +214,14 @@ pub fn decode_mp4(bytes: &[u8]) -> Result<Clip, String> {
         for (id, t) in reader.tracks() {
             if matches!(t.media_type(), Ok(mp4::MediaType::H264)) {
                 let fps = t.frame_rate() as f32;
-                found = Some((*id, if fps.is_finite() && fps > 0.0 { fps } else { 16.0 }));
+                found = Some((
+                    *id,
+                    if fps.is_finite() && fps > 0.0 {
+                        fps
+                    } else {
+                        16.0
+                    },
+                ));
                 break;
             }
         }
@@ -234,17 +247,25 @@ pub fn decode_mp4(bytes: &[u8]) -> Result<Clip, String> {
         }
     }
 
-    let count = reader.sample_count(track_id).map_err(|e| format!("mp4: {e}"))?;
+    let count = reader
+        .sample_count(track_id)
+        .map_err(|e| format!("mp4: {e}"))?;
 
     // Collect the PACKETS and stop there. Decoding every one of them here is what made
     // opening a clip cost its whole length in memory and in waiting; the stream can be
     // walked as it plays instead.
     let mut packets: Vec<Vec<u8>> = Vec::with_capacity(count as usize);
     for i in 1..=count {
-        let Ok(Some(sample)) = reader.read_sample(track_id, i) else { continue };
+        let Ok(Some(sample)) = reader.read_sample(track_id, i) else {
+            continue;
+        };
         // MP4 stores samples length-prefixed (AVCC); the decoder wants start codes
         // (Annex B). Same NAL units, different framing.
-        let mut packet = if i == 1 { annexb_header.clone() } else { Vec::new() };
+        let mut packet = if i == 1 {
+            annexb_header.clone()
+        } else {
+            Vec::new()
+        };
         let data = &sample.bytes;
         let mut off = 0usize;
         while off + 4 <= data.len() {
@@ -285,7 +306,11 @@ pub fn decode_mp4(bytes: &[u8]) -> Result<Clip, String> {
     let first = clip
         .frame(0)
         .ok_or_else(|| "mp4: the video track decoded to no frames".to_string())?;
-    Ok(Clip { width: first.width, height: first.height, ..clip })
+    Ok(Clip {
+        width: first.width,
+        height: first.height,
+        ..clip
+    })
 }
 
 /// Playback state for one clip: which frame is on screen, and whether time is running.
@@ -306,7 +331,13 @@ pub struct VideoPlayer {
 
 impl VideoPlayer {
     pub fn new(clip: Clip) -> Self {
-        Self { clip: Arc::new(clip), index: 0, playing: false, accum: 0.0, looping: true }
+        Self {
+            clip: Arc::new(clip),
+            index: 0,
+            playing: false,
+            accum: 0.0,
+            looping: true,
+        }
     }
 
     pub fn frame_count(&self) -> usize {
@@ -472,7 +503,10 @@ mod tests {
                 advanced += 1;
             }
         }
-        assert_eq!(advanced, 16, "one second at 16 fps must advance 16 frames, got {advanced}");
+        assert_eq!(
+            advanced, 16,
+            "one second at 16 fps must advance 16 frames, got {advanced}"
+        );
     }
 
     /// A tick far larger than one frame must not silently drop the clip out of sync:
@@ -502,10 +536,16 @@ mod tests {
         println!("mid-grey decoded to {px:?}");
         // 0x808080 in, so all three channels near 128 and within a few of each other.
         for (i, &c) in px.iter().enumerate() {
-            assert!((c as i32 - 128).abs() <= 12, "grey channel {i} came back {c}, not ~128");
+            assert!(
+                (c as i32 - 128).abs() <= 12,
+                "grey channel {i} came back {c}, not ~128"
+            );
         }
         let spread = *px.iter().max().unwrap() as i32 - *px.iter().min().unwrap() as i32;
-        assert!(spread <= 8, "grey decoded with a {spread} channel spread - a range or Cb/Cr error");
+        assert!(
+            spread <= 8,
+            "grey decoded with a {spread} channel spread - a range or Cb/Cr error"
+        );
 
         let clip = decode_mp4(&std::fs::read(dir.join("red.mp4")).expect("red")).expect("red");
         let f = clip.frame(0).expect("first picture");
@@ -513,8 +553,15 @@ mod tests {
         println!("red decoded to {px:?}");
         // Pure red: R dominant, G and B low. Catches a Cb/Cr swap, which would put the
         // energy in blue instead.
-        assert!(px[0] > 170, "red channel came back {} - expected the dominant one", px[0]);
-        assert!(px[1] < 90 && px[2] < 90, "red leaked into G/B: {px:?} - Cb/Cr swapped?");
+        assert!(
+            px[0] > 170,
+            "red channel came back {} - expected the dominant one",
+            px[0]
+        );
+        assert!(
+            px[1] < 90 && px[2] < 90,
+            "red leaked into G/B: {px:?} - Cb/Cr swapped?"
+        );
     }
 
     #[test]
@@ -566,8 +613,16 @@ mod tests {
             ..Default::default()
         };
         pb.tick(&ctx, 0.0);
-        assert_eq!(pb.shown_frame(), None, "nothing decoded, so nothing is on the texture");
-        assert_eq!(pb.stale_frame(), Some(0), "the missing frame must be nameable");
+        assert_eq!(
+            pb.shown_frame(),
+            None,
+            "nothing decoded, so nothing is on the texture"
+        );
+        assert_eq!(
+            pb.stale_frame(),
+            Some(0),
+            "the missing frame must be nameable"
+        );
     }
 
     /// And when the picture IS the frame asked for, nothing is claimed to be wrong.
@@ -691,7 +746,11 @@ impl VideoPlayback {
     /// need something to draw without a decoder in the loop.
     #[cfg(test)]
     pub fn with_frame(texture: egui::TextureHandle, index: usize) -> Self {
-        Self { texture: Some(texture), uploaded: Some(index), ..Self::default() }
+        Self {
+            texture: Some(texture),
+            uploaded: Some(index),
+            ..Self::default()
+        }
     }
 
     /// Which frame the texture actually holds, if it holds one.
@@ -729,7 +788,9 @@ impl VideoPlayback {
                 return true;
             }
         }
-        let Some(p) = self.player.as_mut() else { return false };
+        let Some(p) = self.player.as_mut() else {
+            return false;
+        };
         let changed = p.tick(dt);
         let idx = p.index();
         if self.uploaded != Some(idx) || self.texture.is_none() {
@@ -738,11 +799,8 @@ impl VideoPlayback {
                 match &mut self.texture {
                     Some(t) => t.set(img, egui::TextureOptions::LINEAR),
                     None => {
-                        self.texture = Some(ctx.load_texture(
-                            "video_frame",
-                            img,
-                            egui::TextureOptions::LINEAR,
-                        ))
+                        self.texture =
+                            Some(ctx.load_texture("video_frame", img, egui::TextureOptions::LINEAR))
                     }
                 }
                 self.uploaded = Some(idx);

@@ -52,10 +52,7 @@ pub enum TaskResult {
     /// while the answer is in flight - an untagged reply would be shown against a frame
     /// size or a length it was never computed for. `None` seconds = the server could not
     /// answer, and the tab shows nothing rather than a stale number.
-    VideoEstimate {
-        key: String,
-        seconds: Option<f32>,
-    },
+    VideoEstimate { key: String, seconds: Option<f32> },
     /// Models list fetched
     ModelsFetched(Vec<ModelInfo>, Vec<String>),
     /// The LoRA adapter names the server can apply, from `/v1/loras`. Fetched with the

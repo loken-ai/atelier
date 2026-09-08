@@ -88,7 +88,6 @@ impl LogEntry {
             message,
         }
     }
-
 }
 
 /// Shared log buffer
@@ -121,7 +120,8 @@ pub(crate) fn contains_ascii_ci(haystack: &str, needle: &[u8]) -> bool {
     if hay.len() < needle.len() {
         return false;
     }
-    hay.windows(needle.len()).any(|w| w.eq_ignore_ascii_case(needle))
+    hay.windows(needle.len())
+        .any(|w| w.eq_ignore_ascii_case(needle))
 }
 
 impl LogBuffer {
@@ -330,9 +330,8 @@ pub fn init_gui_logging(buffer: LogBuffer) {
 
     // Create a subscriber with our layer
     // Use EnvFilter to respect RUST_LOG env var, defaulting to info level for our modules
-    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-        tracing_subscriber::EnvFilter::new("atelier=info,reqwest=info")
-    });
+    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("atelier=info,reqwest=info"));
 
     let subscriber = tracing_subscriber::registry()
         .with(env_filter)
@@ -439,8 +438,8 @@ mod tests {
         // crate's uppercase convention (TRACE/DEBUG/INFO/WARN/ERROR).
         assert_eq!(LogLevel::Trace.to_string(), "TRACE");
         assert_eq!(LogLevel::Debug.to_string(), "DEBUG");
-        assert_eq!(LogLevel::Info.to_string(),  "INFO");
-        assert_eq!(LogLevel::Warn.to_string(),  "WARN");
+        assert_eq!(LogLevel::Info.to_string(), "INFO");
+        assert_eq!(LogLevel::Warn.to_string(), "WARN");
         assert_eq!(LogLevel::Error.to_string(), "ERROR");
     }
 
@@ -452,8 +451,8 @@ mod tests {
         // and break the server-log tab's filter.
         assert_eq!(LogLevel::from(tracing::Level::TRACE), LogLevel::Trace);
         assert_eq!(LogLevel::from(tracing::Level::DEBUG), LogLevel::Debug);
-        assert_eq!(LogLevel::from(tracing::Level::INFO),  LogLevel::Info);
-        assert_eq!(LogLevel::from(tracing::Level::WARN),  LogLevel::Warn);
+        assert_eq!(LogLevel::from(tracing::Level::INFO), LogLevel::Info);
+        assert_eq!(LogLevel::from(tracing::Level::WARN), LogLevel::Warn);
         assert_eq!(LogLevel::from(tracing::Level::ERROR), LogLevel::Error);
     }
 
@@ -464,8 +463,12 @@ mod tests {
         // Server-Log tab right-aligns to this width; a future widen
         // would shift the rendered table columns. Pin the format.
         let e = LogEntry::new(LogLevel::Info, "test".into(), "msg".into());
-        assert_eq!(e.timestamp.len(), 12,
-            "expected HH:MM:SS.mmm (12 chars), got {:?}", e.timestamp);
+        assert_eq!(
+            e.timestamp.len(),
+            12,
+            "expected HH:MM:SS.mmm (12 chars), got {:?}",
+            e.timestamp
+        );
         assert_eq!(&e.timestamp[2..3], ":");
         assert_eq!(&e.timestamp[5..6], ":");
         assert_eq!(&e.timestamp[8..9], ".");

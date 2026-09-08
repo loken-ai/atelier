@@ -83,7 +83,10 @@ impl Config {
             return Ok(config);
         }
         if let Ok(exe) = std::env::current_exe() {
-            let exe_dir = exe.parent().unwrap_or(std::path::Path::new(".")).join("config.toml");
+            let exe_dir = exe
+                .parent()
+                .unwrap_or(std::path::Path::new("."))
+                .join("config.toml");
             if exe_dir.exists() {
                 let content = std::fs::read_to_string(&exe_dir)?;
                 let config: Config = toml::from_str(&content)?;
@@ -161,14 +164,8 @@ impl ConfigEditorState {
         let inference = &config.inference;
 
         Self {
-            ollama_models_dir: config
-                .ollama_models_dir
-                .clone()
-                .unwrap_or_default(),
-            huggingface_models_dir: config
-                .huggingface_models_dir
-                .clone()
-                .unwrap_or_default(),
+            ollama_models_dir: config.ollama_models_dir.clone().unwrap_or_default(),
+            huggingface_models_dir: config.huggingface_models_dir.clone().unwrap_or_default(),
 
             server_host: server.host,
             server_port_str: server.port.to_string(),
@@ -180,9 +177,18 @@ impl ConfigEditorState {
             top_p_str: inference.top_p.unwrap_or(0.9).to_string(),
             top_k_str: inference.top_k.unwrap_or(50).to_string(),
             seed_str: inference.seed.unwrap_or(42).to_string(),
-            device_index_str: inference.device_index.map(|d| d.to_string()).unwrap_or_default(),
-            max_gpu_memory_fraction_str: inference.max_gpu_memory_fraction.unwrap_or(0.9).to_string(),
-            force_gpu_layers_str: inference.force_gpu_layers.map(|l| l.to_string()).unwrap_or_default(),
+            device_index_str: inference
+                .device_index
+                .map(|d| d.to_string())
+                .unwrap_or_default(),
+            max_gpu_memory_fraction_str: inference
+                .max_gpu_memory_fraction
+                .unwrap_or(0.9)
+                .to_string(),
+            force_gpu_layers_str: inference
+                .force_gpu_layers
+                .map(|l| l.to_string())
+                .unwrap_or_default(),
             use_quantized_gpu: inference.use_quantized_gpu.unwrap_or(true),
             cpu_threads_str: inference.cpu_threads.unwrap_or(0).to_string(),
 
@@ -196,16 +202,24 @@ impl ConfigEditorState {
 
     /// Convert to Config struct
     pub fn to_config(&self) -> Result<Config, String> {
-        let server_port: u16 = self.server_port_str.parse()
+        let server_port: u16 = self
+            .server_port_str
+            .parse()
             .map_err(|_| "Invalid server port (must be 0-65535)".to_string())?;
 
-        let max_tokens: usize = self.max_tokens_str.parse()
+        let max_tokens: usize = self
+            .max_tokens_str
+            .parse()
             .map_err(|_| "Invalid max_tokens (must be a positive integer)".to_string())?;
 
-        let context_length: usize = self.context_length_str.parse()
+        let context_length: usize = self
+            .context_length_str
+            .parse()
             .map_err(|_| "Invalid context_length (must be a positive integer)".to_string())?;
 
-        let temperature: f64 = self.temperature_str.parse()
+        let temperature: f64 = self
+            .temperature_str
+            .parse()
             .map_err(|_| "Invalid temperature (must be a number)".to_string())?;
         // Temperature is a softmax scale: zero means greedy, negatives
         // would flip the distribution upside-down, > 2.0 produces
@@ -215,27 +229,38 @@ impl ConfigEditorState {
             return Err("temperature out of range (must be 0.0..=2.0)".to_string());
         }
 
-        let top_p: f64 = self.top_p_str.parse()
+        let top_p: f64 = self
+            .top_p_str
+            .parse()
             .map_err(|_| "Invalid top_p (must be a number)".to_string())?;
         if !(0.0..=1.0).contains(&top_p) {
             return Err("top_p out of range (must be 0.0..=1.0)".to_string());
         }
 
-        let top_k: usize = self.top_k_str.parse()
+        let top_k: usize = self
+            .top_k_str
+            .parse()
             .map_err(|_| "Invalid top_k (must be a positive integer)".to_string())?;
 
-        let seed: u64 = self.seed_str.parse()
+        let seed: u64 = self
+            .seed_str
+            .parse()
             .map_err(|_| "Invalid seed (must be a positive integer)".to_string())?;
 
         let device_index = if self.device_index_str.is_empty() {
             None
         } else {
-            Some(self.device_index_str.parse::<usize>()
-                .map_err(|_| "Invalid device_index (must be a positive integer)".to_string())?)
+            Some(
+                self.device_index_str
+                    .parse::<usize>()
+                    .map_err(|_| "Invalid device_index (must be a positive integer)".to_string())?,
+            )
         };
 
-        let max_gpu_memory_fraction: f64 = self.max_gpu_memory_fraction_str.parse()
-            .map_err(|_| "Invalid max_gpu_memory_fraction (must be a number 0.0-1.0)".to_string())?;
+        let max_gpu_memory_fraction: f64 =
+            self.max_gpu_memory_fraction_str.parse().map_err(|_| {
+                "Invalid max_gpu_memory_fraction (must be a number 0.0-1.0)".to_string()
+            })?;
         // The error message already promised 0..=1; enforce it here
         // instead of silently accepting 1.5 and surprising the user
         // when the server rejects the saved config on next start.
@@ -243,14 +268,18 @@ impl ConfigEditorState {
             return Err("max_gpu_memory_fraction out of range (must be 0.0..=1.0)".to_string());
         }
 
-        let force_gpu_layers = if self.force_gpu_layers_str.is_empty() {
-            None
-        } else {
-            Some(self.force_gpu_layers_str.parse::<usize>()
-                .map_err(|_| "Invalid force_gpu_layers (must be a positive integer)".to_string())?)
-        };
+        let force_gpu_layers =
+            if self.force_gpu_layers_str.is_empty() {
+                None
+            } else {
+                Some(self.force_gpu_layers_str.parse::<usize>().map_err(|_| {
+                    "Invalid force_gpu_layers (must be a positive integer)".to_string()
+                })?)
+            };
 
-        let cpu_threads: usize = self.cpu_threads_str.parse()
+        let cpu_threads: usize = self
+            .cpu_threads_str
+            .parse()
             .map_err(|_| "Invalid cpu_threads (must be a positive integer)".to_string())?;
 
         Ok(Config {
@@ -487,7 +516,10 @@ mod to_config_range_tests {
         // The defaulted state must also pass to_config() — otherwise
         // a fresh editor session can't save without the user touching
         // anything.
-        assert!(s.to_config().is_ok(), "from_config defaults must round-trip");
+        assert!(
+            s.to_config().is_ok(),
+            "from_config defaults must round-trip"
+        );
     }
 
     #[test]
@@ -514,7 +546,11 @@ mod to_config_range_tests {
         };
         let cfg = Config {
             passthrough: Default::default(),
-            server: Some(ServerConfig { host: "0.0.0.0".into(), port: 8080, passthrough: Default::default() }),
+            server: Some(ServerConfig {
+                host: "0.0.0.0".into(),
+                port: 8080,
+                passthrough: Default::default(),
+            }),
             inference: inf,
             ollama_models_dir: Some("/data/ollama".into()),
             huggingface_models_dir: Some("/data/hf".into()),
@@ -570,7 +606,11 @@ mod every_config_field_reaches_the_editor {
         match doc {
             toml::Value::Table(t) => {
                 for (k, v) in t {
-                    let path = if prefix.is_empty() { k.clone() } else { format!("{prefix}.{k}") };
+                    let path = if prefix.is_empty() {
+                        k.clone()
+                    } else {
+                        format!("{prefix}.{k}")
+                    };
                     leaves(v, &path, out);
                 }
             }

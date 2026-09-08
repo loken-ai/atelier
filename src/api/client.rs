@@ -3,7 +3,7 @@
 use reqwest::{Client as HttpClient, Response};
 use serde::de::DeserializeOwned;
 use std::time::Duration;
-use tracing::{info, warn, error};
+use tracing::{error, info, warn};
 
 use super::types::*;
 
@@ -177,8 +177,9 @@ impl Client {
             }
         }
         let http_client = builder.build().expect("Failed to initialize HTTP client");
-        let stream_client =
-            stream_builder.build().expect("Failed to initialize streaming HTTP client");
+        let stream_client = stream_builder
+            .build()
+            .expect("Failed to initialize streaming HTTP client");
 
         Self {
             base_url: normalise_base_url(base_url),
@@ -203,25 +204,32 @@ fn normalise_base_url(raw: &str) -> String {
 }
 
 impl Client {
-
     /// Snapshot of in-flight + queued requests (GET /api/inflight). Used
     /// by the Hardware tab to render real-time scheduler state.
     pub async fn inflight(&self) -> Result<InflightSnapshot, ClientError> {
         let url = format!("{}/api/inflight", self.base_url);
-        let response = self.http_client.get(&url)
+        let response = self
+            .http_client
+            .get(&url)
             .timeout(Duration::from_secs(2))
-            .send().await?;
+            .send()
+            .await?;
         self.handle_response(response).await
     }
 
     /// Per-device topology (GET /api/distributed/devices). Feeds the Hardware
     /// tab's "Devices" stat card and its device list - without this call the card
     /// has nothing to count and reads zero.
-    pub async fn distributed_devices(&self) -> Result<crate::api::types::DevicesResponse, ClientError> {
+    pub async fn distributed_devices(
+        &self,
+    ) -> Result<crate::api::types::DevicesResponse, ClientError> {
         let url = format!("{}/api/distributed/devices", self.base_url);
-        let response = self.http_client.get(&url)
+        let response = self
+            .http_client
+            .get(&url)
             .timeout(Duration::from_secs(3))
-            .send().await?;
+            .send()
+            .await?;
         self.handle_response(response).await
     }
 
@@ -229,11 +237,16 @@ impl Client {
     /// the server has run at least one forward pass on a tracked model
     /// (z-image-turbo, flux-schnell, or any model wired into LlmEngine's
     /// LayerTimer). Used by the Hardware tab's per-layer panel.
-    pub async fn layer_performance(&self) -> Result<crate::api::types::LayerPerfResponse, ClientError> {
+    pub async fn layer_performance(
+        &self,
+    ) -> Result<crate::api::types::LayerPerfResponse, ClientError> {
         let url = format!("{}/api/layer_perf", self.base_url);
-        let response = self.http_client.get(&url)
+        let response = self
+            .http_client
+            .get(&url)
             .timeout(Duration::from_secs(2))
-            .send().await?;
+            .send()
+            .await?;
         self.handle_response(response).await
     }
 
@@ -241,7 +254,8 @@ impl Client {
     pub async fn list_models(&self) -> Result<ListModelsResponse, ClientError> {
         let url = format!("{}/api/tags", self.base_url);
         info!("GET {}", url);
-        let response = self.http_client
+        let response = self
+            .http_client
             .get(&url)
             // A wedged server must not hang this request forever: without a
             // timeout the task never completes, so nothing ever clears the UI
@@ -250,16 +264,20 @@ impl Client {
             .send()
             .await
             .map_err(|e| {
-            error!("Failed to connect to {}: {}", url, e);
-            ClientError::from(e)
-        })?;
+                error!("Failed to connect to {}: {}", url, e);
+                ClientError::from(e)
+            })?;
         let ollama_response: OllamaListModelsResponse = self.handle_response(response).await?;
         info!("Listed {} models", ollama_response.models.len());
         Ok(ListModelsResponse::from_ollama(ollama_response))
     }
 
     /// Pull a model with explicit source (POST /api/pull)
-    pub async fn pull_model_with_source(&self, model_name: &str, source: &str) -> Result<OllamaPullResponse, ClientError> {
+    pub async fn pull_model_with_source(
+        &self,
+        model_name: &str,
+        source: &str,
+    ) -> Result<OllamaPullResponse, ClientError> {
         let url = format!("{}/api/pull", self.base_url);
         info!("POST {} (model={}, source={})", url, model_name, source);
         let mut request = OllamaPullRequest::new(model_name.to_string());
@@ -286,7 +304,10 @@ impl Client {
         mut on_progress: impl FnMut(u64, u64),
     ) -> Result<(), ClientError> {
         let url = format!("{}/api/pull", self.base_url);
-        info!("POST {} stream (model={}, source={})", url, model_name, source);
+        info!(
+            "POST {} stream (model={}, source={})",
+            url, model_name, source
+        );
         let mut request = OllamaPullRequest::new(model_name.to_string());
         request.source = source.to_string();
         request.stream = true;
@@ -387,7 +408,12 @@ impl Client {
         request: &OllamaChatRequest,
     ) -> Result<OllamaChatResponse, ClientError> {
         let url = format!("{}/api/chat", self.base_url);
-        info!("POST {} (model={}, messages={})", url, request.model, request.messages.len());
+        info!(
+            "POST {} (model={}, messages={})",
+            url,
+            request.model,
+            request.messages.len()
+        );
         let response = self
             .http_client
             .post(&url)
@@ -404,7 +430,12 @@ impl Client {
         request: &OllamaChatRequest,
     ) -> Result<reqwest::Response, ClientError> {
         let url = format!("{}/api/chat", self.base_url);
-        info!("POST {} stream (model={}, messages={})", url, request.model, request.messages.len());
+        info!(
+            "POST {} stream (model={}, messages={})",
+            url,
+            request.model,
+            request.messages.len()
+        );
         let response = self
             .http_client
             .post(&url)
@@ -426,14 +457,15 @@ impl Client {
     /// List loaded models (custom endpoint)
     pub async fn list_loaded_models(&self) -> Result<ListLoadedModelsResponse, ClientError> {
         let url = format!("{}/api/models/loaded", self.base_url);
-        let response = self.http_client.get(&url).timeout(Duration::from_secs(20)).send().await;
+        let response = self
+            .http_client
+            .get(&url)
+            .timeout(Duration::from_secs(20))
+            .send()
+            .await;
         match response {
-            Ok(resp) if resp.status().is_success() => {
-                self.handle_response(resp).await
-            }
-            _ => {
-                Ok(ListLoadedModelsResponse::new(Vec::new()))
-            }
+            Ok(resp) if resp.status().is_success() => self.handle_response(resp).await,
+            _ => Ok(ListLoadedModelsResponse::new(Vec::new())),
         }
     }
 
@@ -441,10 +473,7 @@ impl Client {
     pub async fn load_model(&self, model_name: &str) -> Result<LoadModelResponse, ClientError> {
         let url = format!("{}/api/generate", self.base_url);
         info!("Loading model '{}' via {}", model_name, url);
-        let mut request = OllamaGenerateRequest::new(
-            model_name.to_string(),
-            String::new(),
-        );
+        let mut request = OllamaGenerateRequest::new(model_name.to_string(), String::new());
         request.keep_alive = Some("5m".to_string());
         let response = self
             .http_client
@@ -465,17 +494,9 @@ impl Client {
     pub async fn unload_model(&self, model_name: &str) -> Result<(), ClientError> {
         let url = format!("{}/api/generate", self.base_url);
         info!("Unloading model '{}' via {}", model_name, url);
-        let mut request = OllamaGenerateRequest::new(
-            model_name.to_string(),
-            String::new(),
-        );
+        let mut request = OllamaGenerateRequest::new(model_name.to_string(), String::new());
         request.keep_alive = Some("0".to_string());
-        let response = self
-            .http_client
-            .post(&url)
-            .json(&request)
-            .send()
-            .await;
+        let response = self.http_client.post(&url).json(&request).send().await;
         match response {
             Ok(resp) if resp.status().is_success() => Ok(()),
             Ok(resp) => {
@@ -553,10 +574,7 @@ impl Client {
                 a.iter()
                     .filter_map(|e| {
                         let id = e.get("id").and_then(|i| i.as_str())?.to_string();
-                        let fam = e
-                            .get("family")
-                            .and_then(|f| f.as_str())
-                            .map(str::to_string);
+                        let fam = e.get("family").and_then(|f| f.as_str()).map(str::to_string);
                         Some((id, fam))
                     })
                     .collect()
@@ -595,9 +613,21 @@ impl Client {
             .await?;
         let v: serde_json::Value = self.handle_response(response).await?;
         Ok(ConversationOutput {
-            route: v.get("route").and_then(|x| x.as_str()).unwrap_or("chat").to_string(),
-            routed_by: v.get("routed_by").and_then(|x| x.as_str()).unwrap_or("rules").to_string(),
-            model: v.get("model").and_then(|x| x.as_str()).unwrap_or("").to_string(),
+            route: v
+                .get("route")
+                .and_then(|x| x.as_str())
+                .unwrap_or("chat")
+                .to_string(),
+            routed_by: v
+                .get("routed_by")
+                .and_then(|x| x.as_str())
+                .unwrap_or("rules")
+                .to_string(),
+            model: v
+                .get("model")
+                .and_then(|x| x.as_str())
+                .unwrap_or("")
+                .to_string(),
             content: v
                 .pointer("/message/content")
                 .and_then(|x| x.as_str())
@@ -631,8 +661,7 @@ impl Client {
         let mut form = reqwest::multipart::Form::new()
             .part(
                 "image",
-                reqwest::multipart::Part::bytes(image_bytes)
-                    .file_name(image_name.to_string()),
+                reqwest::multipart::Part::bytes(image_bytes).file_name(image_name.to_string()),
             )
             .text("prompt", prompt.to_string())
             .text("model", model.to_string())
@@ -675,7 +704,6 @@ impl Client {
         ))
     }
 
-
     /// Transcribe (or translate to English) an audio file
     /// (POST /v1/audio/{transcriptions,translations}, multipart). Returns the text.
     pub async fn audio_transcribe(
@@ -686,7 +714,11 @@ impl Client {
         translate: bool,
         language: &str,
     ) -> Result<String, ClientError> {
-        let ep = if translate { "translations" } else { "transcriptions" };
+        let ep = if translate {
+            "translations"
+        } else {
+            "transcriptions"
+        };
         let url = format!("{}/v1/audio/{}", self.base_url, ep);
         let mut form = reqwest::multipart::Form::new().part(
             "file",
@@ -786,9 +818,13 @@ impl Client {
     /// NB: the model must be LOADED first (embeddings don't auto-load like chat).
     pub async fn embeddings(&self, model: &str, input: &str) -> Result<Vec<f32>, ClientError> {
         #[derive(serde::Deserialize)]
-        struct Resp { data: Vec<Item> }
+        struct Resp {
+            data: Vec<Item>,
+        }
         #[derive(serde::Deserialize)]
-        struct Item { embedding: Vec<f32> }
+        struct Item {
+            embedding: Vec<f32>,
+        }
         let url = format!("{}/v1/embeddings", self.base_url);
         info!("POST {} (embeddings)", url);
         let response = self
@@ -799,7 +835,11 @@ impl Client {
             .send()
             .await?;
         let parsed: Resp = self.handle_response(response).await?;
-        parsed.data.into_iter().next().map(|d| d.embedding)
+        parsed
+            .data
+            .into_iter()
+            .next()
+            .map(|d| d.embedding)
             .ok_or_else(|| ClientError::Parse("empty embeddings response".into()))
     }
 
@@ -812,9 +852,14 @@ impl Client {
         documents: Vec<String>,
     ) -> Result<Vec<(usize, f32)>, ClientError> {
         #[derive(serde::Deserialize)]
-        struct Resp { results: Vec<Item> }
+        struct Resp {
+            results: Vec<Item>,
+        }
         #[derive(serde::Deserialize)]
-        struct Item { index: usize, relevance_score: f32 }
+        struct Item {
+            index: usize,
+            relevance_score: f32,
+        }
         let url = format!("{}/v1/rerank", self.base_url);
         info!("POST {} (rerank, {} docs)", url, documents.len());
         let response = self
@@ -825,7 +870,11 @@ impl Client {
             .send()
             .await?;
         let parsed: Resp = self.handle_response(response).await?;
-        Ok(parsed.results.into_iter().map(|r| (r.index, r.relevance_score)).collect())
+        Ok(parsed
+            .results
+            .into_iter()
+            .map(|r| (r.index, r.relevance_score))
+            .collect())
     }
 
     /// POST a JSON body to a `/v1/*` generation endpoint and return the
@@ -921,7 +970,6 @@ impl Client {
         Ok(response)
     }
 
-
     /// Synthesise speech (POST /v1/audio/speech) from a body built by
     /// [`speech_request_body`], and return the clip base64-encoded - the route answers
     /// with a raw WAV *binary* body, and base64 is the `result_audios` convention the
@@ -943,8 +991,6 @@ impl Client {
         use base64::Engine;
         Ok(base64::engine::general_purpose::STANDARD.encode(&bytes))
     }
-
-
 
     /// List available TTS voices (GET /v1/audio/voices).
     pub async fn list_voices(&self) -> Result<Vec<String>, ClientError> {
@@ -1070,7 +1116,13 @@ mod tests {
         );
         let mut streamed = plain.clone();
         streamed["stream_format"] = serde_json::json!("sse");
-        for key in ["model", "input", "response_format", "voice", "voice_description"] {
+        for key in [
+            "model",
+            "input",
+            "response_format",
+            "voice",
+            "voice_description",
+        ] {
             assert_eq!(plain.get(key), streamed.get(key), "{key} must not drift");
         }
         assert_eq!(streamed["stream_format"], "sse");

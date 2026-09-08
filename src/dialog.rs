@@ -39,8 +39,7 @@ pub(crate) fn spawn_dialog_worker<F>(
     flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
     ctx: egui::Context,
     body: F,
-)
-where
+) where
     F: FnOnce(egui::Context) + Send + 'static,
 {
     flag.store(true, std::sync::atomic::Ordering::Relaxed);
@@ -202,9 +201,11 @@ mod tests {
 
         // Immediately after spawn returns: flag is true (set
         // synchronously). The worker may or may not have run yet.
-        assert!(flag.load(Ordering::Relaxed),
+        assert!(
+            flag.load(Ordering::Relaxed),
             "flag must be true immediately after spawn — protects against \
-             rapid re-clicks spawning duplicate workers");
+             rapid re-clicks spawning duplicate workers"
+        );
 
         // Wait up to 2 s for the worker to finish + the ClearOnDrop
         // guard to flip the flag back to false. Polling instead of
@@ -221,9 +222,10 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
 
-        assert!(!flag.load(Ordering::Relaxed),
-            "flag must be false after worker exits — re-clicks can spawn again");
-        assert!(done.load(Ordering::Relaxed),
-            "body closure must have run");
+        assert!(
+            !flag.load(Ordering::Relaxed),
+            "flag must be false after worker exits — re-clicks can spawn again"
+        );
+        assert!(done.load(Ordering::Relaxed), "body closure must have run");
     }
 }

@@ -34,10 +34,10 @@ mod state;
 mod task;
 mod texture;
 mod theme;
-mod video_engine;
-mod toast;
 mod timefmt;
+mod toast;
 pub mod ui;
+mod video_engine;
 
 use clap::Parser;
 use eframe::egui;
@@ -72,7 +72,9 @@ backtrace:
 {}
 ",
             std::time::SystemTime::now(),
-            info.location().map(|l| l.to_string()).unwrap_or_else(|| "unknown".into()),
+            info.location()
+                .map(|l| l.to_string())
+                .unwrap_or_else(|| "unknown".into()),
             std::backtrace::Backtrace::force_capture()
         );
         let mut written = None;
@@ -82,7 +84,11 @@ backtrace:
             }
             // Append: a crash that repeats is a pattern, and overwriting hides it.
             use std::io::Write;
-            if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(p) {
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(p)
+            {
                 if f.write_all(report.as_bytes()).is_ok() {
                     written = Some(p.clone());
                 }

@@ -17,15 +17,13 @@ pub const DEFAULT_LOKEN_URL: &str = "http://localhost:11435";
 pub const DEFAULT_OLLAMA_URL: &str = "http://localhost:11434";
 
 /// API type selection
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum ApiType {
     #[default]
     Loken,
     Ollama,
     OpenApi,
 }
-
 
 impl std::fmt::Display for ApiType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -56,8 +54,12 @@ pub struct OllamaParams {
     pub stop: String,
 }
 
-fn default_num_predict() -> i32 { -1 }
-fn default_seed() -> i64 { -1 }
+fn default_num_predict() -> i32 {
+    -1
+}
+fn default_seed() -> i64 {
+    -1
+}
 
 impl Default for OllamaParams {
     fn default() -> Self {
@@ -163,7 +165,7 @@ pub struct AppConfig {
     pub api_key: Option<String>,
     pub dark_theme: bool,
     pub selected_model: Option<String>,
-    pub selected_model_source: Option<String>,  // "ollama" or "huggingface"
+    pub selected_model_source: Option<String>, // "ollama" or "huggingface"
     pub window_width: Option<f32>,
     pub window_height: Option<f32>,
     pub window_maximized: Option<bool>,
@@ -259,7 +261,7 @@ impl AppConfig {
 
         let mut config = match config_path.as_ref() {
             Some(path) => Self::load_from_path(path),
-            None => AppConfig::default(),         // no platform config dir
+            None => AppConfig::default(), // no platform config dir
         };
 
         // Migration: bump persisted profiles still on the legacy
@@ -294,7 +296,7 @@ impl AppConfig {
     /// pollute it.
     pub(crate) fn load_from_path(path: &std::path::Path) -> Self {
         let Ok(s) = std::fs::read_to_string(path) else {
-            return AppConfig::default();   // file absent — normal first run
+            return AppConfig::default(); // file absent — normal first run
         };
         match serde_json::from_str::<AppConfig>(&s) {
             Ok(cfg) => cfg,
@@ -304,9 +306,7 @@ impl AppConfig {
                         .duration_since(std::time::UNIX_EPOCH)
                         .map(|d| d.as_secs())
                         .unwrap_or(0);
-                    let backup = path.with_extension(
-                        format!("json.broken.{ts}"),
-                    );
+                    let backup = path.with_extension(format!("json.broken.{ts}"));
                     if let Err(e) = std::fs::write(&backup, &s) {
                         tracing::warn!(
                             "config.json parse failed ({parse_err}); ALSO failed to back \
@@ -346,10 +346,9 @@ impl AppConfig {
     #[must_use = "Config save can fail (full disk, read-only mount, permission denied); \
                   handle the Result or call save() for a logged fire-and-forget"]
     pub fn try_save(&self) -> Result<std::path::PathBuf, String> {
-        let dir = directories::ProjectDirs::from("com", "loken", "atelier")
-            .ok_or_else(|| {
-                "no platform config directory available (ProjectDirs returned None)".to_string()
-            })?;
+        let dir = directories::ProjectDirs::from("com", "loken", "atelier").ok_or_else(|| {
+            "no platform config directory available (ProjectDirs returned None)".to_string()
+        })?;
         self.save_to_dir(dir.config_dir())
     }
 
@@ -361,16 +360,12 @@ impl AppConfig {
         &self,
         config_dir: &std::path::Path,
     ) -> Result<std::path::PathBuf, String> {
-        std::fs::create_dir_all(config_dir).map_err(|e| {
-            format!("create config dir {}: {}", config_dir.display(), e)
-        })?;
+        std::fs::create_dir_all(config_dir)
+            .map_err(|e| format!("create config dir {}: {}", config_dir.display(), e))?;
         let target = config_dir.join("config.json");
-        let json = serde_json::to_string_pretty(self).map_err(|e| {
-            format!("serialise config: {e}")
-        })?;
-        std::fs::write(&target, &json).map_err(|e| {
-            format!("write {}: {}", target.display(), e)
-        })?;
+        let json =
+            serde_json::to_string_pretty(self).map_err(|e| format!("serialise config: {e}"))?;
+        std::fs::write(&target, &json).map_err(|e| format!("write {}: {}", target.display(), e))?;
         Ok(target)
     }
 
@@ -463,23 +458,36 @@ mod tests {
         assert_eq!(cfg.profiles.len(), 2, "default seeds exactly 2 profiles");
 
         let names: Vec<&str> = cfg.profiles.iter().map(|p| p.name.as_str()).collect();
-        assert!(names.contains(&"Default"), "Default profile missing — names: {names:?}");
-        assert!(names.contains(&"Ollama"), "Ollama profile missing — names: {names:?}");
+        assert!(
+            names.contains(&"Default"),
+            "Default profile missing — names: {names:?}"
+        );
+        assert!(
+            names.contains(&"Ollama"),
+            "Ollama profile missing — names: {names:?}"
+        );
 
         // Profiles must have distinct names (the Settings dropdown
         // keys by name; a duplicate would mask one of them).
         let mut sorted = names.clone();
         sorted.sort_unstable();
         sorted.dedup();
-        assert_eq!(sorted.len(), names.len(),
-            "default profile names must be unique");
+        assert_eq!(
+            sorted.len(),
+            names.len(),
+            "default profile names must be unique"
+        );
 
         // selected_profile must point at one of them so the GUI
         // doesn't start without an active profile.
-        let selected = cfg.selected_profile.as_deref()
+        let selected = cfg
+            .selected_profile
+            .as_deref()
             .expect("default config must have selected_profile set");
-        assert!(names.contains(&selected),
-            "selected_profile '{selected}' not in names {names:?}");
+        assert!(
+            names.contains(&selected),
+            "selected_profile '{selected}' not in names {names:?}"
+        );
     }
 
     #[test]
@@ -491,12 +499,16 @@ mod tests {
         let cfg = AppConfig::default();
         let by_name = |n: &str| cfg.profiles.iter().find(|p| p.name == n).unwrap();
 
-        assert!(by_name("Default").server_url.ends_with(":11435"),
+        assert!(
+            by_name("Default").server_url.ends_with(":11435"),
             "Default profile must target loken port 11435 — got '{}'",
-            by_name("Default").server_url);
-        assert!(by_name("Ollama").server_url.ends_with(":11434"),
+            by_name("Default").server_url
+        );
+        assert!(
+            by_name("Ollama").server_url.ends_with(":11434"),
             "Ollama profile must target Ollama port 11434 — got '{}'",
-            by_name("Ollama").server_url);
+            by_name("Ollama").server_url
+        );
     }
 
     #[test]
@@ -507,8 +519,8 @@ mod tests {
         // silently change the dropdown label and confuse users
         // mid-session.
         assert_eq!(ApiType::Loken.to_string(), "LOKEN");
-        assert_eq!(ApiType::Ollama.to_string(),    "Ollama");
-        assert_eq!(ApiType::OpenApi.to_string(),   "OpenAPI");
+        assert_eq!(ApiType::Ollama.to_string(), "Ollama");
+        assert_eq!(ApiType::OpenApi.to_string(), "OpenAPI");
     }
 
     #[test]
@@ -528,8 +540,7 @@ mod tests {
         // saved with one variant still loads as that variant.
         for t in [ApiType::Loken, ApiType::Ollama, ApiType::OpenApi] {
             let json = serde_json::to_string(&t).expect("serialize");
-            let back: ApiType = serde_json::from_str(&json)
-                .expect("deserialize");
+            let back: ApiType = serde_json::from_str(&json).expect("deserialize");
             assert_eq!(t, back, "{t} did not roundtrip through JSON");
         }
     }
@@ -541,20 +552,43 @@ mod tests {
         // or sets top_p to 0.0 (no sampling) doesn't silently
         // produce degenerate output for first-run users.
         let o = OllamaParams::default();
-        assert!((0.0..=2.0).contains(&o.temperature), "ollama temp = {}", o.temperature);
-        assert!(o.top_p > 0.0 && o.top_p <= 1.0,       "ollama top_p = {}", o.top_p);
-        assert!(o.top_k > 0,                            "ollama top_k must be > 0");
-        assert!(o.repeat_penalty > 0.0,                 "ollama repeat_penalty must be > 0");
-        assert!(o.num_ctx >= 512,                       "ollama num_ctx must be sane");
+        assert!(
+            (0.0..=2.0).contains(&o.temperature),
+            "ollama temp = {}",
+            o.temperature
+        );
+        assert!(
+            o.top_p > 0.0 && o.top_p <= 1.0,
+            "ollama top_p = {}",
+            o.top_p
+        );
+        assert!(o.top_k > 0, "ollama top_k must be > 0");
+        assert!(o.repeat_penalty > 0.0, "ollama repeat_penalty must be > 0");
+        assert!(o.num_ctx >= 512, "ollama num_ctx must be sane");
 
         let l = LokenParams::default();
-        assert!((0.0..=2.0).contains(&l.temperature),  "LOKEN temp = {}", l.temperature);
-        assert!(l.context_length >= 512,               "LOKEN context too small");
+        assert!(
+            (0.0..=2.0).contains(&l.temperature),
+            "LOKEN temp = {}",
+            l.temperature
+        );
+        assert!(l.context_length >= 512, "LOKEN context too small");
 
         let p = OpenApiParams::default();
-        assert!((0.0..=2.0).contains(&p.temperature),  "openapi temp = {}", p.temperature);
-        assert!(p.top_p > 0.0 && p.top_p <= 1.0,       "openapi top_p = {}", p.top_p);
-        assert!(p.max_tokens.unwrap_or(0) > 0,          "openapi max_tokens must default to >0");
+        assert!(
+            (0.0..=2.0).contains(&p.temperature),
+            "openapi temp = {}",
+            p.temperature
+        );
+        assert!(
+            p.top_p > 0.0 && p.top_p <= 1.0,
+            "openapi top_p = {}",
+            p.top_p
+        );
+        assert!(
+            p.max_tokens.unwrap_or(0) > 0,
+            "openapi max_tokens must default to >0"
+        );
         // Frequency / presence penalty in OpenAI's [-2, 2] band.
         assert!((-2.0..=2.0).contains(&p.frequency_penalty));
         assert!((-2.0..=2.0).contains(&p.presence_penalty));
@@ -580,10 +614,14 @@ mod tests {
         // Defaults of each nested param block. We don't check
         // every field — just confirm each block is present + the
         // post-migration temperature (0.15) is in place.
-        assert!((p.ollama_params.temperature - 0.15).abs() < 1e-6,
-            "ollama temperature default must be 0.15 (post-migration)");
-        assert!((p.loken_params.temperature - 0.15).abs() < 1e-6,
-            "LOKEN temperature default must be 0.15 (post-migration)");
+        assert!(
+            (p.ollama_params.temperature - 0.15).abs() < 1e-6,
+            "ollama temperature default must be 0.15 (post-migration)"
+        );
+        assert!(
+            (p.loken_params.temperature - 0.15).abs() < 1e-6,
+            "LOKEN temperature default must be 0.15 (post-migration)"
+        );
     }
 
     #[test]
@@ -613,9 +651,12 @@ mod tests {
 
         let json = serde_json::to_string(&original).expect("serialize");
         let back: AppConfig = serde_json::from_str(&json).expect("deserialize");
-        assert_eq!(back.layer_mode, crate::state::LayerMode::Adaptive,
+        assert_eq!(
+            back.layer_mode,
+            crate::state::LayerMode::Adaptive,
             "Adaptive must survive the round trip — otherwise the chat-tab \
-             toggle resets to AllLayers on every launch");
+             toggle resets to AllLayers on every launch"
+        );
     }
 
     #[test]
@@ -639,16 +680,19 @@ mod tests {
         }"#;
         let parsed: AppConfig = serde_json::from_str(legacy_json)
             .expect("legacy config (missing layer_mode) must still deserialize");
-        assert_eq!(parsed.layer_mode, crate::state::LayerMode::default(),
-            "missing field hydrates to default, not Err");
+        assert_eq!(
+            parsed.layer_mode,
+            crate::state::LayerMode::default(),
+            "missing field hydrates to default, not Err"
+        );
     }
 
     /// Make a fresh empty temp dir for save tests. Manual instead of
     /// pulling in the `tempfile` crate just for two tests — uuid is
     /// already a workspace dep for the rest of the GUI.
     fn fresh_tempdir(label: &str) -> std::path::PathBuf {
-        let path = std::env::temp_dir()
-            .join(format!("atelier-config-{label}-{}", uuid::Uuid::new_v4()));
+        let path =
+            std::env::temp_dir().join(format!("atelier-config-{label}-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&path).expect("seed tempdir");
         path
     }
@@ -691,7 +735,8 @@ mod tests {
         std::fs::write(&blocker, b"i'm a file, not a dir").expect("seed blocker file");
 
         let cfg = AppConfig::default();
-        let err = cfg.save_to_dir(&blocker)
+        let err = cfg
+            .save_to_dir(&blocker)
             .expect_err("save_to_dir into a file path must fail, not silently succeed");
 
         assert!(
@@ -770,12 +815,15 @@ mod tests {
             })
             .collect();
         assert_eq!(
-            backups.len(), 1,
+            backups.len(),
+            1,
             "exactly one .broken.<ts> backup should be created for a corrupt config"
         );
         let backed_up = std::fs::read(backups[0].path()).expect("read backup");
-        assert_eq!(backed_up, bogus,
-            "backup must preserve the original bytes verbatim for manual recovery");
+        assert_eq!(
+            backed_up, bogus,
+            "backup must preserve the original bytes verbatim for manual recovery"
+        );
 
         std::fs::remove_dir_all(&dir).ok();
     }
@@ -808,8 +856,10 @@ mod tests {
         ));
 
         let next = AppConfig::next_profile_name(&cfg.profiles);
-        assert_eq!(next, "Profile 3",
-            "must skip the existing Profile 2 instead of duplicating");
+        assert_eq!(
+            next, "Profile 3",
+            "must skip the existing Profile 2 instead of duplicating"
+        );
     }
 
     #[test]
@@ -845,15 +895,22 @@ mod tests {
         let backups: Vec<_> = std::fs::read_dir(&dir)
             .expect("read tempdir")
             .filter_map(|e| e.ok())
-            .filter(|e| e.file_name().to_string_lossy().starts_with("config.json.before_reset."))
+            .filter(|e| {
+                e.file_name()
+                    .to_string_lossy()
+                    .starts_with("config.json.before_reset.")
+            })
             .collect();
         assert_eq!(
-            backups.len(), 1,
+            backups.len(),
+            1,
             "exactly one .before_reset.<ts> backup should be created"
         );
         let backed_up = std::fs::read(backups[0].path()).expect("read backup");
-        assert_eq!(backed_up, original_bytes,
-            "backup must preserve the original bytes verbatim for restore");
+        assert_eq!(
+            backed_up, original_bytes,
+            "backup must preserve the original bytes verbatim for restore"
+        );
         // Source untouched — reset itself hasn't run yet.
         assert_eq!(std::fs::read(&src).expect("source"), original_bytes);
 
@@ -872,10 +929,16 @@ mod tests {
         let backups: Vec<_> = std::fs::read_dir(&dir)
             .expect("read tempdir")
             .filter_map(|e| e.ok())
-            .filter(|e| e.file_name().to_string_lossy().starts_with("config.json.before_reset."))
+            .filter(|e| {
+                e.file_name()
+                    .to_string_lossy()
+                    .starts_with("config.json.before_reset.")
+            })
             .collect();
-        assert!(backups.is_empty(),
-            "missing config.json must not generate an empty .before_reset backup");
+        assert!(
+            backups.is_empty(),
+            "missing config.json must not generate an empty .before_reset backup"
+        );
 
         std::fs::remove_dir_all(&dir).ok();
     }
@@ -923,7 +986,10 @@ mod tests {
             .filter_map(|e| e.ok())
             .filter(|e| e.file_name().to_string_lossy().contains("broken"))
             .collect();
-        assert!(backups.is_empty(), "the old config was rejected, not loaded");
+        assert!(
+            backups.is_empty(),
+            "the old config was rejected, not loaded"
+        );
     }
 
     #[test]
@@ -943,7 +1009,11 @@ mod tests {
         let backups: Vec<_> = std::fs::read_dir(&dir)
             .expect("read tempdir")
             .filter_map(|e| e.ok())
-            .filter(|e| e.file_name().to_string_lossy().starts_with("config.json.broken."))
+            .filter(|e| {
+                e.file_name()
+                    .to_string_lossy()
+                    .starts_with("config.json.broken.")
+            })
             .collect();
         assert!(
             backups.is_empty(),

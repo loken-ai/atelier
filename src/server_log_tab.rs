@@ -85,7 +85,9 @@ fn render_log_header(
             LogLevelFilter::Warn,
             LogLevelFilter::Error,
         ] {
-            if widgets::selector_pill(ui, filter.display_name(), server.log_filter == filter).clicked() {
+            if widgets::selector_pill(ui, filter.display_name(), server.log_filter == filter)
+                .clicked()
+            {
                 server.log_filter = filter;
             }
         }
@@ -103,11 +105,25 @@ fn render_log_header(
                 log_buffer.clear();
             }
             // The visible lines, as "HH:MM:SS.mmm LEVEL target: message".
-            if widgets::icon_button(ui, Icon::Copy, "Copy the visible (filtered) lines to the clipboard").clicked() {
+            if widgets::icon_button(
+                ui,
+                Icon::Copy,
+                "Copy the visible (filtered) lines to the clipboard",
+            )
+            .clicked()
+            {
                 let text = server
                     .filtered_logs(log_buffer)
                     .iter()
-                    .map(|e| format!("{} {} {}: {}", e.timestamp, e.level.as_str(), e.target, e.message))
+                    .map(|e| {
+                        format!(
+                            "{} {} {}: {}",
+                            e.timestamp,
+                            e.level.as_str(),
+                            e.target,
+                            e.message
+                        )
+                    })
                     .collect::<Vec<_>>()
                     .join("\n");
                 ui.ctx().copy_text(text);
@@ -124,8 +140,9 @@ fn render_log_output(
     embedded_port: Option<u16>,
     log_buffer: &LogBuffer,
 ) {
-    let log_height = (ui.available_height() - SCREEN_BOTTOM_MARGIN - 2.0 * widgets::SECTION_PADDING)
-        .max(SCREEN_MIN_H);
+    let log_height =
+        (ui.available_height() - SCREEN_BOTTOM_MARGIN - 2.0 * widgets::SECTION_PADDING)
+            .max(SCREEN_MIN_H);
     widgets::screen_well(ui, |ui| {
         egui::ScrollArea::vertical()
             .stick_to_bottom(true)

@@ -64,17 +64,19 @@ mod tests {
         // We allow a small window for the two calls to land in
         // different minutes.
         let chat = chat_now();
-        let cli  = cli_now();
+        let cli = cli_now();
         let chat_min = &chat[3..5];
-        let cli_min  = &cli[3..5];
+        let cli_min = &cli[3..5];
         let chat_hr = &chat[..2];
-        let cli_hr  = &cli[..2];
+        let cli_hr = &cli[..2];
         // Same hour (in the same minute we expect same min too,
         // but allow ±1 to cover a tick boundary).
         let m_diff = (chat_min.parse::<i32>().unwrap() - cli_min.parse::<i32>().unwrap()).abs();
-        let h_diff = (chat_hr.parse::<i32>().unwrap()  - cli_hr.parse::<i32>().unwrap()).abs();
+        let h_diff = (chat_hr.parse::<i32>().unwrap() - cli_hr.parse::<i32>().unwrap()).abs();
         assert!(h_diff <= 1, "hour drift chat={chat} cli={cli}");
-        assert!(m_diff <= 1 || m_diff == 59,
-            "minute drift > 1 chat={chat} cli={cli}");
+        assert!(
+            m_diff <= 1 || m_diff == 59,
+            "minute drift > 1 chat={chat} cli={cli}"
+        );
     }
 }

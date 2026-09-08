@@ -11,9 +11,9 @@
 //! `LLMGuiApp::toast(sev, msg)`; render + expire in `update()` after
 //! the CentralPanel via `toast::render`.
 
-use eframe::egui::{self, Color32};
 use crate::theme::{self, text, HAIRLINE};
 use crate::ui::widgets;
+use eframe::egui::{self, Color32};
 
 /// Width of a toast, and its distance from the window's corner.
 const TOAST_W: f32 = 360.0;
@@ -87,7 +87,10 @@ pub fn render(ctx: &egui::Context, toasts: &mut Vec<Toast>) {
     let mut dismiss: Option<usize> = None;
 
     egui::Area::new(egui::Id::new("toast_stack"))
-        .anchor(egui::Align2::RIGHT_BOTTOM, egui::vec2(-TOAST_MARGIN, -TOAST_MARGIN))
+        .anchor(
+            egui::Align2::RIGHT_BOTTOM,
+            egui::vec2(-TOAST_MARGIN, -TOAST_MARGIN),
+        )
         .interactable(true)
         .show(ctx, |ui| {
             ui.with_layout(egui::Layout::bottom_up(egui::Align::RIGHT), |ui| {
@@ -100,12 +103,20 @@ pub fn render(ctx: &egui::Context, toasts: &mut Vec<Toast>) {
                         .stroke(egui::Stroke::new(HAIRLINE, theme::border()))
                         .corner_radius(theme::RADIUS)
                         .inner_margin(egui::Margin::symmetric(12, 8))
-                        .outer_margin(egui::Margin { top: TOAST_GAP, ..egui::Margin::same(0) })
+                        .outer_margin(egui::Margin {
+                            top: TOAST_GAP,
+                            ..egui::Margin::same(0)
+                        })
                         .show(ui, |ui| {
                             ui.set_max_width(TOAST_W);
                             ui.horizontal(|ui| {
                                 ui.label(text::label(toast.severity.label()));
-                                ui.add(egui::Label::new(text::note(&toast.message).color(theme::ink())).wrap());
+                                ui.add(
+                                    egui::Label::new(
+                                        text::note(&toast.message).color(theme::ink()),
+                                    )
+                                    .wrap(),
+                                );
                             });
                         });
                     // The stripe runs along the frame itself, below its outer margin.

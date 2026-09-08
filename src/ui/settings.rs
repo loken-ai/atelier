@@ -3,14 +3,14 @@
 //!
 //! Reads/writes: AppConfig, SettingsState, ConfigEditorState
 
-use eframe::egui::{self, TextEdit};
 #[allow(unused_imports)]
-use crate::config::{AppConfig, ApiProfile, ApiType};
+use crate::config::{ApiProfile, ApiType, AppConfig};
 use crate::config_editor::ConfigEditorState;
 use crate::icons::Icon;
 use crate::settings::{SettingsAction, SettingsState};
 use crate::theme::{self, text};
 use crate::ui::widgets;
+use eframe::egui::{self, TextEdit};
 
 /// Point size of the icons in the chrome row and the picker.
 const ICON_PT: f32 = 14.0;
@@ -691,12 +691,15 @@ fn settings_panel(ui: &mut egui::Ui, caps: &str, add_body: impl FnOnce(&mut egui
 /// aligned, and the content beside it.
 fn form_row(ui: &mut egui::Ui, caps: &str, add_content: impl FnOnce(&mut egui::Ui)) {
     ui.horizontal(|ui| {
-        ui.allocate_ui(egui::vec2(widgets::FORM_LABEL_W, ui.spacing().interact_size.y), |ui| {
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.add_space(widgets::GAP_WIDGETS);
-                ui.label(text::label(caps));
-            });
-        });
+        ui.allocate_ui(
+            egui::vec2(widgets::FORM_LABEL_W, ui.spacing().interact_size.y),
+            |ui| {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.add_space(widgets::GAP_WIDGETS);
+                    ui.label(text::label(caps));
+                });
+            },
+        );
         add_content(ui);
     });
 }
@@ -723,10 +726,14 @@ fn config_row_pair(
 ) {
     ui.columns(2, |cols| {
         cols[0].label(text::label(caps_a));
-        TextEdit::singleline(val_a).desired_width(f32::INFINITY).show(&mut cols[0]);
+        TextEdit::singleline(val_a)
+            .desired_width(f32::INFINITY)
+            .show(&mut cols[0]);
 
         cols[1].label(text::label(caps_b));
-        TextEdit::singleline(val_b).desired_width(f32::INFINITY).show(&mut cols[1]);
+        TextEdit::singleline(val_b)
+            .desired_width(f32::INFINITY)
+            .show(&mut cols[1]);
     });
 }
 
@@ -761,7 +768,9 @@ fn inapp_picker_start(current: &str) -> std::path::PathBuf {
 /// or "Use this folder" to commit the displayed path to the editor
 /// field. Cancel / Escape closes without committing.
 fn render_inapp_folder_picker(ctx: &egui::Context, editor: &mut ConfigEditorState) {
-    let Some((target, current)) = editor.inapp_picker.clone() else { return };
+    let Some((target, current)) = editor.inapp_picker.clone() else {
+        return;
+    };
     let mut new_path: Option<std::path::PathBuf> = None;
     let mut commit = false;
     let mut close = false;
@@ -790,10 +799,14 @@ fn render_inapp_folder_picker(ctx: &egui::Context, editor: &mut ConfigEditorStat
                 let typed_valid = typed_path.is_dir();
                 let go_btn_resp = ui.add_enabled(typed_valid, egui::Button::new(text::note("Go")));
                 if !typed_valid && path_str.trim() != current.display().to_string() {
-                    go_btn_resp.clone().on_hover_text("Path doesn't exist or isn't a directory");
+                    go_btn_resp
+                        .clone()
+                        .on_hover_text("Path doesn't exist or isn't a directory");
                 }
                 let go = go_btn_resp.clicked()
-                    || (resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) && typed_valid);
+                    || (resp.lost_focus()
+                        && ui.input(|i| i.key_pressed(egui::Key::Enter))
+                        && typed_valid);
                 if go {
                     new_path = Some(typed_path);
                 }
@@ -804,14 +817,21 @@ fn render_inapp_folder_picker(ctx: &egui::Context, editor: &mut ConfigEditorStat
             ui.horizontal(|ui| {
                 if let Some(home) = std::env::var_os("HOME") {
                     let home_resp = ui.add(
-                        egui::Button::image_and_text(Icon::Home.image(ICON_PT, theme::ink_dim()), text::note("Home"))
-                            .frame(false),
+                        egui::Button::image_and_text(
+                            Icon::Home.image(ICON_PT, theme::ink_dim()),
+                            text::note("Home"),
+                        )
+                        .frame(false),
                     );
                     if home_resp.on_hover_text("Jump to $HOME").clicked() {
                         new_path = Some(std::path::PathBuf::from(home));
                     }
                 }
-                if ui.add(egui::Button::new(text::note("/ Root")).frame(false)).on_hover_text("Jump to /").clicked() {
+                if ui
+                    .add(egui::Button::new(text::note("/ Root")).frame(false))
+                    .on_hover_text("Jump to /")
+                    .clicked()
+                {
                     new_path = Some(std::path::PathBuf::from("/"));
                 }
             });
@@ -847,7 +867,10 @@ fn render_inapp_folder_picker(ctx: &egui::Context, editor: &mut ConfigEditorStat
                             .map(|e| e.path())
                             .collect(),
                         Err(e) => {
-                            ui.colored_label(theme::error(), format!("Can't read directory: {}", e));
+                            ui.colored_label(
+                                theme::error(),
+                                format!("Can't read directory: {}", e),
+                            );
                             Vec::new()
                         }
                     };
@@ -885,8 +908,9 @@ fn render_inapp_folder_picker(ctx: &egui::Context, editor: &mut ConfigEditorStat
                     close = true;
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let commit_btn = egui::Button::new(text::value("Use this folder").color(theme::on_accent()))
-                        .fill(theme::accent());
+                    let commit_btn =
+                        egui::Button::new(text::value("Use this folder").color(theme::on_accent()))
+                            .fill(theme::accent());
                     if ui.add(commit_btn).clicked() {
                         commit = true;
                     }
@@ -902,8 +926,8 @@ fn render_inapp_folder_picker(ctx: &egui::Context, editor: &mut ConfigEditorStat
     if commit {
         let p = current.to_string_lossy().to_string();
         match target {
-            crate::config_editor::BrowseTarget::OllamaDir       => editor.ollama_models_dir = p,
-            crate::config_editor::BrowseTarget::HuggingFaceDir  => editor.huggingface_models_dir = p,
+            crate::config_editor::BrowseTarget::OllamaDir => editor.ollama_models_dir = p,
+            crate::config_editor::BrowseTarget::HuggingFaceDir => editor.huggingface_models_dir = p,
         }
         editor.inapp_picker = None;
     } else if close {
@@ -912,4 +936,3 @@ fn render_inapp_folder_picker(ctx: &egui::Context, editor: &mut ConfigEditorStat
         editor.inapp_picker = Some((target, p));
     }
 }
-

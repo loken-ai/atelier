@@ -31,7 +31,12 @@ const COMMANDS: [&str; 5] = ["list", "load", "unload", "pull", "ps"];
 pub fn render(ui: &mut egui::Ui, cli: &mut CLIState, _models: &ModelState) {
     ui.with_layout(egui::Layout::top_down(egui::Align::LEFT), |ui| {
         widgets::chrome_row(ui, |ui| {
-            ui.label(egui::RichText::new(">_").size(MARK_PT).monospace().color(theme::ink_dim()));
+            ui.label(
+                egui::RichText::new(">_")
+                    .size(MARK_PT)
+                    .monospace()
+                    .color(theme::ink_dim()),
+            );
             ui.label(text::title("Terminal"));
             ui.add_space(widgets::GAP_WIDGETS);
             ui.label(text::label("COMMANDS"));
@@ -43,8 +48,9 @@ pub fn render(ui: &mut egui::Ui, cli: &mut CLIState, _models: &ModelState) {
 
         // The output follows its tail: new lines are appended, and the screen
         // fills the height, so there is no void above.
-        let output_height = (ui.available_height() - CLI_INPUT_RESERVE - 2.0 * widgets::SECTION_PADDING)
-            .max(CLI_OUTPUT_MIN_H);
+        let output_height =
+            (ui.available_height() - CLI_INPUT_RESERVE - 2.0 * widgets::SECTION_PADDING)
+                .max(CLI_OUTPUT_MIN_H);
         widgets::screen_well(ui, |ui| {
             egui::ScrollArea::vertical()
                 .stick_to_bottom(true)
@@ -70,7 +76,11 @@ pub fn render(ui: &mut egui::Ui, cli: &mut CLIState, _models: &ModelState) {
                         ];
                         for (cmd, desc) in cmds {
                             ui.horizontal(|ui| {
-                                widgets::fixed_label(ui, HELP_CMD_W, text::mono(cmd).color(theme::accent()));
+                                widgets::fixed_label(
+                                    ui,
+                                    HELP_CMD_W,
+                                    text::mono(cmd).color(theme::accent()),
+                                );
                                 ui.label(text::note(desc));
                             });
                         }
@@ -139,7 +149,11 @@ fn render_output(ui: &mut egui::Ui, output: &CLIOutput) {
             });
             ui.add_space(widgets::GAP_LABEL);
             // Selectable, so an entry can be copied.
-            let ink = if output.is_error { theme::error() } else { theme::ink() };
+            let ink = if output.is_error {
+                theme::error()
+            } else {
+                theme::ink()
+            };
             ui.add(egui::Label::new(text::mono(&output.output).color(ink)).selectable(true));
         });
     if let Some(tint) = tint {

@@ -6,7 +6,6 @@
 //! caps, TTS presets, image-size presets), and the small pure
 //! formatters/parsers the chat tab and app layer share.
 
-
 use crate::state::MessageTiming;
 
 // ── Model modality detection ──
@@ -154,8 +153,8 @@ impl ModelModality {
     /// Short display label for the header badge.
     pub(crate) fn label(&self) -> &'static str {
         match self {
-            Self::Text     => "Text",
-            Self::Vision   => "Vision",
+            Self::Text => "Text",
+            Self::Vision => "Vision",
             Self::ImageGen => "Image Gen",
             Self::VideoGen => "Video Gen",
             Self::AudioTts => "Audio (TTS)",
@@ -209,8 +208,8 @@ impl ModelModality {
     /// chat uses.
     pub(crate) fn typing_label(&self) -> &'static str {
         match self {
-            Self::Text     => "Thinking...",
-            Self::Vision   => "Analysing image...",
+            Self::Text => "Thinking...",
+            Self::Vision => "Analysing image...",
             Self::ImageGen => "Preparing image generation...",
             Self::VideoGen => "Preparing video generation...",
             Self::AudioTts => "Preparing audio synthesis...",
@@ -222,10 +221,14 @@ impl ModelModality {
     /// shape so users hovering see exactly what the model expects.
     pub(crate) fn tooltip(&self) -> &'static str {
         match self {
-            Self::Text     => "Text → text. Standard chat / completion model.",
-            Self::Vision   => "Image + text → text. Accepts image attachments alongside the prompt.",
-            Self::ImageGen => "Text → image. Prompt becomes an image (PNG returned in the response).",
-            Self::VideoGen => "Text → video. Server doesn't yet have a video-gen runtime; label only.",
+            Self::Text => "Text → text. Standard chat / completion model.",
+            Self::Vision => "Image + text → text. Accepts image attachments alongside the prompt.",
+            Self::ImageGen => {
+                "Text → image. Prompt becomes an image (PNG returned in the response)."
+            }
+            Self::VideoGen => {
+                "Text → video. Server doesn't yet have a video-gen runtime; label only."
+            }
             Self::AudioTts => "Text → audio. Synthesizes spoken audio from the prompt text.",
             Self::AudioAsr => "Audio → text. Transcribes attached audio into text.",
         }
@@ -397,8 +400,7 @@ pub(crate) const TTS_SPEED_DEFAULT: f32 = 1.0;
 /// into a Parler-TTS voice_description prompt via
 /// `openai_voice_to_description`.
 pub(crate) const TTS_VOICE_PRESETS: &[&str] = &[
-    "alloy", "echo", "fable", "onyx", "nova", "shimmer",
-    "ash", "ballad", "coral", "sage", "verse",
+    "alloy", "echo", "fable", "onyx", "nova", "shimmer", "ash", "ballad", "coral", "sage", "verse",
 ];
 
 /// Common image-gen output sizes surfaced in the Size dropdown.
@@ -408,13 +410,13 @@ pub(crate) const TTS_VOICE_PRESETS: &[&str] = &[
 /// square + 16:9 + 9:16 + portrait covers the common asks
 /// without overwhelming the dropdown.
 pub(crate) const IMAGE_SIZE_PRESETS: &[(&str, u32, u32)] = &[
-    ("512² (Flux default)",     512,  512),
-    ("768²",                    768,  768),
+    ("512² (Flux default)", 512, 512),
+    ("768²", 768, 768),
     ("1024² (Z-Image default)", 1024, 1024),
-    ("1280×720 (16:9 HD)",      1280, 720),
+    ("1280×720 (16:9 HD)", 1280, 720),
     ("720×1280 (9:16 portrait)", 720, 1280),
     ("1152×896 (4:3 landscape)", 1152, 896),
-    ("896×1152 (3:4 portrait)",  896, 1152),
+    ("896×1152 (3:4 portrait)", 896, 1152),
 ];
 
 /// Image extensions the chat input accepts. Kept in sync with the
@@ -448,7 +450,9 @@ pub(crate) fn path_is_image_ext(path: &str) -> bool {
         .extension()
         .and_then(|e| e.to_str())
         .unwrap_or("");
-    CHAT_IMAGE_EXTS.iter().any(|known| ext.eq_ignore_ascii_case(known))
+    CHAT_IMAGE_EXTS
+        .iter()
+        .any(|known| ext.eq_ignore_ascii_case(known))
 }
 
 /// Parse a streaming-buffer line of the form "Step C/N" emitted by
@@ -520,7 +524,12 @@ pub(crate) fn chat_input_visible_rows(input: &str) -> usize {
     // 1 (an empty line still counts as one visual row).
     let total_visual_rows: usize = input
         .split('\n')
-        .map(|l| l.chars().count().div_ceil(CHAT_INPUT_WRAP_CHARS_PER_ROW).max(1))
+        .map(|l| {
+            l.chars()
+                .count()
+                .div_ceil(CHAT_INPUT_WRAP_CHARS_PER_ROW)
+                .max(1)
+        })
         .sum();
     total_visual_rows.clamp(1, CHAT_INPUT_MAX_ROWS)
 }
@@ -583,7 +592,10 @@ pub(crate) fn split_thinking(content: &str) -> (Option<&str>, &str) {
         return (None, content);
     };
     match after_open.find(THINK_CLOSE) {
-        Some(end) => (Some(&after_open[..end]), after_open[end + THINK_CLOSE.len()..].trim_start()),
+        Some(end) => (
+            Some(&after_open[..end]),
+            after_open[end + THINK_CLOSE.len()..].trim_start(),
+        ),
         None => (Some(after_open), ""),
     }
 }
@@ -689,8 +701,11 @@ mod tests {
             let formatted = format_image_step_progress(c, n);
             let parsed = parse_image_step_progress(&formatted)
                 .unwrap_or_else(|| panic!("formatter output {formatted:?} failed to parse"));
-            assert_eq!(parsed, (c as usize, n as usize),
-                "round-trip drift: formatted={formatted:?} parsed={parsed:?} expected=({c}, {n})");
+            assert_eq!(
+                parsed,
+                (c as usize, n as usize),
+                "round-trip drift: formatted={formatted:?} parsed={parsed:?} expected=({c}, {n})"
+            );
         }
     }
 
@@ -709,13 +724,19 @@ mod tests {
             ModelModality::AudioTts,
         ] {
             // Empty text → not sendable, regardless of attachment.
-            assert!(!chat_send_allowed(m, /*input_empty=*/ true, false),
-                "{m:?} empty + no attachment must block Send");
-            assert!(!chat_send_allowed(m, /*input_empty=*/ true, true),
-                "{m:?} empty + with attachment still requires text");
+            assert!(
+                !chat_send_allowed(m, /*input_empty=*/ true, false),
+                "{m:?} empty + no attachment must block Send"
+            );
+            assert!(
+                !chat_send_allowed(m, /*input_empty=*/ true, true),
+                "{m:?} empty + with attachment still requires text"
+            );
             // Non-empty text → sendable.
-            assert!(chat_send_allowed(m, /*input_empty=*/ false, false),
-                "{m:?} non-empty text must be sendable");
+            assert!(
+                chat_send_allowed(m, /*input_empty=*/ false, false),
+                "{m:?} non-empty text must be sendable"
+            );
         }
     }
 
@@ -724,13 +745,25 @@ mod tests {
         // ASR: audio is the payload, text is optional context. Pin
         // that the gate flips on attachment presence, not text.
         assert!(!chat_send_allowed(
-            ModelModality::AudioAsr, /*input_empty=*/ true,  /*has_att=*/ false));
+            ModelModality::AudioAsr,
+            /*input_empty=*/ true,
+            /*has_att=*/ false
+        ));
         assert!(!chat_send_allowed(
-            ModelModality::AudioAsr, /*input_empty=*/ false, /*has_att=*/ false));
+            ModelModality::AudioAsr,
+            /*input_empty=*/ false,
+            /*has_att=*/ false
+        ));
         assert!(chat_send_allowed(
-            ModelModality::AudioAsr, /*input_empty=*/ true,  /*has_att=*/ true));
+            ModelModality::AudioAsr,
+            /*input_empty=*/ true,
+            /*has_att=*/ true
+        ));
         assert!(chat_send_allowed(
-            ModelModality::AudioAsr, /*input_empty=*/ false, /*has_att=*/ true));
+            ModelModality::AudioAsr,
+            /*input_empty=*/ false,
+            /*has_att=*/ true
+        ));
     }
 
     #[test]
@@ -739,8 +772,10 @@ mod tests {
         // user gets a tooltip instead of a 500.
         for input_empty in [true, false] {
             for has_att in [true, false] {
-                assert!(!chat_send_allowed(ModelModality::VideoGen, input_empty, has_att),
-                    "VideoGen must always block; input_empty={input_empty}, has_att={has_att}");
+                assert!(
+                    !chat_send_allowed(ModelModality::VideoGen, input_empty, has_att),
+                    "VideoGen must always block; input_empty={input_empty}, has_att={has_att}"
+                );
             }
         }
     }
@@ -754,8 +789,10 @@ mod tests {
     #[test]
     fn attachment_cap_message_is_mb_unit() {
         let msg = format_attachment_cap_mb();
-        assert!(msg.ends_with(" MB"),
-            "cap message must end with ' MB'; got {msg:?}");
+        assert!(
+            msg.ends_with(" MB"),
+            "cap message must end with ' MB'; got {msg:?}"
+        );
         // The unit's number must round-trip from the constant.
         let expected = format!("{} MB", CHAT_ATTACHMENT_MAX_BYTES / (1024 * 1024));
         assert_eq!(msg, expected);
@@ -768,8 +805,10 @@ mod tests {
         // GUI cap silently rejects server-acceptable input; looser
         // cap lets users type up to the GUI limit only to be
         // rejected by the server. Both are bad UX.
-        assert_eq!(TTS_INPUT_MAX_CHARS_CLIENT, 50_000,
-            "GUI cap must mirror server-side TTS_INPUT_MAX_CHARS = 4096");
+        assert_eq!(
+            TTS_INPUT_MAX_CHARS_CLIENT, 50_000,
+            "GUI cap must mirror server-side TTS_INPUT_MAX_CHARS = 4096"
+        );
     }
 
     #[test]
@@ -778,8 +817,11 @@ mod tests {
         // The GUI's CHAT_ATTACHMENT_MAX_BYTES MUST mirror that - a tighter GUI cap
         // silently rejects files the server would accept, which is how the GUI ends up
         // refusing an ordinary photograph; a looser one defeats the pre-flight check.
-        assert_eq!(CHAT_ATTACHMENT_MAX_BYTES, 512 * 1024 * 1024,
-            "GUI attachment cap must mirror server IMAGE/AUDIO_INPUT_MAX_BYTES = 512 MB");
+        assert_eq!(
+            CHAT_ATTACHMENT_MAX_BYTES,
+            512 * 1024 * 1024,
+            "GUI attachment cap must mirror server IMAGE/AUDIO_INPUT_MAX_BYTES = 512 MB"
+        );
     }
 
     // ── IMAGE_SIZE_PRESETS ─────────────────────────────────────────
@@ -794,17 +836,26 @@ mod tests {
     fn image_size_presets_satisfy_server_boundaries() {
         const MAX_DIM: u32 = 8192; // server IMAGE_MAX_DIM
         const VAE_ALIGN: u32 = 16;
-        assert!(!IMAGE_SIZE_PRESETS.is_empty(),
-            "at least one preset must be offered so the dropdown isn't empty");
+        assert!(
+            !IMAGE_SIZE_PRESETS.is_empty(),
+            "at least one preset must be offered so the dropdown isn't empty"
+        );
         for &(label, w, h) in IMAGE_SIZE_PRESETS {
-            assert!(w > 0 && h > 0,
-                "preset {label:?} has zero dim: {w}x{h}");
-            assert_eq!(w % VAE_ALIGN, 0,
-                "preset {label:?} width {w} must be a multiple of {VAE_ALIGN} (VAE stride)");
-            assert_eq!(h % VAE_ALIGN, 0,
-                "preset {label:?} height {h} must be a multiple of {VAE_ALIGN} (VAE stride)");
-            assert!(w <= MAX_DIM && h <= MAX_DIM,
-                "preset {label:?} ({w}x{h}) exceeds server MAX_DIM={MAX_DIM}");
+            assert!(w > 0 && h > 0, "preset {label:?} has zero dim: {w}x{h}");
+            assert_eq!(
+                w % VAE_ALIGN,
+                0,
+                "preset {label:?} width {w} must be a multiple of {VAE_ALIGN} (VAE stride)"
+            );
+            assert_eq!(
+                h % VAE_ALIGN,
+                0,
+                "preset {label:?} height {h} must be a multiple of {VAE_ALIGN} (VAE stride)"
+            );
+            assert!(
+                w <= MAX_DIM && h <= MAX_DIM,
+                "preset {label:?} ({w}x{h}) exceeds server MAX_DIM={MAX_DIM}"
+            );
         }
     }
 
@@ -821,15 +872,17 @@ mod tests {
         // Hard-coded snapshot of handlers.rs::KNOWN_VOICES. If the
         // server adds / removes a preset, this test catches it.
         let server_known: &[&str] = &[
-            "alloy", "echo", "fable", "onyx", "nova", "shimmer",
-            "ash", "ballad", "coral", "sage", "verse",
+            "alloy", "echo", "fable", "onyx", "nova", "shimmer", "ash", "ballad", "coral", "sage",
+            "verse",
         ];
         let mut gui: Vec<&str> = TTS_VOICE_PRESETS.to_vec();
         let mut srv: Vec<&str> = server_known.to_vec();
         gui.sort();
         srv.sort();
-        assert_eq!(gui, srv,
-            "chat-tab TTS_VOICE_PRESETS must mirror server KNOWN_VOICES exactly");
+        assert_eq!(
+            gui, srv,
+            "chat-tab TTS_VOICE_PRESETS must mirror server KNOWN_VOICES exactly"
+        );
     }
 
     #[test]
@@ -855,10 +908,14 @@ mod tests {
             .iter()
             .map(|(_, w, h)| (*w, *h))
             .collect();
-        assert!(dims.contains(&(512, 512)),
-            "preset list must include Flux default 512x512; got {dims:?}");
-        assert!(dims.contains(&(1024, 1024)),
-            "preset list must include Z-Image default 1024x1024; got {dims:?}");
+        assert!(
+            dims.contains(&(512, 512)),
+            "preset list must include Flux default 512x512; got {dims:?}"
+        );
+        assert!(
+            dims.contains(&(1024, 1024)),
+            "preset list must include Z-Image default 1024x1024; got {dims:?}"
+        );
     }
 
     #[test]
@@ -872,8 +929,11 @@ mod tests {
             deduped.dedup();
             deduped.len()
         };
-        assert_eq!(unique_count, labels.len(),
-            "preset labels must be unique; got {labels:?}");
+        assert_eq!(
+            unique_count,
+            labels.len(),
+            "preset labels must be unique; got {labels:?}"
+        );
     }
 
     // ── ModelModality::from_model_name ──
@@ -881,10 +941,19 @@ mod tests {
     #[test]
     fn modality_text_default() {
         // Unknown / generic model names fall through to Text.
-        assert_eq!(ModelModality::from_model_name("llama3:8b"),    ModelModality::Text);
-        assert_eq!(ModelModality::from_model_name("mistral:7b"),   ModelModality::Text);
-        assert_eq!(ModelModality::from_model_name("phi3:latest"),  ModelModality::Text);
-        assert_eq!(ModelModality::from_model_name(""),             ModelModality::Text);
+        assert_eq!(
+            ModelModality::from_model_name("llama3:8b"),
+            ModelModality::Text
+        );
+        assert_eq!(
+            ModelModality::from_model_name("mistral:7b"),
+            ModelModality::Text
+        );
+        assert_eq!(
+            ModelModality::from_model_name("phi3:latest"),
+            ModelModality::Text
+        );
+        assert_eq!(ModelModality::from_model_name(""), ModelModality::Text);
     }
 
     #[test]
@@ -898,7 +967,7 @@ mod tests {
             "parler-tts-large-v1",
             "tts-1",
             "tts-1-hd",
-            "openai/tts-1",   // path-prefixed — matches `/tts-` substring
+            "openai/tts-1", // path-prefixed — matches `/tts-` substring
             "openai/tts-1-hd",
             "suno/bark",
             "hexgrad/kokoro",
@@ -914,8 +983,13 @@ mod tests {
         }
         // Negatives — text/chat/vision/asr/image models must NOT
         // misclassify as AudioTts.
-        for name in ["qwen3-coder:latest", "Tongyi-MAI/Z-Image-Turbo",
-                     "openai/whisper-small", "llava:7b", ""] {
+        for name in [
+            "qwen3-coder:latest",
+            "Tongyi-MAI/Z-Image-Turbo",
+            "openai/whisper-small",
+            "llava:7b",
+            "",
+        ] {
             assert_ne!(
                 ModelModality::from_model_name(name),
                 ModelModality::AudioTts,
@@ -963,10 +1037,10 @@ mod tests {
         // Negatives — generic text models that share a substring but
         // shouldn't be misclassified.
         for name in [
-            "qwen2:7b",          // bare qwen2, not -vl
-            "qwen2.5-coder:7b",  // coder variant, not -vl
-            "phi-3:14b",         // plain phi-3, not vision
-            "llama3:8b",         // plain llama, not vision-tagged
+            "qwen2:7b",         // bare qwen2, not -vl
+            "qwen2.5-coder:7b", // coder variant, not -vl
+            "phi-3:14b",        // plain phi-3, not vision
+            "llama3:8b",        // plain llama, not vision-tagged
         ] {
             assert_ne!(
                 ModelModality::from_model_name(name),
@@ -1014,16 +1088,46 @@ mod tests {
 
     #[test]
     fn modality_audio_detection() {
-        assert_eq!(ModelModality::from_model_name("whisper-large-v3"), ModelModality::AudioAsr);
-        assert_eq!(ModelModality::from_model_name("whisper:tiny"),     ModelModality::AudioAsr);
-        assert_eq!(ModelModality::from_model_name("parler-tts-mini"),  ModelModality::AudioTts);
-        assert_eq!(ModelModality::from_model_name("custom-tts"),       ModelModality::AudioTts);
-        assert_eq!(ModelModality::from_model_name("tts-1"),            ModelModality::AudioTts);
-        assert_eq!(ModelModality::from_model_name("bark-small"),       ModelModality::AudioTts);
-        assert_eq!(ModelModality::from_model_name("kokoro-v0.19"),     ModelModality::AudioTts);
-        assert_eq!(ModelModality::from_model_name("f5-tts-base"),      ModelModality::AudioTts);
-        assert_eq!(ModelModality::from_model_name("fish-speech-1.4"),  ModelModality::AudioTts);
-        assert_eq!(ModelModality::from_model_name("metavoice-1b"),     ModelModality::AudioTts);
+        assert_eq!(
+            ModelModality::from_model_name("whisper-large-v3"),
+            ModelModality::AudioAsr
+        );
+        assert_eq!(
+            ModelModality::from_model_name("whisper:tiny"),
+            ModelModality::AudioAsr
+        );
+        assert_eq!(
+            ModelModality::from_model_name("parler-tts-mini"),
+            ModelModality::AudioTts
+        );
+        assert_eq!(
+            ModelModality::from_model_name("custom-tts"),
+            ModelModality::AudioTts
+        );
+        assert_eq!(
+            ModelModality::from_model_name("tts-1"),
+            ModelModality::AudioTts
+        );
+        assert_eq!(
+            ModelModality::from_model_name("bark-small"),
+            ModelModality::AudioTts
+        );
+        assert_eq!(
+            ModelModality::from_model_name("kokoro-v0.19"),
+            ModelModality::AudioTts
+        );
+        assert_eq!(
+            ModelModality::from_model_name("f5-tts-base"),
+            ModelModality::AudioTts
+        );
+        assert_eq!(
+            ModelModality::from_model_name("fish-speech-1.4"),
+            ModelModality::AudioTts
+        );
+        assert_eq!(
+            ModelModality::from_model_name("metavoice-1b"),
+            ModelModality::AudioTts
+        );
     }
 
     #[test]
@@ -1033,17 +1137,24 @@ mod tests {
         // videocrafter / video-diffusion / wan-) plus the open-source and hosted
         // families added since, so every label matches.
         for name in [
-            "sora-1", "veo-2", "cogvideo-x", "videocrafter-2",
-            "stable-video-diffusion", "wan-video-1",
-            "Tencent/HunyuanVideo", "tencent/hunyuan-video-13b",
+            "sora-1",
+            "veo-2",
+            "cogvideo-x",
+            "videocrafter-2",
+            "stable-video-diffusion",
+            "wan-video-1",
+            "Tencent/HunyuanVideo",
+            "tencent/hunyuan-video-13b",
             "genmoai/mochi-1-preview",
             "Lightricks/LTX-Video",
             "rhymes-ai/Allegro",
             "stepfun-ai/Step-Video-T2V",
             "hpcai-tech/OpenSora-STDiT-v1",
             "modelscope/text-to-video-synthesis",
-            "runway-gen-3-alpha", "runway/gen-3-turbo",
-            "pika-1.5", "haiper-2",
+            "runway-gen-3-alpha",
+            "runway/gen-3-turbo",
+            "pika-1.5",
+            "haiper-2",
         ] {
             assert_eq!(
                 ModelModality::from_model_name(name),
@@ -1093,9 +1204,18 @@ mod tests {
     fn modality_is_case_insensitive() {
         // Detection lowercases before matching so model registries
         // with mixed-case display names work.
-        assert_eq!(ModelModality::from_model_name("FLUX-Schnell"),    ModelModality::ImageGen);
-        assert_eq!(ModelModality::from_model_name("WHISPER:large"),   ModelModality::AudioAsr);
-        assert_eq!(ModelModality::from_model_name("Moondream:1.8b"),  ModelModality::Vision);
+        assert_eq!(
+            ModelModality::from_model_name("FLUX-Schnell"),
+            ModelModality::ImageGen
+        );
+        assert_eq!(
+            ModelModality::from_model_name("WHISPER:large"),
+            ModelModality::AudioAsr
+        );
+        assert_eq!(
+            ModelModality::from_model_name("Moondream:1.8b"),
+            ModelModality::Vision
+        );
     }
 
     // ── base64_looks_like_image ──
@@ -1160,8 +1280,12 @@ mod tests {
         // Plain text / MP3 / FLAC / other binary → not classified as image.
         assert!(!base64_looks_like_image(&b64_of(b"hello world\n\x00")));
         assert!(!base64_looks_like_image(&b64_of(b"fLaC\0\0\0\0\0\0\0\0"))); // FLAC
-        assert!(!base64_looks_like_image(&b64_of(b"ID3\x03\x00\x00\x00\x00\x00\x00\x00\x00"))); // MP3
-        assert!(!base64_looks_like_image(&b64_of(b"OggS\x00\x00\x00\x00\x00\x00\x00\x00")));  // OGG
+        assert!(!base64_looks_like_image(&b64_of(
+            b"ID3\x03\x00\x00\x00\x00\x00\x00\x00\x00"
+        ))); // MP3
+        assert!(!base64_looks_like_image(&b64_of(
+            b"OggS\x00\x00\x00\x00\x00\x00\x00\x00"
+        ))); // OGG
     }
 
     #[test]
@@ -1176,17 +1300,17 @@ mod tests {
     #[test]
     fn eta_sub_minute_ceils_seconds() {
         // <60s remains in seconds, ceiled so 0.4s never displays as 0s.
-        assert_eq!(ModelModality::format_eta_remaining(0.4),  "1s");
-        assert_eq!(ModelModality::format_eta_remaining(1.0),  "1s");
-        assert_eq!(ModelModality::format_eta_remaining(7.4),  "8s");
+        assert_eq!(ModelModality::format_eta_remaining(0.4), "1s");
+        assert_eq!(ModelModality::format_eta_remaining(1.0), "1s");
+        assert_eq!(ModelModality::format_eta_remaining(7.4), "8s");
         assert_eq!(ModelModality::format_eta_remaining(59.9), "60s");
     }
 
     #[test]
     fn eta_minute_plus_uses_mm_ss() {
         // ≥60s uses "Nm SSs" with zero-padded seconds.
-        assert_eq!(ModelModality::format_eta_remaining(60.0),  "1m 00s");
-        assert_eq!(ModelModality::format_eta_remaining(95.0),  "1m 35s");
+        assert_eq!(ModelModality::format_eta_remaining(60.0), "1m 00s");
+        assert_eq!(ModelModality::format_eta_remaining(95.0), "1m 35s");
         assert_eq!(ModelModality::format_eta_remaining(125.7), "2m 05s");
         assert_eq!(ModelModality::format_eta_remaining(3661.0), "61m 01s");
     }
@@ -1203,7 +1327,11 @@ mod tests {
     // ── format_timing_line ──
 
     fn timing(tok_s: f32, count: u32, ms: u64) -> MessageTiming {
-        MessageTiming { tokens_per_sec: tok_s, duration_ms: ms, token_count: count }
+        MessageTiming {
+            tokens_per_sec: tok_s,
+            duration_ms: ms,
+            token_count: count,
+        }
     }
 
     #[test]
@@ -1221,7 +1349,7 @@ mod tests {
         // Image-gen / TTS responses arrive with token_count = 0 — the
         // tok/s and count fields would be misleading "0.0 tok/s | 0
         // tokens" noise alongside the real duration.
-        assert_eq!(format_timing_line(timing(0.0, 0, 4_500)),  "4.5s");
+        assert_eq!(format_timing_line(timing(0.0, 0, 4_500)), "4.5s");
         assert_eq!(format_timing_line(timing(0.0, 0, 12_300)), "12.3s");
     }
 
@@ -1229,7 +1357,7 @@ mod tests {
     fn timing_line_sub_second_uses_ms() {
         // Under 1 second, seconds-with-tenths loses meaningful
         // precision ("0.1s" for 87 ms is worse than "87 ms").
-        assert_eq!(format_timing_line(timing(0.0, 0, 87)),  "87 ms");
+        assert_eq!(format_timing_line(timing(0.0, 0, 87)), "87 ms");
         assert_eq!(format_timing_line(timing(0.0, 0, 999)), "999 ms");
         // Token-bearing path uses ms too.
         assert_eq!(
@@ -1252,14 +1380,18 @@ mod tests {
         // (app.rs ~896) both use this exact prefix.
         assert!(is_error_system_message("Error: connection refused"));
         assert!(is_error_system_message("Error: 500 Internal Server Error"));
-        assert!(is_error_system_message("Error:"));  // bare prefix still classifies
+        assert!(is_error_system_message("Error:")); // bare prefix still classifies
     }
 
     #[test]
     fn failed_prefix_triggers_error_styling() {
         // chat_tab ~363 (single save) and ~383 (multi save) prefixes.
-        assert!(is_error_system_message("Failed to save /tmp/x.png: Permission denied"));
-        assert!(is_error_system_message("Failed to save 3 files to /tmp:\n  ..."));
+        assert!(is_error_system_message(
+            "Failed to save /tmp/x.png: Permission denied"
+        ));
+        assert!(is_error_system_message(
+            "Failed to save 3 files to /tmp:\n  ..."
+        ));
         // TTS Play-button error pushed by render() when
         // play_audio_blob fails (no audio backend on PATH, etc.).
         // Pin this prefix so a future reword can't silently drop
@@ -1301,14 +1433,17 @@ mod tests {
     #[test]
     fn visible_rows_single_line_is_one() {
         assert_eq!(chat_input_visible_rows("hello"), 1);
-        assert_eq!(chat_input_visible_rows("a long single line with no newlines"), 1);
+        assert_eq!(
+            chat_input_visible_rows("a long single line with no newlines"),
+            1
+        );
     }
 
     #[test]
     fn visible_rows_counts_newlines_plus_one() {
         // N newlines = N+1 logical rows.
-        assert_eq!(chat_input_visible_rows("a\nb"),       2);
-        assert_eq!(chat_input_visible_rows("a\nb\nc"),    3);
+        assert_eq!(chat_input_visible_rows("a\nb"), 2);
+        assert_eq!(chat_input_visible_rows("a\nb\nc"), 3);
         assert_eq!(chat_input_visible_rows("a\nb\nc\nd"), 4);
     }
 
@@ -1316,7 +1451,10 @@ mod tests {
     fn visible_rows_clamps_at_max() {
         // Past MAX (8), additional newlines have no effect — overflow
         // is handled by TextEdit's internal scrollbar.
-        let huge: String = (0..50).map(|i| format!("line {}", i)).collect::<Vec<_>>().join("\n");
+        let huge: String = (0..50)
+            .map(|i| format!("line {}", i))
+            .collect::<Vec<_>>()
+            .join("\n");
         assert_eq!(chat_input_visible_rows(&huge), CHAT_INPUT_MAX_ROWS);
         // 7 newlines = 8 rows = at the cap exactly.
         let at_cap = "1\n2\n3\n4\n5\n6\n7\n8";
@@ -1420,21 +1558,30 @@ mod tests {
     fn parse_seed_prefix_returns_none_on_malformed_prefix() {
         // Various near-misses — none should match.
         assert_eq!(parse_seed_prefix("[seed: abc]").0, None);
-        assert_eq!(parse_seed_prefix("[seed: 123").0, None,
-            "missing close bracket → no match");
-        assert_eq!(parse_seed_prefix("[Seed: 123]").0, None,
-            "case-sensitive: 'Seed' is not 'seed'");
-        assert_eq!(parse_seed_prefix("[seed: -5]").0, None,
-            "negative not a valid u64");
+        assert_eq!(
+            parse_seed_prefix("[seed: 123").0,
+            None,
+            "missing close bracket → no match"
+        );
+        assert_eq!(
+            parse_seed_prefix("[Seed: 123]").0,
+            None,
+            "case-sensitive: 'Seed' is not 'seed'"
+        );
+        assert_eq!(
+            parse_seed_prefix("[seed: -5]").0,
+            None,
+            "negative not a valid u64"
+        );
     }
 
     // ── parse_image_step_progress ──
 
     #[test]
     fn parses_well_formed_step_lines() {
-        assert_eq!(parse_image_step_progress("Step 1/30"),  Some((1, 30)));
+        assert_eq!(parse_image_step_progress("Step 1/30"), Some((1, 30)));
         assert_eq!(parse_image_step_progress("Step 15/50"), Some((15, 50)));
-        assert_eq!(parse_image_step_progress("Step 0/4"),   Some((0, 4)));
+        assert_eq!(parse_image_step_progress("Step 0/4"), Some((0, 4)));
         assert_eq!(parse_image_step_progress("Step 100/100"), Some((100, 100)));
     }
 
@@ -1444,10 +1591,10 @@ mod tests {
         assert_eq!(parse_image_step_progress(""), None);
         assert_eq!(parse_image_step_progress("Loading T5..."), None);
         assert_eq!(parse_image_step_progress("step 1/30"), None); // case-sensitive
-        assert_eq!(parse_image_step_progress("Step 1"),     None); // no slash
-        assert_eq!(parse_image_step_progress("Step /30"),   None); // empty numerator
-        assert_eq!(parse_image_step_progress("Step 1/"),    None); // empty denominator
-        assert_eq!(parse_image_step_progress("Step a/b"),   None); // non-numeric
+        assert_eq!(parse_image_step_progress("Step 1"), None); // no slash
+        assert_eq!(parse_image_step_progress("Step /30"), None); // empty numerator
+        assert_eq!(parse_image_step_progress("Step 1/"), None); // empty denominator
+        assert_eq!(parse_image_step_progress("Step a/b"), None); // non-numeric
     }
 
     #[test]
@@ -1511,14 +1658,18 @@ mod tests {
         .iter()
         .map(|m| m.typing_label())
         .collect();
-        assert_eq!(labels.len(), 6, "every modality should have a unique typing label");
+        assert_eq!(
+            labels.len(),
+            6,
+            "every modality should have a unique typing label"
+        );
     }
 
     #[test]
     fn typing_label_text_baseline() {
         // Default text chat uses the generic "Thinking..." that other
         // chat UIs converge on; image-gen variant should not.
-        assert_eq!(ModelModality::Text.typing_label(),     "Thinking...");
+        assert_eq!(ModelModality::Text.typing_label(), "Thinking...");
         assert_ne!(ModelModality::ImageGen.typing_label(), "Thinking...");
         assert_ne!(ModelModality::AudioTts.typing_label(), "Thinking...");
     }
@@ -1597,7 +1748,11 @@ mod tests {
         .iter()
         .map(|m| m.label())
         .collect();
-        assert_eq!(labels.len(), 6, "every modality should have a unique badge label");
+        assert_eq!(
+            labels.len(),
+            6,
+            "every modality should have a unique badge label"
+        );
     }
 
     #[test]
@@ -1605,8 +1760,8 @@ mod tests {
         // Pin the exact strings. These are what the user sees in the
         // header badge next to the model name. A silent rename is the
         // kind of UX drift that wire-shape tests catch for JSON.
-        assert_eq!(ModelModality::Text.label(),     "Text");
-        assert_eq!(ModelModality::Vision.label(),   "Vision");
+        assert_eq!(ModelModality::Text.label(), "Text");
+        assert_eq!(ModelModality::Vision.label(), "Vision");
         assert_eq!(ModelModality::ImageGen.label(), "Image Gen");
         assert_eq!(ModelModality::VideoGen.label(), "Video Gen");
         assert_eq!(ModelModality::AudioTts.label(), "Audio (TTS)");
@@ -1629,7 +1784,11 @@ mod tests {
         .iter()
         .map(|m| m.input_hint())
         .collect();
-        assert_eq!(hints.len(), 6, "every modality should have a unique input hint");
+        assert_eq!(
+            hints.len(),
+            6,
+            "every modality should have a unique input hint"
+        );
 
         // Pin one keyword per active modality so a reword doesn't
         // accidentally lose the user-facing affordance.
@@ -1642,13 +1801,17 @@ mod tests {
         // same affordance as vision models do images. An earlier hint told the user
         // to paste a path or call the API instead, which was misleading - the chat
         // tab IS that API surface.
-        assert!(asr.contains("Attach"),
-            "ASR hint must reference the Attach button; got: {asr}");
+        assert!(
+            asr.contains("Attach"),
+            "ASR hint must reference the Attach button; got: {asr}"
+        );
         // VideoGen explicitly tells the user it's not supported so a
         // future build doesn't silently invite a doomed request.
         let v = ModelModality::VideoGen.input_hint().to_ascii_lowercase();
-        assert!(v.contains("not") || v.contains("supported"),
-            "VideoGen hint should warn about lack of support; got: {v}");
+        assert!(
+            v.contains("not") || v.contains("supported"),
+            "VideoGen hint should warn about lack of support; got: {v}"
+        );
     }
 
     // ── base64_looks_like_image ──
@@ -1663,13 +1826,27 @@ mod tests {
         // First few bytes of each real format header — anything past
         // the magic is irrelevant to the sniff.
         let png = b64(&[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 0]);
-        let jpeg = b64(&[0xFF, 0xD8, 0xFF, 0xE0, 0, 0x10, b'J', b'F', b'I', b'F', 0, 0]);
+        let jpeg = b64(&[
+            0xFF, 0xD8, 0xFF, 0xE0, 0, 0x10, b'J', b'F', b'I', b'F', 0, 0,
+        ]);
         let gif = b64(b"GIF89a\0\0\0\0\0\0");
         let bmp = b64(&[0x42, 0x4D, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
-        assert!(base64_looks_like_image(&png),  "PNG header should sniff as image");
-        assert!(base64_looks_like_image(&jpeg), "JPEG header should sniff as image");
-        assert!(base64_looks_like_image(&gif),  "GIF header should sniff as image");
-        assert!(base64_looks_like_image(&bmp),  "BMP header should sniff as image");
+        assert!(
+            base64_looks_like_image(&png),
+            "PNG header should sniff as image"
+        );
+        assert!(
+            base64_looks_like_image(&jpeg),
+            "JPEG header should sniff as image"
+        );
+        assert!(
+            base64_looks_like_image(&gif),
+            "GIF header should sniff as image"
+        );
+        assert!(
+            base64_looks_like_image(&bmp),
+            "BMP header should sniff as image"
+        );
     }
 
     #[test]
@@ -1678,7 +1855,10 @@ mod tests {
         let webp = b64(b"RIFF\0\0\0\0WEBPVP8 ");
         let wave = b64(b"RIFF\0\0\0\0WAVEfmt ");
         assert!(base64_looks_like_image(&webp), "RIFF/WEBP is an image");
-        assert!(!base64_looks_like_image(&wave), "RIFF/WAVE is audio, not an image");
+        assert!(
+            !base64_looks_like_image(&wave),
+            "RIFF/WAVE is audio, not an image"
+        );
     }
 
     #[test]
@@ -1694,10 +1874,14 @@ mod tests {
     // -- output_filename ------------------------------------------------
     #[test]
     fn every_kind_is_named_the_same_way() {
-        assert_eq!(output_filename("video", "20260802_014500", 0, "mp4"),
-                   "atelier_video_20260802_014500_1.mp4");
-        assert_eq!(output_filename("image", "20260802_014500", 4, "png"),
-                   "atelier_image_20260802_014500_5.png");
+        assert_eq!(
+            output_filename("video", "20260802_014500", 0, "mp4"),
+            "atelier_video_20260802_014500_1.mp4"
+        );
+        assert_eq!(
+            output_filename("image", "20260802_014500", 4, "png"),
+            "atelier_image_20260802_014500_5.png"
+        );
         // The index is 1-based for a person reading a directory listing.
         assert!(output_filename("audio", "s", 0, "wav").ends_with("_1.wav"));
     }
@@ -1723,7 +1907,6 @@ mod tests {
         assert_eq!(s.len(), 15, "YYYYmmdd_HHMMSS: {s}");
         assert!(s.chars().all(|c| c.is_ascii_digit() || c == '_'), "{s}");
     }
-
 
     // ── split_thinking / with_thinking ──
 

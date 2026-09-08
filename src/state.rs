@@ -4,13 +4,7 @@
 
 use std::collections::VecDeque;
 
-
-
 use crate::api::ModelInfo;
-
-
-
-
 
 // (Legacy `Tab` enum removed — superseded by Section navigation in
 // state.rs. The two remaining references in app.rs (current_tab field
@@ -94,13 +88,22 @@ impl Default for ConnectionStatus {
 
 impl ConnectionStatus {
     pub fn connecting() -> Self {
-        Self { state: ConnectionState::Connecting, detail: "Connecting…".to_string() }
+        Self {
+            state: ConnectionState::Connecting,
+            detail: "Connecting…".to_string(),
+        }
     }
     pub fn connected(detail: impl Into<String>) -> Self {
-        Self { state: ConnectionState::Connected, detail: detail.into() }
+        Self {
+            state: ConnectionState::Connected,
+            detail: detail.into(),
+        }
     }
     pub fn disconnected(detail: impl Into<String>) -> Self {
-        Self { state: ConnectionState::Disconnected, detail: detail.into() }
+        Self {
+            state: ConnectionState::Disconnected,
+            detail: detail.into(),
+        }
     }
 }
 
@@ -191,8 +194,8 @@ pub struct MessageTiming {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum LayerMode {
     #[default]
-    AllLayers,   // Process every layer (normal, highest quality)
-    Adaptive,    // Exit early if confident (sends early_exit_threshold)
+    AllLayers, // Process every layer (normal, highest quality)
+    Adaptive, // Exit early if confident (sends early_exit_threshold)
 }
 
 /// Chat tab state
@@ -390,7 +393,9 @@ impl ChatState {
     /// change. Returns true iff the detach actually happened (used
     /// only for testing observability — render path discards it).
     pub fn detach_history_if_edited(&mut self) -> bool {
-        let Some(i) = self.history_cursor else { return false };
+        let Some(i) = self.history_cursor else {
+            return false;
+        };
         if self.prompt_history.get(i) != Some(&self.input) {
             self.history_cursor = None;
             self.history_draft.clear();
@@ -718,7 +723,11 @@ pub enum SpeechEngine {
 }
 
 impl SpeechEngine {
-    pub const ALL: [SpeechEngine; 3] = [SpeechEngine::Parler, SpeechEngine::Kyutai, SpeechEngine::Piper];
+    pub const ALL: [SpeechEngine; 3] = [
+        SpeechEngine::Parler,
+        SpeechEngine::Kyutai,
+        SpeechEngine::Piper,
+    ];
     pub fn label(self) -> &'static str {
         match self {
             SpeechEngine::Parler => "Parler (EN)",
@@ -765,8 +774,12 @@ impl MediaKind {
             MediaKind::Sfx => "Generate a sound effect from a text prompt (WAV, 24 kHz).",
             MediaKind::Midi => "Generate a multi-track MIDI score from a text prompt (.mid).",
             MediaKind::Video => "Generate a short video from a text prompt (mp4 / gif).",
-            MediaKind::Speech => "Synthesise speech from text (WAV). Engine: Parler (EN), Kyutai (EN/FR) or Piper.",
-            MediaKind::ImageEdit => "Edit an existing image with a text instruction (FLUX Kontext / Qwen-Image-Edit).",
+            MediaKind::Speech => {
+                "Synthesise speech from text (WAV). Engine: Parler (EN), Kyutai (EN/FR) or Piper."
+            }
+            MediaKind::ImageEdit => {
+                "Edit an existing image with a text instruction (FLUX Kontext / Qwen-Image-Edit)."
+            }
             MediaKind::Transcribe => "Transcribe an audio file to text (Whisper / Voxtral).",
             MediaKind::Separate => {
                 "Split a song into its vocal and instrumental stems (Mel-Band RoFormer).\n\
@@ -888,7 +901,6 @@ pub struct ImageParams {
     /// Encoding of the returned image. The server transcodes for it; "png" keeps the
     /// lossless default, "jpeg" and "webp" trade exactness for a much smaller file.
     pub file_format: ImageFileFormat,
-
 }
 
 impl Default for ImageParams {
@@ -987,7 +999,11 @@ pub struct ImageRegion {
 
 impl Default for ImageRegion {
     fn default() -> Self {
-        Self { prompt: String::new(), area: RegionArea::Left, strength: 1.0 }
+        Self {
+            prompt: String::new(),
+            area: RegionArea::Left,
+            strength: 1.0,
+        }
     }
 }
 
@@ -1076,7 +1092,10 @@ impl SeparateStems {
 
 impl Default for SeparateParams {
     fn default() -> Self {
-        Self { audio: None, stems: SeparateStems::default() }
+        Self {
+            audio: None,
+            stems: SeparateStems::default(),
+        }
     }
 }
 
@@ -1267,7 +1286,11 @@ pub struct MidiParams {
 
 impl Default for MidiParams {
     fn default() -> Self {
-        Self { max_tokens: 512, temperature: 1.0, top_p: 0.98 }
+        Self {
+            max_tokens: 512,
+            temperature: 1.0,
+            top_p: 0.98,
+        }
     }
 }
 
@@ -1520,14 +1543,30 @@ impl MediaState {
         self.kind = p.kind;
         self.prompt = p.prompt.clone();
         self.seed = p.seed.clone();
-        if let Some(v) = &p.image { self.image = v.clone(); }
-        if let Some(v) = &p.image_edit { self.image_edit = v.clone(); }
-        if let Some(v) = &p.music { self.music = v.clone(); }
-        if let Some(v) = &p.sfx { self.sfx = v.clone(); }
-        if let Some(v) = &p.midi { self.midi = v.clone(); }
-        if let Some(v) = &p.video { self.video = v.clone(); }
-        if let Some(v) = &p.speech { self.speech = v.clone(); }
-        if let Some(v) = &p.transcribe { self.transcribe = v.clone(); }
+        if let Some(v) = &p.image {
+            self.image = v.clone();
+        }
+        if let Some(v) = &p.image_edit {
+            self.image_edit = v.clone();
+        }
+        if let Some(v) = &p.music {
+            self.music = v.clone();
+        }
+        if let Some(v) = &p.sfx {
+            self.sfx = v.clone();
+        }
+        if let Some(v) = &p.midi {
+            self.midi = v.clone();
+        }
+        if let Some(v) = &p.video {
+            self.video = v.clone();
+        }
+        if let Some(v) = &p.speech {
+            self.speech = v.clone();
+        }
+        if let Some(v) = &p.transcribe {
+            self.transcribe = v.clone();
+        }
     }
 }
 
@@ -1574,7 +1613,11 @@ pub struct VideoViewer {
 
 impl Default for VideoViewer {
     fn default() -> Self {
-        Self { open: false, zoom: 1.0, pan: (0.0, 0.0) }
+        Self {
+            open: false,
+            zoom: 1.0,
+            pan: (0.0, 0.0),
+        }
     }
 }
 
@@ -1844,8 +1887,7 @@ impl MediaState {
 // ============================================================================
 
 /// CLI command output
-#[derive(Debug, Clone)]
-#[derive(Default)]
+#[derive(Debug, Clone, Default)]
 pub struct CLIOutput {
     pub timestamp: String,
     pub command: String,
@@ -1854,7 +1896,6 @@ pub struct CLIOutput {
     /// Whether this output is still in progress (showing spinner)
     pub in_progress: bool,
 }
-
 
 /// CLI tab state
 #[derive(Debug, Clone, Default)]
@@ -2002,7 +2043,7 @@ pub struct ModelState {
     /// than its deadline and the UI recovers by itself.
     pub action_started_at: Option<std::time::Instant>,
     pub pull_model_input: String,
-    pub pull_source: String,  // "ollama" or "huggingface"
+    pub pull_source: String, // "ollama" or "huggingface"
     /// Live download progress for the in-flight pull, `(completed, total)`
     /// bytes parsed from the server's NDJSON `/api/pull` stream. `None`
     /// when no pull is running (or before the first progress line arrives);
@@ -2170,16 +2211,6 @@ impl ServerState {
 // Hardware State
 // ============================================================================
 
-
-
-
-
-
-
-
-
-
-
 #[cfg(test)]
 // Tests mutate individual ChatState fields after constructing
 // with Default::default() — clippy::field_reassign_with_default
@@ -2217,7 +2248,10 @@ mod chat_history_tests {
         m.set_kind(MediaKind::Video);
         assert_eq!(m.kind, MediaKind::Video);
         assert_eq!(m.video.steps, 8, "video kind has its own step default");
-        assert_eq!(m.video.width, 512, "video starts small (heavier than image)");
+        assert_eq!(
+            m.video.width, 512,
+            "video starts small (heavier than image)"
+        );
         assert!(m.result_images.is_empty(), "results cleared on kind switch");
         assert!(m.status.is_empty());
         m.set_kind(MediaKind::Image);
@@ -2251,9 +2285,18 @@ mod chat_history_tests {
         let m = ChatMessage::system("hello");
         assert_eq!(m.role, "system");
         assert_eq!(m.content, "hello");
-        assert!(m.images.is_empty(), "system messages should have no input images");
-        assert!(m.generated_images.is_empty(), "system messages should have no gen images");
-        assert!(m.generated_audios.is_empty(), "system messages should have no gen audios");
+        assert!(
+            m.images.is_empty(),
+            "system messages should have no input images"
+        );
+        assert!(
+            m.generated_images.is_empty(),
+            "system messages should have no gen images"
+        );
+        assert!(
+            m.generated_audios.is_empty(),
+            "system messages should have no gen audios"
+        );
         assert!(m.timing.is_none(), "system messages should have no timing");
         // Timestamp is HH:MM:SS via timefmt::chat_now — 8 chars min.
         assert!(!m.timestamp.is_empty(), "timestamp should be populated");
@@ -2339,13 +2382,13 @@ mod chat_history_tests {
         push_n(&mut c, &["one", "two"]);
         c.input = "draft".into();
 
-        c.history_back();        // -> "two"
-        c.history_back();        // -> "one"
-        c.history_forward();     // -> "two"
+        c.history_back(); // -> "two"
+        c.history_back(); // -> "one"
+        c.history_forward(); // -> "two"
         assert_eq!(c.input, "two");
         assert_eq!(c.history_cursor, Some(1));
 
-        c.history_forward();     // past newest -> restore draft
+        c.history_forward(); // past newest -> restore draft
         assert_eq!(c.input, "draft");
         assert_eq!(c.history_cursor, None);
         assert!(c.history_draft.is_empty());
@@ -2380,7 +2423,7 @@ mod chat_history_tests {
         let mut c = ChatState::default();
         push_n(&mut c, &["one", "two"]);
         c.input = "draft".into();
-        c.history_back();             // input = "two", cursor = Some(1), draft = "draft"
+        c.history_back(); // input = "two", cursor = Some(1), draft = "draft"
         assert_eq!(c.history_cursor, Some(1));
 
         // Simulate the user editing the recalled prompt.
@@ -2425,7 +2468,10 @@ mod chat_history_tests {
         c.push_prompt_history(String::new());
         c.push_prompt_history("   ".into());
         c.push_prompt_history("\n\t".into());
-        assert!(c.prompt_history.is_empty(), "no empty/whitespace entries should be stored");
+        assert!(
+            c.prompt_history.is_empty(),
+            "no empty/whitespace entries should be stored"
+        );
     }
 
     // ── clear_conversation ─────────────────────────────────────────
@@ -2522,8 +2568,10 @@ mod chat_history_tests {
         let mut c = ChatState::default();
         assert!(!c.is_generating);
         assert!(!c.abort_generation());
-        assert!(c.messages.is_empty(),
-            "abort on idle must not push any system breadcrumb");
+        assert!(
+            c.messages.is_empty(),
+            "abort on idle must not push any system breadcrumb"
+        );
     }
 
     #[test]
@@ -2544,13 +2592,22 @@ mod chat_history_tests {
 
         c.prepare_for_generation();
 
-        assert!(c.is_generating, "new generation must flip is_generating true");
-        assert!(c.streaming_content.is_empty(),
-            "stale partial must be cleared before the new stream writes");
-        assert_eq!(c.image_gen_progress, None,
-            "stale progress bar must be cleared");
-        assert!(c.image_gen_started_at.is_none(),
-            "stale ETA anchor must be cleared");
+        assert!(
+            c.is_generating,
+            "new generation must flip is_generating true"
+        );
+        assert!(
+            c.streaming_content.is_empty(),
+            "stale partial must be cleared before the new stream writes"
+        );
+        assert_eq!(
+            c.image_gen_progress, None,
+            "stale progress bar must be cleared"
+        );
+        assert!(
+            c.image_gen_started_at.is_none(),
+            "stale ETA anchor must be cleared"
+        );
         assert!(c.generation_abort.is_none());
     }
 
@@ -2573,11 +2630,16 @@ mod chat_history_tests {
 
         assert_eq!(c.messages.len(), 1, "messages preserved across prepare");
         assert_eq!(c.messages[0].content, "Earlier reply");
-        assert_eq!(c.input, "User's just-cleared input would normally be empty here",
+        assert_eq!(
+            c.input, "User's just-cleared input would normally be empty here",
             "input field NOT cleared here (send_chat does the input.clear() \
-             explicitly above the prepare call)");
-        assert_eq!(c.prompt_history.len(), 1,
-            "prompt_history preserved — recall must keep working");
+             explicitly above the prepare call)"
+        );
+        assert_eq!(
+            c.prompt_history.len(),
+            1,
+            "prompt_history preserved — recall must keep working"
+        );
     }
 
     #[test]
@@ -2603,9 +2665,11 @@ mod chat_history_tests {
         c.reset_streaming_state();
 
         assert!(!c.is_generating);
-        assert!(c.generation_abort.is_none(),
+        assert!(
+            c.generation_abort.is_none(),
             "generation_abort must be None after reset — leaving a stale \
-             handle was the bug fixed by 8a33e82");
+             handle was the bug fixed by 8a33e82"
+        );
         assert!(c.streaming_content.is_empty());
         assert_eq!(c.image_gen_progress, None);
         assert!(c.image_gen_started_at.is_none());
@@ -2629,7 +2693,10 @@ mod chat_history_tests {
 
         let was_live = c.abort_generation();
 
-        assert!(was_live, "must report there was a live generation to cancel");
+        assert!(
+            was_live,
+            "must report there was a live generation to cancel"
+        );
         assert!(!c.is_generating, "is_generating flips to false");
         assert!(c.streaming_content.is_empty(), "partial stream is dropped");
         assert_eq!(c.image_gen_progress, None);
@@ -2655,8 +2722,10 @@ mod chat_history_tests {
 
         assert_eq!(c.messages.len(), 1, "prior messages survive abort");
         assert_eq!(c.messages[0].content, "Previously-completed answer");
-        assert_eq!(c.input, "user's next draft, mid-type",
-            "live input survives abort — Esc shouldn't lose the next draft");
+        assert_eq!(
+            c.input, "user's next draft, mid-type",
+            "live input survives abort — Esc shouldn't lose the next draft"
+        );
     }
 
     #[test]
@@ -2710,9 +2779,11 @@ mod chat_history_tests {
         let taken = c.take_attachments();
         assert_eq!(taken, vec!["b64a", "b64b"]);
         assert!(c.attached_images.is_empty());
-        assert!(c.attached_image_paths.is_empty(),
+        assert!(
+            c.attached_image_paths.is_empty(),
             "paths must clear in lockstep with the b64 take — otherwise \
-             the next render would show ghost chip filenames");
+             the next render would show ghost chip filenames"
+        );
     }
 
     #[test]
@@ -2744,8 +2815,15 @@ mod chat_history_tests {
         c.clear_conversation();
 
         assert!(c.messages.is_empty(), "conversation cleared");
-        assert_eq!(c.prompt_history, vec!["earlier prompt"], "history preserved");
-        assert_eq!(c.input, "user is already typing the next one", "live input preserved");
+        assert_eq!(
+            c.prompt_history,
+            vec!["earlier prompt"],
+            "history preserved"
+        );
+        assert_eq!(
+            c.input, "user is already typing the next one",
+            "live input preserved"
+        );
     }
 }
 
@@ -2797,10 +2875,7 @@ mod cli_history_tests {
         assert_eq!(c.outputs.len(), CLI_OUTPUT_LIMIT);
         // Oldest 25 evicted in FIFO order — first surviving entry
         // is cmd25.
-        assert_eq!(
-            c.outputs.first().map(|o| o.command.as_str()),
-            Some("cmd25"),
-        );
+        assert_eq!(c.outputs.first().map(|o| o.command.as_str()), Some("cmd25"),);
         // Newest is the most-recent push (cmd N-1 for N total).
         assert_eq!(
             c.outputs.last().map(|o| o.command.as_str()),
@@ -2829,19 +2904,19 @@ mod cli_history_tests {
         push_n(&mut c, &["a", "b", "c"]);
         c.input = "draft-cmd".into();
 
-        c.history_back();                    // -> "c"
+        c.history_back(); // -> "c"
         assert_eq!(c.input, "c");
         assert_eq!(c.history_draft, "draft-cmd");
 
-        c.history_back();                    // -> "b"
-        c.history_back();                    // -> "a"
-        // Past oldest is no-op.
+        c.history_back(); // -> "b"
+        c.history_back(); // -> "a"
+                          // Past oldest is no-op.
         c.history_back();
         assert_eq!(c.input, "a");
 
-        c.history_forward();                 // -> "b"
-        c.history_forward();                 // -> "c"
-        c.history_forward();                 // -> draft
+        c.history_forward(); // -> "b"
+        c.history_forward(); // -> "c"
+        c.history_forward(); // -> draft
         assert_eq!(c.input, "draft-cmd");
         assert_eq!(c.history_index, 3);
         assert!(c.history_draft.is_empty());
@@ -2867,7 +2942,10 @@ mod cli_history_tests {
         c.push_history(String::new());
         c.push_history("   ".into());
         c.push_history("\t\n".into());
-        assert!(c.history.is_empty(), "no empty/whitespace entries should be stored");
+        assert!(
+            c.history.is_empty(),
+            "no empty/whitespace entries should be stored"
+        );
     }
 }
 
@@ -3013,7 +3091,10 @@ mod media_slot_tests {
             6,
             "a new slot must be added to ALL"
         );
-        let images: Vec<_> = MediaAudioSlot::ALL.iter().filter(|s| s.is_image()).collect();
+        let images: Vec<_> = MediaAudioSlot::ALL
+            .iter()
+            .filter(|s| s.is_image())
+            .collect();
         assert_eq!(
             images.len(),
             3,
@@ -3042,7 +3123,11 @@ mod video_duration_tests {
     fn a_duration_rounds_up_onto_the_four_k_plus_one_grid() {
         for secs in [0.5f32, 1.0, 1.4, 3.0, 5.0, 5.1, 12.0, 40.0] {
             let f = frames_for_seconds(secs);
-            assert_eq!((f - 1) % 4, 0, "{secs}s gave {f}, which the VAE cannot express");
+            assert_eq!(
+                (f - 1) % 4,
+                0,
+                "{secs}s gave {f}, which the VAE cannot express"
+            );
             assert!(
                 seconds_for_frames(f) + 1e-6 >= secs,
                 "{secs}s became {:.3}s - shorter than asked",
@@ -3083,7 +3168,11 @@ mod video_estimate_key_tests {
         m.seed = "1234".to_string();
         m.video.negative_prompt = "blurry".to_string();
         m.video.cfg = 7.5;
-        assert_eq!(m.video_estimate_key(), base, "a free field re-asked the server");
+        assert_eq!(
+            m.video_estimate_key(),
+            base,
+            "a free field re-asked the server"
+        );
 
         let changes: [(&str, fn(&mut MediaState)); 5] = [
             ("width", |m| m.video.width = 640),
@@ -3107,7 +3196,10 @@ mod video_estimate_key_tests {
         let mut b = MediaState::default();
         a.video.seconds = 3.0;
         b.video.seconds = 3.0 + 1.0 / (4.0 * VIDEO_FPS);
-        assert_eq!(frames_for_seconds(a.video.seconds), frames_for_seconds(b.video.seconds));
+        assert_eq!(
+            frames_for_seconds(a.video.seconds),
+            frames_for_seconds(b.video.seconds)
+        );
         assert_eq!(a.video_estimate_key(), b.video_estimate_key());
     }
 

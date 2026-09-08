@@ -72,8 +72,9 @@ impl Output {
             .spawn(move || {
                 let opened = (|| -> Result<(cpal::Stream, u32, usize), String> {
                     let host = cpal::default_host();
-                    let device =
-                        host.default_output_device().ok_or("no audio output device")?;
+                    let device = host
+                        .default_output_device()
+                        .ok_or("no audio output device")?;
                     let config = device
                         .default_output_config()
                         .map_err(|e| format!("audio device config: {e}"))?;
@@ -95,7 +96,9 @@ impl Output {
                         fmt => return Err(format!("unsupported sample format {fmt:?}")),
                     }
                     .map_err(|e| format!("open audio stream: {e}"))?;
-                    stream.play().map_err(|e| format!("start audio stream: {e}"))?;
+                    stream
+                        .play()
+                        .map_err(|e| format!("start audio stream: {e}"))?;
                     Ok((stream, sample_rate, channels))
                 })();
                 match opened {
@@ -114,12 +117,22 @@ impl Output {
         let (sample_rate, channels) = rx
             .recv()
             .map_err(|_| "the audio thread stopped before reporting".to_string())??;
-        Ok(Self { current, sample_rate, channels })
+        Ok(Self {
+            current,
+            sample_rate,
+            channels,
+        })
     }
 
     /// Hand the device a new clip, resampled to its rate and channel count.
     pub(crate) fn set(&self, samples: &[f32], src_rate: u32, src_channels: usize) -> Arc<Playing> {
-        let converted = resample(samples, src_rate, src_channels, self.sample_rate, self.channels);
+        let converted = resample(
+            samples,
+            src_rate,
+            src_channels,
+            self.sample_rate,
+            self.channels,
+        );
         let p = Arc::new(Playing {
             samples: converted,
             channels: self.channels,
@@ -203,13 +216,13 @@ pub(crate) fn decode_wav(bytes: &[u8]) -> Result<(Vec<f32>, u32, usize), String>
     let mut off = 12usize;
     while off + 8 <= bytes.len() {
         let id = &bytes[off..off + 4];
-        let sz = u32::from_le_bytes(bytes[off + 4..off + 8].try_into().unwrap_or_default()) as usize;
+        let sz =
+            u32::from_le_bytes(bytes[off + 4..off + 8].try_into().unwrap_or_default()) as usize;
         let body = off + 8;
         if id == b"fmt " && body + 16 <= bytes.len() {
             format = u16::from_le_bytes(bytes[body..body + 2].try_into().unwrap_or_default());
-            channels =
-                u16::from_le_bytes(bytes[body + 2..body + 4].try_into().unwrap_or_default())
-                    as usize;
+            channels = u16::from_le_bytes(bytes[body + 2..body + 4].try_into().unwrap_or_default())
+                as usize;
             rate = u32::from_le_bytes(bytes[body + 4..body + 8].try_into().unwrap_or_default());
             bits = u16::from_le_bytes(bytes[body + 14..body + 16].try_into().unwrap_or_default());
         } else if id == b"data" {
@@ -227,7 +240,10 @@ pub(crate) fn decode_wav(bytes: &[u8]) -> Result<(Vec<f32>, u32, usize), String>
                     .chunks_exact(4)
                     .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
                     .collect(),
-                (1, 8) => data.iter().map(|b| (f32::from(*b) - 128.0) / 128.0).collect(),
+                (1, 8) => data
+                    .iter()
+                    .map(|b| (f32::from(*b) - 128.0) / 128.0)
+                    .collect(),
                 _ => return Err(format!("unsupported WAV format {format} at {bits} bits")),
             };
             return Ok((samples, rate, channels));
@@ -349,7 +365,6 @@ impl Transport {
             None => true,
         }
     }
-
 }
 
 #[cfg(test)]
@@ -394,14 +409,24 @@ mod tests {
         wav.extend_from_slice(&pcm);
 
         t.start(&wav).expect("start playback");
-        assert!((t.duration() - 1.0).abs() < 0.01, "duration {}", t.duration());
+        assert!(
+            (t.duration() - 1.0).abs() < 0.01,
+            "duration {}",
+            t.duration()
+        );
 
         std::thread::sleep(std::time::Duration::from_millis(300));
         let played = t.position();
         println!("after 300 ms the device had consumed {played:.3} s");
-        assert!(played > 0.15, "the device is not pulling samples (position {played:.3})");
-        assert!(played < 0.60, "playback ran too fast - the rate conversion disagrees with \
-                                the device ({played:.3} s in 300 ms)");
+        assert!(
+            played > 0.15,
+            "the device is not pulling samples (position {played:.3})"
+        );
+        assert!(
+            played < 0.60,
+            "playback ran too fast - the rate conversion disagrees with \
+                                the device ({played:.3} s in 300 ms)"
+        );
 
         // Pause must freeze the cursor, not merely mute it.
         t.set_paused(true);
@@ -417,7 +442,10 @@ mod tests {
         t.set_paused(false);
         t.seek(0.8);
         let after_seek = t.position();
-        assert!((after_seek - 0.8).abs() < 0.05, "seek landed at {after_seek:.3}");
+        assert!(
+            (after_seek - 0.8).abs() < 0.05,
+            "seek landed at {after_seek:.3}"
+        );
         t.stop();
     }
 
@@ -449,7 +477,10 @@ mod tests {
     fn decodes_16_bit_pcm_with_its_rate_and_channels() {
         let (s, rate, ch) = decode_wav(&wav16(24000, 1, 100)).expect("decode");
         assert_eq!((rate, ch, s.len()), (24000, 1, 100));
-        assert!(s.iter().all(|v| (-1.0..=1.0).contains(v)), "samples must be normalised");
+        assert!(
+            s.iter().all(|v| (-1.0..=1.0).contains(v)),
+            "samples must be normalised"
+        );
     }
 
     #[test]
@@ -464,7 +495,11 @@ mod tests {
     fn resampling_preserves_duration_and_maps_mono_to_every_channel() {
         let mono: Vec<f32> = (0..240).map(|i| (i as f32 / 240.0) * 2.0 - 1.0).collect();
         let out = resample(&mono, 24000, 1, 48000, 2);
-        assert_eq!(out.len(), 480 * 2, "duration must be preserved across the rate change");
+        assert_eq!(
+            out.len(),
+            480 * 2,
+            "duration must be preserved across the rate change"
+        );
         // Mono feeds both channels identically.
         for f in 0..480 {
             assert!((out[f * 2] - out[f * 2 + 1]).abs() < 1e-6);
@@ -502,12 +537,19 @@ mod tests {
         buf.fill(1.0);
         fill(&mut buf, &slot);
         assert!(buf.iter().all(|v| *v == 0.0), "paused must be silent");
-        assert_eq!(p.cursor.load(Ordering::Relaxed), 0, "paused must not advance");
+        assert_eq!(
+            p.cursor.load(Ordering::Relaxed),
+            0,
+            "paused must not advance"
+        );
 
         p.paused.store(false, Ordering::Relaxed);
         buf.fill(0.0);
         fill(&mut buf, &slot);
-        assert!(buf.iter().all(|v| (*v - 0.5).abs() < 1e-6), "playing must emit the samples");
+        assert!(
+            buf.iter().all(|v| (*v - 0.5).abs() < 1e-6),
+            "playing must emit the samples"
+        );
         assert_eq!(p.cursor.load(Ordering::Relaxed), 4);
 
         buf.fill(1.0);

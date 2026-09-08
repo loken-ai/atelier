@@ -120,7 +120,11 @@ pub fn section_panel<R>(ui: &mut Ui, caps: &str, add: impl FnOnce(&mut Ui) -> R)
 
 /// Lays `add` out with `SECTION_PADDING` around it, then paints `shape` of
 /// the rect it took underneath it.
-fn on_shape<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R, shape: impl FnOnce(Rect) -> Shape) -> R {
+fn on_shape<R>(
+    ui: &mut Ui,
+    add: impl FnOnce(&mut Ui) -> R,
+    shape: impl FnOnce(Rect) -> Shape,
+) -> R {
     let under = ui.painter().add(Shape::Noop);
     let inner = egui::Frame::NONE
         .inner_margin(SECTION_PADDING as i8)
@@ -134,7 +138,9 @@ fn on_shape<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R, shape: impl FnOnce(R
 
 /// Content sunk in a well.
 pub fn well<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
-    on_shape(ui, add, |rect| surface::recess_shape(rect, surface::WELL_RADIUS))
+    on_shape(ui, add, |rect| {
+        surface::recess_shape(rect, surface::WELL_RADIUS)
+    })
 }
 
 /// Content behind the glass of a screen.
@@ -144,7 +150,9 @@ pub fn screen_well<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
 
 /// Content on a raised plate.
 pub fn on_plate<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
-    on_shape(ui, add, |rect| surface::plate_shape(rect, surface::PLATE_RADIUS))
+    on_shape(ui, add, |rect| {
+        surface::plate_shape(rect, surface::PLATE_RADIUS)
+    })
 }
 
 /// A chrome row: raised, bordered, one pinned height, its content centred
@@ -218,9 +226,14 @@ pub fn tab_bar(ui: &mut Ui, selected: usize, labels: &[&str]) -> Option<usize> {
         ui.add_space(TAB_LEAD);
         for (i, label) in labels.iter().enumerate() {
             let is_selected = i == selected;
-            let ink = if is_selected { theme::accent() } else { theme::ink_dim() };
+            let ink = if is_selected {
+                theme::accent()
+            } else {
+                theme::ink_dim()
+            };
             let response = ui.add(
-                egui::Button::new(RichText::new(*label).size(text::SECTION_PT).color(ink)).frame(false),
+                egui::Button::new(RichText::new(*label).size(text::SECTION_PT).color(ink))
+                    .frame(false),
             );
             if is_selected {
                 let r = response.rect;
@@ -333,7 +346,11 @@ pub fn close_button(ui: &mut Ui, size: f32) -> Response {
     if hovered {
         painter.rect_filled(rect, theme::RADIUS, theme::raised());
     }
-    let ink = if hovered { theme::error() } else { theme::ink_dim() };
+    let ink = if hovered {
+        theme::error()
+    } else {
+        theme::ink_dim()
+    };
     let stroke = Stroke::new(CLOSE_STROKE_W, ink);
     let r = rect.shrink(CLOSE_PAD);
     painter.line_segment([r.left_top(), r.right_bottom()], stroke);
