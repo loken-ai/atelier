@@ -258,7 +258,8 @@ pub fn visuals_for(p: &Palette) -> egui::Visuals {
     let wash = tinted(p.accent, ACTIVE_WASH_A);
     v.widgets.active = wv(wash, wash, p.accent, p.ink);
     v.widgets.open = wv(p.raised, p.raised, p.accent, p.ink);
-    v.striped = true;
+    // A form is not zebra-striped: the label column and the rules carry it.
+    v.striped = false;
     v.slider_trailing_fill = true;
     v
 }

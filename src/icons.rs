@@ -49,6 +49,12 @@ pub enum Icon {
     Trash,
     User,
     Warning,
+    Expand,
+    Minus,
+    Pause,
+    Plus,
+    StepBack,
+    StepForward,
 }
 
 impl Icon {
@@ -85,6 +91,12 @@ impl Icon {
             Self::Trash    => include_bytes!("icons/trash.svg"),
             Self::User     => include_bytes!("icons/user.svg"),
             Self::Warning  => include_bytes!("icons/warning.svg"),
+            Self::Expand => include_bytes!("icons/expand.svg"),
+            Self::Minus => include_bytes!("icons/minus.svg"),
+            Self::Pause => include_bytes!("icons/pause.svg"),
+            Self::Plus => include_bytes!("icons/plus.svg"),
+            Self::StepBack => include_bytes!("icons/step-back.svg"),
+            Self::StepForward => include_bytes!("icons/step-forward.svg"),
         }
     }
 
@@ -123,6 +135,12 @@ impl Icon {
             Self::Trash    => "bytes://icons/trash.svg",
             Self::User     => "bytes://icons/user.svg",
             Self::Warning  => "bytes://icons/warning.svg",
+            Self::Expand => "bytes://icons/expand.svg",
+            Self::Minus => "bytes://icons/minus.svg",
+            Self::Pause => "bytes://icons/pause.svg",
+            Self::Plus => "bytes://icons/plus.svg",
+            Self::StepBack => "bytes://icons/step-back.svg",
+            Self::StepForward => "bytes://icons/step-forward.svg",
         }
     }
 
@@ -250,6 +268,12 @@ mod tests {
         (Icon::Trash,    "trash"),
         (Icon::User,     "user"),
         (Icon::Warning,  "warning"),
+        (Icon::Expand, "expand"),
+        (Icon::Minus, "minus"),
+        (Icon::Pause, "pause"),
+        (Icon::Plus, "plus"),
+        (Icon::StepBack, "step-back"),
+        (Icon::StepForward, "step-forward"),
     ];
 
     #[test]
@@ -315,6 +339,12 @@ mod tests {
             Icon::Trash    => "trash",
             Icon::User     => "user",
             Icon::Warning  => "warning",
+            Icon::Expand => "expand",
+            Icon::Minus => "minus",
+            Icon::Pause => "pause",
+            Icon::Plus => "plus",
+            Icon::StepBack => "step-back",
+            Icon::StepForward => "step-forward",
         }
     }
 

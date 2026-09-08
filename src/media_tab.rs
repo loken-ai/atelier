@@ -1,11 +1,10 @@
-//! Media Studio tab — generate every media modality from the GUI.
+//! Media Studio tab: generate every media modality from the GUI.
 //!
 //! One dedicated tab that fans out to the server's `/v1/*` generation
 //! endpoints: images, music, sound effects, MIDI, video, and speech.
-//! The tab shows a segmented kind picker, a shared prompt box, a params
-//! form containing only the widgets relevant to the selected kind, a
-//! Generate button (disabled while a request is in flight), a progress /
-//! status area, and a results area.
+//! A chrome row, a tab bar of kinds, the prompt in a panel, the parameters
+//! of the selected kind grouped in section panels, Generate, a status line,
+//! and the results and the earlier ones each behind the glass of a screen.
 //!
 //! Results are surfaced by how they can be consumed under the GUI's
 //! no-new-crates constraint (no in-process audio/video codec):
@@ -21,7 +20,39 @@ use eframe::egui::{self, RichText};
 
 use crate::icons::Icon;
 use crate::state::{ChatDialogResult, MediaAudioSlot, MediaKind, MediaState, VideoFormat, VideoSampler};
-use crate::theme;
+use crate::theme::{self, text};
+use crate::ui::{surface, widgets};
+
+/// Point size of the icons in the chrome row and beside a control.
+const ICON_PT: f32 = 14.0;
+const ICON_PT_SMALL: f32 = 11.0;
+/// Rows of the prompt box.
+const PROMPT_ROWS: usize = 3;
+/// Width of the picker of the model that rewrites a prompt.
+const ENHANCE_MODEL_W: f32 = 150.0;
+/// Width of a fixed text field in a form.
+const FIELD_W: f32 = 220.0;
+/// The Generate and Cancel buttons.
+const GENERATE_SIZE: egui::Vec2 = egui::Vec2::new(140.0, 34.0);
+const CANCEL_SIZE: egui::Vec2 = egui::Vec2::new(90.0, 34.0);
+/// Longest side of a result image, and of the inline video frame.
+const RESULT_MAX_PX: f32 = 360.0;
+const VIDEO_INLINE_MAX_PX: f32 = 420.0;
+/// The hover bar over a result image: its inset, height, gap between halves.
+const OVERLAY_PAD: f32 = 6.0;
+const OVERLAY_BAR_H: f32 = 24.0;
+const OVERLAY_GAP: f32 = 6.0;
+/// The scrim behind the hover bar over a picture, which is not a surface of
+/// the palette: it darkens whatever picture is under it.
+const OVERLAY_SCRIM: egui::Color32 = egui::Color32::from_black_alpha(170);
+const OVERLAY_BUTTON_SCRIM: egui::Color32 = egui::Color32::from_black_alpha(120);
+/// Period of the indeterminate sweep, in seconds, and its repaint interval.
+const SWEEP_PERIOD_S: f32 = 3.0;
+const SWEEP_REPAINT_MS: u64 = 100;
+/// Repaint interval while audio plays, so the position moves.
+const AUDIO_REPAINT_MS: u64 = 200;
+/// Characters of a history entry's prompt shown in its tooltip.
+const HISTORY_LABEL_CHARS: usize = 40;
 
 /// Signals raised by the Media Studio render pass that the app layer
 /// must act on (they need the HTTP client / tokio runtime, which the
@@ -64,74 +95,60 @@ pub fn render(
     // line reflects the write result this frame.
     crate::dialog::drain_pending_dialog(media);
 
-    let accent = theme::accent();
-
     egui::ScrollArea::vertical()
         .auto_shrink([false, false])
         .show(ui, |ui| {
-            ui.add_space(8.0);
-
-            // ── Header ────────────────────────────────────────────────
-            ui.horizontal(|ui| {
-                Icon::Bolt.show(ui, 20.0, accent);
-                ui.add_space(6.0);
-                ui.label(RichText::new("Media Studio").size(20.0).strong().color(accent));
+            widgets::chrome_row(ui, |ui| {
+                Icon::Bolt.show(ui, ICON_PT, theme::ink());
+                ui.label(text::title("Media Studio"));
+                ui.add_space(widgets::GAP_WIDGETS);
+                widgets::caption_row(ui, "Generate images, music, sound effects, MIDI, video, and speech.");
             });
-            ui.label(
-                RichText::new("Generate images, music, sound effects, MIDI, video, and speech.")
-                    .size(12.0)
-                    .color(theme::ink_dim()),
-            );
-            ui.add_space(10.0);
+            ui.add_space(widgets::GAP_WIDGETS);
 
-            // ── Kind picker (segmented) ───────────────────────────────
-            ui.horizontal_wrapped(|ui| {
-                for kind in MediaKind::ALL {
-                    let selected = media.kind == kind;
-                    let btn = egui::Button::new(
-                        RichText::new(kind.label())
-                            .size(13.0)
-                            .color(if selected { egui::Color32::WHITE } else { theme::ink() }),
-                    )
-                    .fill(if selected { accent } else { theme::raised() })
-                    .corner_radius(theme::RADIUS)
-                    .min_size(egui::vec2(72.0, 30.0));
-                    if ui.add(btn).on_hover_text(kind.tip()).clicked() {
-                        media.set_kind(kind);
-                    }
-                }
-            });
-            ui.add_space(2.0);
-            ui.label(RichText::new(media.kind.tip()).size(11.0).color(theme::ink_dim()));
-            ui.add_space(10.0);
+            // The kinds, as tabs; the selected one is underlined.
+            let labels: Vec<&str> = MediaKind::ALL.iter().map(|k| k.label()).collect();
+            let selected = MediaKind::ALL.iter().position(|k| *k == media.kind).unwrap_or(0);
+            if let Some(i) = widgets::tab_bar(ui, selected, &labels) {
+                media.set_kind(MediaKind::ALL[i]);
+            }
+            widgets::caption_row(ui, media.kind.tip());
+            ui.add_space(widgets::GAP_WIDGETS);
 
-            // ── Prompt ──
+            // The prompt, in its own panel, on a well.
             if !matches!(media.kind, MediaKind::Transcribe | MediaKind::Separate) {
-                let prompt_label = match media.kind {
-                    MediaKind::Speech => "Text",
-                    _ => "Prompt",
+                let prompt_title = match media.kind {
+                    MediaKind::Speech => "TEXT",
+                    _ => "PROMPT",
                 };
-                ui.label(RichText::new(prompt_label).size(12.0).strong().color(theme::ink()));
-                ui.add_space(3.0);
-                let hint = media.kind.prompt_hint();
-                ui.add(
-                    egui::TextEdit::multiline(&mut media.prompt)
-                        .desired_rows(3)
-                        .desired_width(f32::INFINITY)
-                        .hint_text(hint),
-                );
-                // Prompt enhancer: rewrite the prompt with a local LLM tuned to
-                // this media kind. Undo restores the pre-enhancement text.
-                if !matches!(media.kind, MediaKind::Transcribe | MediaKind::Separate) {
-                    ui.add_space(4.0);
+                widgets::section_panel(ui, prompt_title, |ui| {
+                    let hint = media.kind.prompt_hint();
+                    widgets::well(ui, |ui| {
+                        ui.add(
+                            egui::TextEdit::multiline(&mut media.prompt)
+                                .frame(egui::Frame::NONE)
+                                .desired_rows(PROMPT_ROWS)
+                                .desired_width(f32::INFINITY)
+                                .hint_text(hint),
+                        );
+                    });
+                    // The enhancer rewrites the prompt with a local model tuned to this
+                    // kind; Undo restores the text it replaced.
+                    ui.add_space(widgets::GAP_LABEL);
                     ui.horizontal(|ui| {
                         if media.enhancing_prompt {
-                            ui.spinner();
-                            ui.label(RichText::new("Enhancing prompt…").size(11.5).color(theme::ink_dim()));
+                            widgets::lamp_inline(ui, true, theme::accent());
+                            ui.label(text::label("ENHANCING"));
                         } else {
                             let can_enhance = !media.prompt.trim().is_empty() && !media.is_generating;
                             if ui
-                                .add_enabled(can_enhance, egui::Button::new(RichText::new("✨ Enhance").size(11.5)))
+                                .add_enabled(
+                                    can_enhance,
+                                    egui::Button::image_and_text(
+                                        Icon::Bolt.image(ICON_PT_SMALL, theme::ink()),
+                                        text::note("Enhance"),
+                                    ),
+                                )
                                 .on_hover_text(
                                     "Rewrite the prompt with a local model: adds concrete detail, \
                                      style and quality cues suited to this media type.",
@@ -140,9 +157,8 @@ pub fn render(
                             {
                                 out.enhance_clicked = true;
                             }
-                            // Which model does the rewriting. Auto walks the candidate
-                            // list and validates each reply; an explicit pick is used
-                            // as-is (still validated, so a weak choice reports why).
+                            // Which model rewrites. Auto walks the candidates and validates
+                            // each reply; an explicit pick is used as-is.
                             let chat_models: Vec<&str> = models
                                 .iter()
                                 .filter(|m| m.has_capability("chat"))
@@ -154,8 +170,8 @@ pub fn render(
                                     .clone()
                                     .unwrap_or_else(|| "Auto".to_string());
                                 egui::ComboBox::from_id_salt("enhance_model")
-                                    .selected_text(RichText::new(short_model_label(&current)).size(11.0))
-                                    .width(150.0)
+                                    .selected_text(text::note(&short_model_label(&current)))
+                                    .width(ENHANCE_MODEL_W)
                                     .show_ui(ui, |ui| {
                                         if ui
                                             .selectable_label(media.enhance_model.is_none(), "Auto")
@@ -179,7 +195,7 @@ pub fn render(
                             }
                             if media.prompt_before_enhance.is_some()
                                 && ui
-                                    .add(egui::Button::new(RichText::new("↩ Undo").size(11.5)))
+                                    .add(egui::Button::new(text::note("Undo")).frame(false))
                                     .on_hover_text("Restore the prompt as it was before the enhancement.")
                                     .clicked()
                             {
@@ -189,20 +205,13 @@ pub fn render(
                             }
                         }
                     });
-                }
-                ui.add_space(10.0);
+                });
+                ui.add_space(widgets::GAP_WIDGETS);
             }
 
-            // ── Params (only the relevant widgets for this kind) ──────
-            egui::Frame::group(ui.style())
-                .fill(theme::panel())
-                .corner_radius(theme::RADIUS)
-                .inner_margin(egui::Margin::symmetric(14, 12))
-                .show(ui, |ui| {
-                    ui.set_width(ui.available_width());
-                    render_params(ui, media, &mut out, models, loras);
-                });
-            ui.add_space(12.0);
+            // The parameters of this kind, grouped in section panels.
+            render_params(ui, media, &mut out, models, loras);
+            ui.add_space(widgets::GAP_WIDGETS);
 
             // ── Generate button + busy state ──────────────────────────
             let inputs_ready = match media.kind {
@@ -216,27 +225,23 @@ pub fn render(
             let can_generate = !media.is_generating && inputs_ready;
             ui.horizontal(|ui| {
                 let gen_btn = egui::Button::image_and_text(
-                    Icon::Bolt.image(15.0, egui::Color32::WHITE),
-                    RichText::new(if media.is_generating { "Generating…" } else { "Generate" })
-                        .size(14.0)
-                        .strong()
-                        .color(egui::Color32::WHITE),
+                    Icon::Bolt.image(ICON_PT, theme::on_accent()),
+                    text::value(if media.is_generating { "Generating..." } else { "Generate" })
+                        .color(theme::on_accent()),
                 )
-                .fill(accent)
-                .corner_radius(theme::RADIUS)
-                .min_size(egui::vec2(140.0, 34.0));
+                .fill(theme::accent())
+                .min_size(GENERATE_SIZE);
                 if ui.add_enabled(can_generate, gen_btn).clicked() {
                     out.generate_clicked = true;
                 }
                 if media.is_generating {
-                    ui.add_space(8.0);
+                    ui.add_space(widgets::GAP_WIDGETS);
                     let cancel_btn = egui::Button::image_and_text(
-                        Icon::Cross.image(13.0, egui::Color32::WHITE),
-                        RichText::new("Cancel").size(13.0).color(egui::Color32::WHITE),
+                        Icon::Cross.image(ICON_PT_SMALL, theme::on_accent()),
+                        text::value("Cancel").color(theme::on_accent()),
                     )
                     .fill(theme::error())
-                    .corner_radius(theme::RADIUS)
-                    .min_size(egui::vec2(90.0, 34.0));
+                    .min_size(CANCEL_SIZE);
                     if ui
                         .add(cancel_btn)
                         .on_hover_text(
@@ -251,8 +256,8 @@ pub fn render(
                         // dropping the connection does not.
                         media.pending_cancel = media.cancel_generation();
                     }
-                    ui.add_space(8.0);
-                    ui.spinner();
+                    ui.add_space(widgets::GAP_WIDGETS);
+                    widgets::lamp_inline(ui, true, theme::accent());
                 }
                 // What this render is expected to cost, next to the button that starts it.
                 // Video is the one kind where the answer can be an hour, which is not
@@ -262,12 +267,8 @@ pub fn render(
                 // reads as "instant" for precisely the settings that are not.
                 if media.kind == MediaKind::Video && !media.is_generating {
                     if let Some(seconds) = media.video_estimate {
-                        ui.add_space(10.0);
-                        ui.label(
-                            RichText::new(format!("{} of denoising", format_estimate(seconds)))
-                                .size(12.0)
-                                .color(theme::ink_dim()),
-                        )
+                        ui.add_space(widgets::GAP_WIDGETS);
+                        ui.label(text::readout(&format!("{} of denoising", format_estimate(seconds))))
                         .on_hover_text(
                             "Expected time in the denoising loop for these settings. \
                              Loading the checkpoint and decoding the frames are on top \
@@ -277,30 +278,23 @@ pub fn render(
                     }
                 }
             });
-            ui.add_space(10.0);
+            ui.add_space(widgets::GAP_WIDGETS);
 
-            // ── Progress / status ─────────────────────────────────────
             render_status(ui, media);
 
-            // ── Error banner ──────────────────────────────────────────
             if let Some(err) = media.error.clone() {
-                ui.add_space(6.0);
-                egui::Frame::group(ui.style())
-                    .fill(theme::tinted(theme::error(), 30))
-                    .corner_radius(theme::RADIUS)
-                    .show(ui, |ui| {
-                        ui.horizontal(|ui| {
-                            Icon::Warning.show(ui, 14.0, theme::error());
-                            ui.add_space(4.0);
-                            ui.label(RichText::new(err).size(12.0).color(theme::error()));
-                        });
+                ui.add_space(widgets::GAP_LABEL);
+                widgets::panel_frame(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        widgets::lamp_inline(ui, true, theme::error());
+                        ui.label(text::note(&err).color(theme::error()));
                     });
+                });
             }
 
-            // ── Results ───────────────────────────────────────────────
             render_results(ui, media, image_textures, player, video);
 
-            ui.add_space(20.0);
+            ui.add_space(widgets::GAP_SECTIONS);
         });
 
     // Drawn LAST and against the context, not the scroll area, so it covers the tab
@@ -329,8 +323,10 @@ fn format_estimate(seconds: f32) -> String {
     }
 }
 
-/// Render the parameter widgets for the currently-selected kind. Only
-/// the knobs the endpoint honors for that kind are shown.
+/// The parameters of the selected kind, grouped in section panels; the
+/// kinds with many sit in two columns. Each control carries its description
+/// on hover, and each section ends with the one sentence that names its
+/// trade-off. A control the selected model ignores is not shown.
 fn render_params(
     ui: &mut egui::Ui,
     media: &mut MediaState,
@@ -340,324 +336,304 @@ fn render_params(
 ) {
     match media.kind {
         MediaKind::Image => {
-            egui::Grid::new("media_params_image")
-                .num_columns(2)
-                .min_col_width(120.0)
-                .spacing([16.0, 7.0])
-                .show(ui, |ui| {
-                    ui.label("Model");
-                    // Dynamic: list every image-gen model the server reports (by family),
-                    // so new image models appear without a GUI change. Default the selection
-                    // to the first available if the current pick isn't in the list.
-                    let image_models: Vec<&str> =
-                        models.iter().filter(|m| m.is_image_gen()).map(|m| m.name.as_str()).collect();
-                    if !image_models.is_empty() && !image_models.contains(&media.image.model.as_str()) {
-                        media.image.model = image_models[0].to_string();
+            // Every image-gen model the server reports; the selection falls back to
+            // the first when the remembered one is gone.
+            let image_models: Vec<&str> =
+                models.iter().filter(|m| m.is_image_gen()).map(|m| m.name.as_str()).collect();
+            if !image_models.is_empty() && !image_models.contains(&media.image.model.as_str()) {
+                media.image.model = image_models[0].to_string();
+            }
+            // A newly picked model brings its own recommended settings: a distilled
+            // model is built for 9 steps at guidance 5, a base model needs 25 at 7.
+            if media.image.applied_defaults_for.as_deref() != Some(media.image.model.as_str()) {
+                if let Some(d) = models
+                    .iter()
+                    .find(|m| m.name == media.image.model)
+                    .and_then(|m| m.defaults.as_ref())
+                {
+                    if let Some(v) = d.get("steps").and_then(serde_json::Value::as_u64) {
+                        media.image.steps = v as u32;
                     }
-                    // Adopt the newly-picked model's OWN recommended settings.
-                    //
-                    // Every family wants something different - a distilled model is
-                    // built for 9 steps at guidance 5, a base model needs 25 at 7 - and
-                    // the server advertises each one's values. Keeping the previous
-                    // model's numbers meant switching from a turbo model to SDXL ran it
-                    // at 9 steps, which is not "a bit fast": the denoising stops less
-                    // than half way, so the picture arrives grainy AND with washed-out
-                    // colour, and it reads as the model being bad rather than as a
-                    // setting that came along for the ride.
-                    if media.image.applied_defaults_for.as_deref() != Some(media.image.model.as_str()) {
-                        if let Some(d) = models
-                            .iter()
-                            .find(|m| m.name == media.image.model)
-                            .and_then(|m| m.defaults.as_ref())
-                        {
-                            if let Some(v) = d.get("steps").and_then(serde_json::Value::as_u64) {
-                                media.image.steps = v as u32;
-                            }
-                            if let Some(v) = d.get("cfg").and_then(serde_json::Value::as_f64) {
-                                media.image.guidance = v as f32;
-                            }
-                            if let Some(v) = d.get("size").and_then(serde_json::Value::as_u64) {
-                                media.image.width = v as u32;
-                                media.image.height = v as u32;
-                            }
-                            media.image.applied_defaults_for = Some(media.image.model.clone());
-                        }
+                    if let Some(v) = d.get("cfg").and_then(serde_json::Value::as_f64) {
+                        media.image.guidance = v as f32;
                     }
-                    egui::ComboBox::from_id_salt("media_image_model")
-                        .selected_text(if media.image.model.is_empty() {
-                            "(no image model)".to_string()
-                        } else {
-                            media.image.model.clone()
-                        })
-                        .show_ui(ui, |ui| {
-                            if image_models.is_empty() {
-                                ui.label("No image-gen model available");
-                            }
-                            for name in &image_models {
-                                ui.selectable_value(&mut media.image.model, name.to_string(), *name);
-                            }
-                        });
-                    ui.end_row();
-                    desc_row(ui, "Which image model renders: each has its own style, speed and \
-                         ideal step count (turbo models need few steps, base models more).");
-
-                    shape_row(ui, &mut media.image.width, &mut media.image.height);
-                    size_row(ui, &mut media.image.width, &mut media.image.height, 64..=2048);
-                    file_format_row(ui, &mut media.image.file_format);
-                    slider_row(ui, "Steps", egui::Slider::new(&mut media.image.steps, 1..=200))
-                        ;
-                    desc_row(ui, "Denoising iterations: more = finer detail up to the model's \
-                             sweet spot, with time growing linearly. Turbo/distilled models \
-                             are built for 4-9 steps; base models like 20-50.");
-                    slider_row(ui, "Count", egui::Slider::new(&mut media.image.n, 1..=8))
-                        ;
-                    desc_row(ui, "Number of variations rendered in one run (seed+1 each).");
-                    slider_row(
-                        ui,
-                        "Guidance",
-                        egui::Slider::new(&mut media.image.guidance, 0.0..=30.0),
-                    )
-                    ;
-                    desc_row(ui, "Prompt adherence (CFG): higher follows the text more literally \
-                         but can over-saturate and distort; lower is freer and more \
-                         natural. 0 = the model's own recommended value (best default).");
-
-                    // Adapters and solver choice are honoured by the SDXL family only.
-                    // Showing them for a model that ignores them would be a knob that
-                    // silently does nothing - the failure this whole feature exists to
-                    // avoid - so they appear when the selected model can honour them.
-                    if family_takes_loras(models, &media.image.model) {
-                        let fam = model_family_of(models, &media.image.model);
-                        lora_rows(ui, &mut media.image.loras, loras, &fam);
+                    if let Some(v) = d.get("size").and_then(serde_json::Value::as_u64) {
+                        media.image.width = v as u32;
+                        media.image.height = v as u32;
                     }
-                    region_rows(ui, &mut media.image.regions);
-                    // Structural conditioning is wired for one family; showing the
-                    // picker elsewhere would be a control that silently does nothing.
-                    if model_family_of(models, &media.image.model) == "sdxl" {
-                        audio_picker_row(
-                            ui,
-                            media,
-                            "Pose",
-                            MediaAudioSlot::ImageControl,
-                            "Optional. A pose or edge image that says WHERE things go. A \
-                             prompt cannot - which is why extra limbs survive more steps \
-                             and more guidance. At strength 0 the render is exactly what \
-                             it would have been without one.",
-                        );
-                        if media.image.control.is_some() {
-                            slider_row(
-                                ui,
-                                "Pose strength",
-                                egui::Slider::new(&mut media.image.control_scale, 0.0..=2.0)
-                                    .fixed_decimals(2),
+                    media.image.applied_defaults_for = Some(media.image.model.clone());
+                }
+            }
+            let family = model_family_of(models, &media.image.model);
+            let takes_loras = family_takes_loras(models, &media.image.model);
+            let is_sdxl = family == "sdxl";
+            ui.columns(2, |cols| {
+                let ui = &mut cols[0];
+                widgets::section_panel(ui, "MODEL", |ui| {
+                    param_grid(ui, "media_params_image_model", |ui| {
+                        param_label(ui, "MODEL");
+                        egui::ComboBox::from_id_salt("media_image_model")
+                            .selected_text(if media.image.model.is_empty() {
+                                "(no image model)".to_string()
+                            } else {
+                                media.image.model.clone()
+                            })
+                            .show_ui(ui, |ui| {
+                                if image_models.is_empty() {
+                                    ui.label("No image-gen model available");
+                                }
+                                for name in &image_models {
+                                    ui.selectable_value(&mut media.image.model, name.to_string(), *name);
+                                }
+                            })
+                            .response
+                            .on_hover_text(
+                                "Which image model renders: each has its own style, speed and \
+                                 ideal step count (turbo models need few steps, base models more).",
                             );
-                        }
-                    }
-                    // Solver choice stays SDXL-only: the other families do not expose a
-                    // selectable sampler, so offering it would be the same dead knob.
-                    if models
-                        .iter()
-                        .find(|m| m.name == media.image.model)
-                        .is_some_and(|m| m.family == "sdxl")
-                    {
-                        solver_rows(ui, &mut media.image.sampler, &mut media.image.scheduler);
-                    }
-
-                    ui.label("Negative");
-                    ui.add(
-                        egui::TextEdit::multiline(&mut media.image.negative_prompt)
-                            .desired_rows(2)
-                            .desired_width(f32::INFINITY)
-                            .hint_text("watermark, extra fingers, blurry..."),
-                    );
-                    ui.end_row();
-                    desc_row(ui, "What the render should steer AWAY from. This is how you \
-                         remove what a prompt cannot name  -  a watermark, a warped hand. \
-                         Empty keeps the model family's own default.");
-
-                    seed_row(ui, media);
+                        ui.end_row();
+                        file_format_row(ui, &mut media.image.file_format);
+                    });
+                    widgets::caption_row(ui, "Picking a model applies its own recommended steps, guidance and size.");
                 });
-        }
-        MediaKind::Music => {
-            egui::Grid::new("media_params_music")
-                .num_columns(2)
-                .min_col_width(120.0)
-                .spacing([16.0, 7.0])
-                .show(ui, |ui| {
-                    const DIT_MODELS: &[(&str, &str, u32)] = &[
-                        ("turbo", "Turbo (fast, 8-step)", 27),
-                        ("sft", "SFT 2B (quality, ~50 steps)", 50),
-                        ("base", "Base 2B (~50 steps)", 50),
-                        ("xl-turbo", "XL Turbo 4B", 27),
-                        ("xl-sft", "XL SFT 4B (best, ~50 steps)", 50),
-                        ("xl-base", "XL Base 4B (~50 steps)", 50),
-                    ];
-                    const REC_CFG: &[(&str, f32)] = &[
-                        ("turbo", 1.0),
-                        ("sft", 4.5),
-                        ("base", 4.5),
-                        ("xl-turbo", 1.0),
-                        ("xl-sft", 4.5),
-                        ("xl-base", 4.5),
-                    ];
-                    section_row(ui, "COMPOSITION");
-                    ui.label("Model");
-                    let current_label = DIT_MODELS
-                        .iter()
-                        .find(|(id, _, _)| *id == media.music.dit_model)
-                        .map(|(_, l, _)| *l)
-                        .unwrap_or("Turbo (fast, 8-step)");
-                    egui::ComboBox::from_id_salt("media_music_dit")
-                        .selected_text(current_label)
-                        .show_ui(ui, |ui| {
-                            for (id, label, rec_steps) in DIT_MODELS {
-                                if ui
-                                    .selectable_label(media.music.dit_model == *id, *label)
-                                    .clicked()
-                                {
-                                    media.music.dit_model = (*id).to_string();
-                                    // Follow the checkpoint's recommended step count + CFG.
-                                    media.music.steps = *rec_steps;
-                                    if let Some((_, c)) =
-                                        REC_CFG.iter().find(|(mid, _)| mid == id)
-                                    {
-                                        media.music.cfg = *c;
-                                    }
+                ui.add_space(widgets::GAP_WIDGETS);
+                widgets::section_panel(ui, "SHAPE AND SIZE", |ui| {
+                    param_grid(ui, "media_params_image_shape", |ui| {
+                        shape_row(ui, &mut media.image.width, &mut media.image.height);
+                        size_row(ui, &mut media.image.width, &mut media.image.height, 64..=2048);
+                    });
+                    widgets::caption_row(ui, "The named shapes are the buckets these models were trained on; another ratio costs some composition.");
+                });
+                ui.add_space(widgets::GAP_WIDGETS);
+                widgets::section_panel(ui, "SAMPLING", |ui| {
+                    param_grid(ui, "media_params_image_sampling", |ui| {
+                        slider_row(ui, "STEPS", &mut media.image.steps, 1..=200, SliderOpts::default(),
+                            "Denoising iterations: more is finer detail up to the model's sweet \
+                             spot, with time growing linearly.");
+                        slider_row(ui, "COUNT", &mut media.image.n, 1..=8, SliderOpts::default(),
+                            "Number of variations rendered in one run (seed+1 each).");
+                        // The solver is selectable for the SDXL family only.
+                        if is_sdxl {
+                            solver_rows(ui, &mut media.image.sampler, &mut media.image.scheduler);
+                        }
+                    });
+                    widgets::caption_row(ui, "Turbo and distilled models are built for 4-9 steps; base models like 20-50.");
+                });
+
+                let ui = &mut cols[1];
+                widgets::section_panel(ui, "GUIDANCE", |ui| {
+                    param_grid(ui, "media_params_image_guidance", |ui| {
+                        slider_row(ui, "GUIDANCE", &mut media.image.guidance, 0.0..=30.0, SliderOpts { decimals: 2, ..Default::default() },
+                            "Prompt adherence (CFG): higher follows the text more literally but \
+                             can over-saturate and distort; lower is freer. 0 is the model's own \
+                             recommended value.");
+                        param_label(ui, "NEGATIVE");
+                        ui.add(
+                            egui::TextEdit::multiline(&mut media.image.negative_prompt)
+                                .desired_rows(2)
+                                .desired_width(f32::INFINITY)
+                                .hint_text("watermark, extra fingers, blurry..."),
+                        )
+                        .on_hover_text(
+                            "What the render should steer away from: a watermark, a warped hand. \
+                             Empty keeps the model family's own default.",
+                        );
+                        ui.end_row();
+                    });
+                    widgets::caption_row(ui, "The negative prompt removes what a prompt cannot name.");
+                });
+                // Adapters and pose are honoured by some families only; a knob the
+                // model ignores is not shown.
+                if takes_loras || is_sdxl {
+                    ui.add_space(widgets::GAP_WIDGETS);
+                    widgets::section_panel(ui, "ADAPTERS", |ui| {
+                        param_grid(ui, "media_params_image_adapters", |ui| {
+                            if takes_loras {
+                                lora_rows(ui, &mut media.image.loras, loras, &family);
+                            }
+                            if is_sdxl {
+                                audio_picker_row(
+                                    ui,
+                                    media,
+                                    "POSE",
+                                    MediaAudioSlot::ImageControl,
+                                    "Optional. A pose or edge image that says where things go, \
+                                     which a prompt cannot. At strength 0 the render is what it \
+                                     would have been without one.",
+                                );
+                                if media.image.control.is_some() {
+                                    slider_row(ui, "POSE STRENGTH", &mut media.image.control_scale, 0.0..=2.0,
+                                        SliderOpts { decimals: 2, ..Default::default() },
+                                        "How hard the pose image constrains the composition.");
                                 }
                             }
                         });
-                    ui.end_row();
-                    desc_row(ui, "ACE-Step checkpoint: Turbo renders in seconds (8-27 steps, \
-                         CFG-free); SFT/Base follow prompts and lyrics better but want \
-                         ~50 steps; XL variants (4B) are richer and slower. Picking one \
-                         sets the recommended Steps and CFG automatically.");
-                    slider_row(
-                        ui,
-                        "Duration",
-                        egui::Slider::new(&mut media.music.seconds, 2.0..=600.0)
-                            .suffix(" s")
-                            .logarithmic(true),
-                    )
-                    ;
-                    desc_row(ui, "Track length, up to 10 minutes. Render time grows with it; \
-                         without \"Full length\" the model may end the song earlier \
-                         naturally.");
-                    ui.label("Loop");
-                    ui.horizontal(|ui| {
-                        ui.checkbox(&mut media.music.loop_mode, "seamless loop");
-                        if media.music.loop_mode {
-                            ui.add(
-                                egui::DragValue::new(&mut media.music.loop_bars)
-                                    .range(1..=64)
-                                    .suffix(" bars"),
-                            );
-                        }
+                        widgets::caption_row(ui, "Only the adapters this model's architecture can take are offered.");
                     });
-                    ui.end_row();
-                    desc_row(ui, "Bar-exact length from bars x bpm, tail crossfaded into the head \
-                         — drops straight into a DAW/sampler and loops without a click.");
-                    ui.label("Full length");
-                    ui.checkbox(&mut media.music.force_duration, "force the whole duration");
-                    ui.end_row();
-                    desc_row(ui, "Ban the model's natural end-of-song until the requested \
-                             length is reached (otherwise Duration is an upper bound).");
-                    section_row(ui, "RENDERING");
-                    slider_row(ui, "Steps", egui::Slider::new(&mut media.music.steps, 1..=200))
-                        ;
-                    desc_row(ui, "Diffusion steps for the audio detail pass. Turbo checkpoint: \
-                             ~8-27; SFT/Base quality checkpoints want ~50.");
-                    slider_row(ui, "Tempo (bpm)", egui::Slider::new(&mut media.music.bpm, 40..=220))
-                        ;
-                    desc_row(ui, "Beats per minute - also defines the bar grid for loops.");
-                    slider_row(ui, "CFG", egui::Slider::new(&mut media.music.cfg, 1.0..=10.0))
-                        ;
-                    desc_row(ui, "Caption/lyrics adherence of the audio pass. Turbo is \
-                             distilled CFG-free (keep 1.0); SFT/Base follow the prompt \
-                             and lyrics noticeably better around 4-7 (slower: two \
-                             evaluations per step when above 1).");
-                    slider_row(
-                        ui,
-                        "Temperature",
-                        egui::Slider::new(&mut media.music.temperature, 0.1..=1.5),
-                    )
-                    ;
-                    desc_row(ui, "Composition randomness: low = safe and repetitive, high = \
-                         adventurous but can wander off-key or off-genre.");
-                    slider_row(ui, "Top-p", egui::Slider::new(&mut media.music.top_p, 0.1..=1.0))
-                        ;
-                    desc_row(ui, "Nucleus sampling cutoff on the composer: lower keeps only the \
-                             most likely musical continuations (tighter, safer).");
-
-                    section_row(ui, "CONDITIONING");
-                    ui.label("Key / scale");
-                    ui.text_edit_singleline(&mut media.music.keyscale);
-                    ui.end_row();
-                    desc_row(ui, "Tonality constraint, e.g. \"C minor\", \"A major\" — empty = model's choice.");
-
-                    ui.label("Language");
-                    ui.text_edit_singleline(&mut media.music.language);
-                    ui.end_row();
-                    desc_row(ui, "Lyrics language code (en, fr, …) — guides pronunciation.");
-
-                    seed_row(ui, media);
+                }
+                ui.add_space(widgets::GAP_WIDGETS);
+                widgets::section_panel(ui, "REGIONS", |ui| {
+                    param_grid(ui, "media_params_image_regions", |ui| {
+                        region_rows(ui, &mut media.image.regions);
+                    });
+                    widgets::caption_row(ui, "A prompt naming two subjects renders them merged; give each an area and they stay apart.");
                 });
-            ui.add_space(6.0);
-            ui.label(RichText::new("Lyrics (optional)").size(11.0));
-            ui.label(
-                RichText::new(
-                    "Sung text for the track. [verse]/[chorus]/[bridge] tags shape the \
-                     arrangement. If your prompt doesn't mention vocals, the server adds \
-                     a sung-vocals directive automatically when lyrics are present.",
-                )
-                .size(11.0)
-                .color(theme::ink_dim()),
-            );
-            ui.add(
-                egui::TextEdit::multiline(&mut media.music.lyrics)
-                    .desired_rows(4)
-                    .desired_width(f32::INFINITY)
-                    .hint_text("[verse]\nCity lights below us…"),
-            );
-            ui.add_space(4.0);
-            ui.label(RichText::new("Negative prompt (optional)").size(11.0));
-            ui.label(
-                RichText::new(
-                    "What the music should AVOID (instruments, moods, artifacts). Only \
-                     effective when CFG is above 1 (SFT/Base checkpoints).",
-                )
-                .size(11.0)
-                .color(theme::ink_dim()),
-            );
-            ui.add(
-                egui::TextEdit::multiline(&mut media.music.negative_prompt)
-                    .desired_rows(2)
-                    .desired_width(f32::INFINITY)
-                    .hint_text("spoken word, talking, monotone…"),
-            );
+                ui.add_space(widgets::GAP_WIDGETS);
+                widgets::section_panel(ui, "SEED", |ui| {
+                    param_grid(ui, "media_params_image_seed", |ui| {
+                        seed_row(ui, media);
+                    });
+                    widgets::caption_row(ui, "Same seed and settings, same result. Empty is a fresh seed each run.");
+                });
+            });
+        }
+        MediaKind::Music => {
+            const DIT_MODELS: &[(&str, &str, u32)] = &[
+                ("turbo", "Turbo (fast, 8-step)", 27),
+                ("sft", "SFT 2B (quality, ~50 steps)", 50),
+                ("base", "Base 2B (~50 steps)", 50),
+                ("xl-turbo", "XL Turbo 4B", 27),
+                ("xl-sft", "XL SFT 4B (best, ~50 steps)", 50),
+                ("xl-base", "XL Base 4B (~50 steps)", 50),
+            ];
+            const REC_CFG: &[(&str, f32)] = &[
+                ("turbo", 1.0),
+                ("sft", 4.5),
+                ("base", 4.5),
+                ("xl-turbo", 1.0),
+                ("xl-sft", 4.5),
+                ("xl-base", 4.5),
+            ];
+            ui.columns(2, |cols| {
+                let ui = &mut cols[0];
+                widgets::section_panel(ui, "COMPOSITION", |ui| {
+                    param_grid(ui, "media_params_music_composition", |ui| {
+                        param_label(ui, "MODEL");
+                        let current_label = DIT_MODELS
+                            .iter()
+                            .find(|(id, _, _)| *id == media.music.dit_model)
+                            .map(|(_, l, _)| *l)
+                            .unwrap_or("Turbo (fast, 8-step)");
+                        egui::ComboBox::from_id_salt("media_music_dit")
+                            .selected_text(current_label)
+                            .show_ui(ui, |ui| {
+                                for (id, label, rec_steps) in DIT_MODELS {
+                                    if ui
+                                        .selectable_label(media.music.dit_model == *id, *label)
+                                        .clicked()
+                                    {
+                                        media.music.dit_model = (*id).to_string();
+                                        // The checkpoint's recommended step count and CFG follow.
+                                        media.music.steps = *rec_steps;
+                                        if let Some((_, c)) = REC_CFG.iter().find(|(mid, _)| mid == id) {
+                                            media.music.cfg = *c;
+                                        }
+                                    }
+                                }
+                            })
+                            .response
+                            .on_hover_text(
+                                "ACE-Step checkpoint: Turbo renders in seconds (8-27 steps, CFG-free); \
+                                 SFT/Base follow prompts and lyrics better but want ~50 steps; XL \
+                                 variants (4B) are richer and slower.",
+                            );
+                        ui.end_row();
+                        slider_row(ui, "DURATION", &mut media.music.seconds, 2.0..=600.0,
+                            SliderOpts { suffix: " s", logarithmic: true, decimals: 0 },
+                            "Track length, up to 10 minutes. Render time grows with it; without \
+                             Full length the model may end the song earlier.");
+                        param_label(ui, "LOOP");
+                        ui.horizontal(|ui| {
+                            ui.checkbox(&mut media.music.loop_mode, "seamless loop");
+                            if media.music.loop_mode {
+                                widgets::drag_fixed(ui, egui::DragValue::new(&mut media.music.loop_bars).range(1..=64).suffix(" bars"), widgets::READOUT_WIDE_W);
+                            }
+                        })
+                        .response
+                        .on_hover_text("Bar-exact length from bars x bpm, tail crossfaded into the head: drops into a DAW and loops without a click.");
+                        ui.end_row();
+                        param_label(ui, "FULL LENGTH");
+                        ui.checkbox(&mut media.music.force_duration, "force the whole duration")
+                            .on_hover_text("Ban the model's natural end-of-song until the requested length is reached.");
+                        ui.end_row();
+                        slider_row(ui, "TEMPO", &mut media.music.bpm, 40..=220, SliderOpts { suffix: " bpm", ..Default::default() },
+                            "Beats per minute; also the bar grid for loops.");
+                    });
+                    widgets::caption_row(ui, "Picking a checkpoint sets its recommended steps and CFG.");
+                });
+                ui.add_space(widgets::GAP_WIDGETS);
+                widgets::section_panel(ui, "RENDERING", |ui| {
+                    param_grid(ui, "media_params_music_rendering", |ui| {
+                        slider_row(ui, "STEPS", &mut media.music.steps, 1..=200, SliderOpts::default(),
+                            "Diffusion steps for the audio detail pass. Turbo: ~8-27; SFT/Base: ~50.");
+                        slider_row(ui, "CFG", &mut media.music.cfg, 1.0..=10.0, SliderOpts { decimals: 1, ..Default::default() },
+                            "Caption and lyrics adherence. Turbo is CFG-free (keep 1.0); SFT/Base \
+                             follow the prompt better around 4-7, at two evaluations per step.");
+                        slider_row(ui, "TEMPERATURE", &mut media.music.temperature, 0.1..=1.5, SliderOpts { decimals: 2, ..Default::default() },
+                            "Composition randomness: low is safe and repetitive, high is adventurous.");
+                        slider_row(ui, "TOP-P", &mut media.music.top_p, 0.1..=1.0, SliderOpts { decimals: 2, ..Default::default() },
+                            "Nucleus cutoff on the composer: lower keeps only the likeliest continuations.");
+                    });
+                    widgets::caption_row(ui, "Turbo wants CFG 1.0; SFT and Base follow the prompt around 4-7.");
+                });
+
+                let ui = &mut cols[1];
+                widgets::section_panel(ui, "CONDITIONING", |ui| {
+                    param_grid(ui, "media_params_music_conditioning", |ui| {
+                        param_label(ui, "KEY / SCALE");
+                        ui.text_edit_singleline(&mut media.music.keyscale)
+                            .on_hover_text("Tonality constraint, e.g. C minor, A major. Empty is the model's choice.");
+                        ui.end_row();
+                        param_label(ui, "LANGUAGE");
+                        ui.text_edit_singleline(&mut media.music.language)
+                            .on_hover_text("Lyrics language code (en, fr, ...); guides pronunciation.");
+                        ui.end_row();
+                        param_label(ui, "LYRICS");
+                        ui.add(
+                            egui::TextEdit::multiline(&mut media.music.lyrics)
+                                .desired_rows(4)
+                                .desired_width(f32::INFINITY)
+                                .hint_text("[verse]\nCity lights below us..."),
+                        )
+                        .on_hover_text(
+                            "Sung text. [verse], [chorus] and [bridge] tags shape the arrangement; \
+                             with lyrics present the server adds a sung-vocals directive.",
+                        );
+                        ui.end_row();
+                        param_label(ui, "NEGATIVE");
+                        ui.add(
+                            egui::TextEdit::multiline(&mut media.music.negative_prompt)
+                                .desired_rows(2)
+                                .desired_width(f32::INFINITY)
+                                .hint_text("spoken word, talking, monotone..."),
+                        )
+                        .on_hover_text("What the music should avoid. Effective when CFG is above 1.");
+                        ui.end_row();
+                    });
+                    widgets::caption_row(ui, "Lyrics tags shape the arrangement; the negative prompt needs CFG above 1.");
+                });
+                ui.add_space(widgets::GAP_WIDGETS);
+                widgets::section_panel(ui, "SEED", |ui| {
+                    param_grid(ui, "media_params_music_seed", |ui| {
+                        seed_row(ui, media);
+                    });
+                    widgets::caption_row(ui, "Same seed and settings, same result. Empty is a fresh seed each run.");
+                });
+            });
         }
         MediaKind::Sfx => {
             let sfx_models: Vec<&crate::api::types::ModelInfo> =
                 models.iter().filter(|m| m.has_capability("sfx")).collect();
-            if !sfx_models.is_empty()
-                && !sfx_models.iter().any(|m| m.name == media.sfx.model)
-            {
+            if !sfx_models.is_empty() && !sfx_models.iter().any(|m| m.name == media.sfx.model) {
                 media.sfx.model = sfx_models[0].name.clone();
             }
             let sel = sfx_models.iter().find(|m| m.name == media.sfx.model).copied();
             let has_loops = sel.map(|m| m.has_capability("loops")).unwrap_or(false);
-            let has_variations =
-                sel.map(|m| m.has_capability("audio-variations")).unwrap_or(false);
-            let max_secs = sel
-                .and_then(|m| m.default_f64("max_seconds"))
-                .unwrap_or(30.0) as f32;
-            let is_sao = has_loops; // kept for the negative-prompt section below
-            egui::Grid::new("media_params_sfx")
-                .num_columns(2)
-                .min_col_width(120.0)
-                .spacing([16.0, 7.0])
-                .show(ui, |ui| {
-                    ui.label("Model");
-                    // Dynamic: every model the server declares "sfx"-capable.
+            let has_variations = sel.map(|m| m.has_capability("audio-variations")).unwrap_or(false);
+            let max_secs = sel.and_then(|m| m.default_f64("max_seconds")).unwrap_or(30.0) as f32;
+            widgets::section_panel(ui, "MODEL", |ui| {
+                param_grid(ui, "media_params_sfx_model", |ui| {
+                    param_label(ui, "MODEL");
                     egui::ComboBox::from_id_salt("sfx_model")
                         .selected_text(media.sfx.model.clone())
                         .show_ui(ui, |ui| {
@@ -669,12 +645,8 @@ fn render_params(
                                 if m.has_capability("loops") {
                                     label.push_str(" (loops)");
                                 }
-                                if ui
-                                    .selectable_label(media.sfx.model == m.name, label)
-                                    .clicked()
-                                {
+                                if ui.selectable_label(media.sfx.model == m.name, label).clicked() {
                                     media.sfx.model = m.name.clone();
-                                    // Apply the server's recommended knobs.
                                     if let Some(st) = m.default_f64("steps") {
                                         media.sfx.steps = st as u32;
                                     }
@@ -683,246 +655,246 @@ fn render_params(
                                     }
                                 }
                             }
-                        });
+                        })
+                        .response
+                        .on_hover_text("Engines and their limits come from the server; picking one applies its recommended steps and CFG.");
                     ui.end_row();
-                    desc_row(ui, "Engines and their limits come from the server; picking \
-                         one applies its recommended Steps and CFG.");
-                    slider_row(
-                        ui,
-                        "Duration (s)",
-                        egui::Slider::new(&mut media.sfx.seconds, 1.0..=max_secs).suffix(" s"),
-                    )
-                    .on_hover_text(if is_sao {
-                        "Clip length; the model's training window caps at ~47 s."
-                    } else {
-                        "Clip length. The SFX model is trained on short clips (~10 s); \
-                         very long ones lose coherence."
-                    });
-                    slider_row(ui, "Steps", egui::Slider::new(&mut media.sfx.steps, 1..=200))
-                        ;
-                    desc_row(ui, "Diffusion steps: 50-100 is the model's quality regime.");
-                    slider_row(ui, "CFG", egui::Slider::new(&mut media.sfx.cfg, 0.5..=12.0))
-                        ;
-                    desc_row(ui, "Prompt adherence: higher follows the description more \
-                             literally but can distort; ~3 for EzAudio, ~7 for Stable Audio.");
+                });
+                widgets::caption_row(ui, "Picking an engine applies its recommended steps and CFG.");
+            });
+            ui.add_space(widgets::GAP_WIDGETS);
+            widgets::section_panel(ui, "RENDERING", |ui| {
+                param_grid(ui, "media_params_sfx_rendering", |ui| {
+                    slider_row(ui, "DURATION", &mut media.sfx.seconds, 1.0..=max_secs, SliderOpts { suffix: " s", decimals: 1, ..Default::default() },
+                        if has_loops {
+                            "Clip length; the model's training window caps at ~47 s."
+                        } else {
+                            "Clip length. The model is trained on short clips (~10 s); long ones lose coherence."
+                        });
+                    slider_row(ui, "STEPS", &mut media.sfx.steps, 1..=200, SliderOpts::default(),
+                        "Diffusion steps: 50-100 is the model's quality regime.");
                     if has_loops {
-                        ui.label("Loop");
+                        param_label(ui, "LOOP");
                         ui.horizontal(|ui| {
                             ui.checkbox(&mut media.sfx.loop_mode, "seamless");
                             if media.sfx.loop_mode {
-                                ui.add(egui::DragValue::new(&mut media.sfx.loop_bars).range(1..=32).suffix(" bars"));
-                                ui.add(egui::DragValue::new(&mut media.sfx.loop_bpm).range(40..=300).suffix(" bpm"));
+                                widgets::drag_fixed(ui, egui::DragValue::new(&mut media.sfx.loop_bars).range(1..=32).suffix(" bars"), widgets::READOUT_WIDE_W);
+                                widgets::drag_fixed(ui, egui::DragValue::new(&mut media.sfx.loop_bpm).range(40..=300).suffix(" bpm"), widgets::READOUT_WIDE_W);
                             }
-                        });
+                        })
+                        .response
+                        .on_hover_text("Bar-exact segment (bars x bpm) whose tail is crossfaded into the head: the WAV loops without a click.");
                         ui.end_row();
-                        desc_row(ui, "Bar-exact segment (bars x bpm) whose tail is crossfaded \
-                             into the head: the WAV loops without a click or energy dip.");
-
                     }
-                    if has_variations {
-                        audio_picker_row(ui, media, "Variation of", MediaAudioSlot::SfxInit,
-                            "Optional source clip (WAV): the render becomes an \
-                             audio-to-audio variation of it instead of starting from noise.");
+                });
+                widgets::caption_row(ui, "50-100 steps is the quality regime; a loop is cut bar-exact.");
+            });
+            ui.add_space(widgets::GAP_WIDGETS);
+            widgets::section_panel(ui, "GUIDANCE", |ui| {
+                param_grid(ui, "media_params_sfx_guidance", |ui| {
+                    slider_row(ui, "CFG", &mut media.sfx.cfg, 0.5..=12.0, SliderOpts { decimals: 1, ..Default::default() },
+                        "Prompt adherence: higher follows the description more literally but can distort; ~3 for EzAudio, ~7 for Stable Audio.");
+                    if has_loops {
+                        param_label(ui, "NEGATIVE");
+                        ui.add(
+                            egui::TextEdit::multiline(&mut media.sfx.negative_prompt)
+                                .desired_rows(2)
+                                .desired_width(f32::INFINITY)
+                                .hint_text("distortion, low quality, muffled..."),
+                        )
+                        .on_hover_text("What the sound should avoid; steers the CFG's negative branch.");
+                        ui.end_row();
+                    }
+                });
+                widgets::caption_row(ui, "About 3 for EzAudio, about 7 for Stable Audio.");
+            });
+            if has_variations {
+                ui.add_space(widgets::GAP_WIDGETS);
+                widgets::section_panel(ui, "VARIATION", |ui| {
+                    param_grid(ui, "media_params_sfx_variation", |ui| {
+                        audio_picker_row(ui, media, "VARIATION OF", MediaAudioSlot::SfxInit,
+                            "Optional source clip (WAV): the render becomes an audio-to-audio variation of it instead of starting from noise.");
                         if media.sfx.init_audio.is_some() {
-                            slider_row(
-                                ui,
-                                "Variation strength",
-                                egui::Slider::new(&mut media.sfx.init_noise_level, 0.4..=100.0)
-                                    .logarithmic(true),
-                            );
-                            desc_row(ui, "How far to drift from the source clip: ~1 keeps its \
-                                 structure, ~10+ reinterprets it freely.");
-                            ui.label("");
-                            if ui.small_button("Clear source clip").clicked() {
-                                media.sfx.init_audio = None;
-                            }
-                            ui.end_row();
+                            slider_row(ui, "STRENGTH", &mut media.sfx.init_noise_level, 0.4..=100.0,
+                                SliderOpts { logarithmic: true, decimals: 1, ..Default::default() },
+                                "How far to drift from the source clip: ~1 keeps its structure, ~10+ reinterprets it freely.");
                         }
-                    }
-
+                    });
+                    widgets::caption_row(ui, "Around 1 keeps the source's structure; past 10 it is reinterpreted freely.");
+                });
+            }
+            ui.add_space(widgets::GAP_WIDGETS);
+            widgets::section_panel(ui, "SEED", |ui| {
+                param_grid(ui, "media_params_sfx_seed", |ui| {
                     seed_row(ui, media);
                 });
-            if is_sao {
-                ui.add_space(4.0);
-                ui.label(RichText::new("Negative prompt (optional)").size(11.0));
-                ui.label(
-                    RichText::new("What the sound should AVOID; steers the CFG's negative branch.")
-                        .size(11.0)
-                        .color(theme::ink_dim()),
-                );
-                ui.add(
-                    egui::TextEdit::multiline(&mut media.sfx.negative_prompt)
-                        .desired_rows(2)
-                        .desired_width(f32::INFINITY)
-                        .hint_text("distortion, low quality, muffled…"),
-                );
-            }
+                widgets::caption_row(ui, "Same seed and settings, same result. Empty is a fresh seed each run.");
+            });
         }
         MediaKind::Midi => {
-            egui::Grid::new("media_params_midi")
-                .num_columns(2)
-                .min_col_width(120.0)
-                .spacing([16.0, 7.0])
-                .show(ui, |ui| {
-                    slider_row(ui, "Max tokens", egui::Slider::new(&mut media.midi.max_tokens, 64..=8192))
-                        ;
-                    desc_row(ui, "Length budget for the score (roughly: more tokens = more \
-                             notes/bars). The model may end earlier naturally.");
-                    slider_row(ui, "Temperature", egui::Slider::new(&mut media.midi.temperature, 0.1..=2.0))
-                        ;
-                    desc_row(ui, "Note-choice randomness: low = predictable, high = surprising.");
-                    slider_row(ui, "Top-p", egui::Slider::new(&mut media.midi.top_p, 0.1..=1.0))
-                        ;
-                    desc_row(ui, "Keeps only the most likely notes at each step (lower = safer).");
-
+            widgets::section_panel(ui, "SAMPLING", |ui| {
+                param_grid(ui, "media_params_midi", |ui| {
+                    slider_row(ui, "MAX TOKENS", &mut media.midi.max_tokens, 64..=8192, SliderOpts::default(),
+                        "Length budget for the score: more tokens is more notes and bars. The model may end earlier.");
+                    slider_row(ui, "TEMPERATURE", &mut media.midi.temperature, 0.1..=2.0, SliderOpts { decimals: 2, ..Default::default() },
+                        "Note-choice randomness: low is predictable, high is surprising.");
+                    slider_row(ui, "TOP-P", &mut media.midi.top_p, 0.1..=1.0, SliderOpts { decimals: 2, ..Default::default() },
+                        "Keeps only the most likely notes at each step; lower is safer.");
+                });
+                widgets::caption_row(ui, "Tokens are the length budget; the model may stop earlier on its own.");
+            });
+            ui.add_space(widgets::GAP_WIDGETS);
+            widgets::section_panel(ui, "SEED", |ui| {
+                param_grid(ui, "media_params_midi_seed", |ui| {
                     seed_row(ui, media);
                 });
+                widgets::caption_row(ui, "Same seed and settings, same result. Empty is a fresh seed each run.");
+            });
         }
         MediaKind::Video => {
-            egui::Grid::new("media_params_video")
-                .num_columns(2)
-                .min_col_width(120.0)
-                .spacing([16.0, 7.0])
-                .show(ui, |ui| {
-                    // The list comes from the server, so a checkpoint dropped in its `wan`
-                    // directory appears here without a GUI change - the same contract the
-                    // image picker uses. Falls back to the first offered when the
-                    // remembered one is gone.
-                    let video_models: Vec<&str> = models
-                        .iter()
-                        .filter(|m| m.is_video_gen())
-                        .map(|m| m.name.as_str())
-                        .collect();
-                    if !video_models.is_empty()
-                        && !video_models.contains(&media.video.model.as_str())
-                    {
-                        media.video.model = video_models[0].to_string();
-                    }
-                    ui.label("Model");
-                    egui::ComboBox::from_id_salt("media_video_model")
-                        .selected_text(media.video.model.clone())
-                        .show_ui(ui, |ui| {
-                            for name in &video_models {
-                                ui.selectable_value(
-                                    &mut media.video.model,
-                                    (*name).to_string(),
-                                    *name,
-                                );
-                            }
-                        });
-                    ui.end_row();
-                    desc_row(ui, "The video checkpoint. Anything containing '14' selects the \
-                             14B, which is slower and better; a fine-tune dropped in the \
-                             server's video directory shows up here on its own.");
-
-                    slider_row(
-                        ui,
-                        "Duration",
-                        egui::Slider::new(&mut media.video.seconds, 0.5..=300.0)
-                            .suffix(" s")
-                            .fixed_decimals(1),
-                    )
-                        ;
-                    {
-                        let f = crate::state::frames_for_seconds(media.video.seconds);
-                        desc_row(ui, &format!(
-                            "Length of each scene. The temporal VAE compresses time by four, so \
-                             a duration becomes {f} frames ({:.2}s at 16 fps) - rounded UP, never \
-                             short. Past the 5s the model was trained on it is denoised over \
-                             overlapping windows, so the cost grows with the DURATION rather \
-                             than with its square: a minute takes about twice what thirty \
-                             seconds does, not four times.",
-                            crate::state::seconds_for_frames(f)
-                        ));
-                    }
-                    size_row(ui, &mut media.video.width, &mut media.video.height, 128..=1280);
-                    slider_row(ui, "Steps", egui::Slider::new(&mut media.video.steps, 1..=60))
-                        ;
-                    desc_row(ui, "Denoising iterations per scene; time grows linearly. ~20 is balanced.");
-                    slider_row(ui, "CFG", egui::Slider::new(&mut media.video.cfg, 0.0..=15.0))
-                        ;
-                    desc_row(ui, "Prompt adherence (CFG): higher = more literal but risks \
-                             burn-out (all-white frames at high values on small sizes). \
-                             0 = the server's measured per-resolution default (safest).");
-
-                    ui.label("Sampler");
-                    ui.horizontal(|ui| {
-                        for smp in [VideoSampler::Auto, VideoSampler::UniPc, VideoSampler::Heun] {
-                            ui.selectable_value(&mut media.video.sampler, smp, smp.label());
-                        }
+            // The list comes from the server, so a checkpoint dropped in its video
+            // directory appears here without a GUI change.
+            let video_models: Vec<&str> =
+                models.iter().filter(|m| m.is_video_gen()).map(|m| m.name.as_str()).collect();
+            if !video_models.is_empty() && !video_models.contains(&media.video.model.as_str()) {
+                media.video.model = video_models[0].to_string();
+            }
+            ui.columns(2, |cols| {
+                let ui = &mut cols[0];
+                widgets::section_panel(ui, "MODEL", |ui| {
+                    param_grid(ui, "media_params_video_model", |ui| {
+                        param_label(ui, "MODEL");
+                        egui::ComboBox::from_id_salt("media_video_model")
+                            .selected_text(media.video.model.clone())
+                            .show_ui(ui, |ui| {
+                                for name in &video_models {
+                                    ui.selectable_value(&mut media.video.model, (*name).to_string(), *name);
+                                }
+                            })
+                            .response
+                            .on_hover_text("The video checkpoint. A name containing 14 is the 14B, slower and better.");
+                        ui.end_row();
                     });
-                    ui.end_row();
-                    desc_row(ui, "Integration method. Auto picks the measured best per \
-                         resolution (UniPC at native scale, Heun below) — leave it unless \
-                         a render shows artifacts.");
-
-                    audio_picker_row(ui, media, "Start frame",
-                        MediaAudioSlot::VideoStartImage,
-                        "Required by an image-to-video model: the frame the clip continues");
-                    desc_row(ui, "The picture the clip STARTS from, for a model whose name \
-                             carries `i2v`. Those render a continuation of a frame rather \
-                             than an invention from words, which is what keeps a long clip \
-                             on one subject and one background instead of drifting. A \
-                             text-to-video model ignores this; an image-to-video one \
-                             refuses to render without it.");
-
-                    ui.label("Negative");
-                    ui.add(
-                        egui::TextEdit::multiline(&mut media.video.negative_prompt)
-                            .desired_rows(2)
-                            .desired_width(f32::INFINITY)
-                            .hint_text("blurry, distorted, flickering..."),
-                    );
-                    ui.end_row();
-                    desc_row(ui, "What the motion should steer AWAY from. Empty leaves the \
-                         plain unconditional branch the model was trained against.");
-
-                    ui.label("Format");
-                    ui.horizontal(|ui| {
-                        ui.selectable_value(&mut media.video.format, VideoFormat::Mp4, "MP4");
-                        ui.selectable_value(&mut media.video.format, VideoFormat::Gif, "GIF");
-                    });
-                    ui.end_row();
-                    desc_row(ui, "MP4 = true color, ~10x smaller files. GIF = universal but 256 colors.");
-
-                    seed_row(ui, media);
+                    widgets::caption_row(ui, "A fine-tune dropped in the server's video directory shows up here on its own.");
                 });
+                ui.add_space(widgets::GAP_WIDGETS);
+                widgets::section_panel(ui, "SHAPE AND SIZE", |ui| {
+                    param_grid(ui, "media_params_video_shape", |ui| {
+                        slider_row(ui, "DURATION", &mut media.video.seconds, 0.5..=300.0, SliderOpts { suffix: " s", decimals: 1, ..Default::default() },
+                            "Length of each scene. The temporal VAE compresses time by four, so a \
+                             duration becomes a frame count rounded up. Past the 5 s the model was \
+                             trained on it is denoised over overlapping windows, so the cost grows \
+                             with the duration rather than its square.");
+                        size_row(ui, &mut media.video.width, &mut media.video.height, 128..=1280);
+                    });
+                    let f = crate::state::frames_for_seconds(media.video.seconds);
+                    widgets::caption_row(ui, &format!(
+                        "{f} frames ({:.2} s at 16 fps). A minute costs about twice what thirty seconds does.",
+                        crate::state::seconds_for_frames(f)
+                    ));
+                });
+                ui.add_space(widgets::GAP_WIDGETS);
+                widgets::section_panel(ui, "SAMPLING", |ui| {
+                    param_grid(ui, "media_params_video_sampling", |ui| {
+                        slider_row(ui, "STEPS", &mut media.video.steps, 1..=60, SliderOpts::default(),
+                            "Denoising iterations per scene; time grows linearly. ~20 is balanced.");
+                        slider_row(ui, "CFG", &mut media.video.cfg, 0.0..=15.0, SliderOpts { decimals: 1, ..Default::default() },
+                            "Prompt adherence: higher is more literal but risks burn-out (all-white \
+                             frames at high values on small sizes). 0 is the server's measured default.");
+                        param_label(ui, "SAMPLER");
+                        ui.horizontal(|ui| {
+                            for smp in [VideoSampler::Auto, VideoSampler::UniPc, VideoSampler::Heun] {
+                                if widgets::selector_pill(ui, smp.label(), media.video.sampler == smp).clicked() {
+                                    media.video.sampler = smp;
+                                }
+                            }
+                        })
+                        .response
+                        .on_hover_text("Integration method. Auto picks the measured best per resolution (UniPC at native scale, Heun below).");
+                        ui.end_row();
+                    });
+                    widgets::caption_row(ui, "Auto picks the measured best sampler per resolution; change it only if a render shows artifacts.");
+                });
+
+                let ui = &mut cols[1];
+                widgets::section_panel(ui, "START FRAME", |ui| {
+                    param_grid(ui, "media_params_video_start", |ui| {
+                        audio_picker_row(ui, media, "START FRAME", MediaAudioSlot::VideoStartImage,
+                            "The picture the clip starts from, for a model whose name carries i2v. \
+                             A text-to-video model ignores it; an image-to-video one refuses to render without it.");
+                    });
+                    widgets::caption_row(ui, "An i2v model continues a frame rather than inventing one; a t2v model ignores this.");
+                });
+                ui.add_space(widgets::GAP_WIDGETS);
+                widgets::section_panel(ui, "GUIDANCE", |ui| {
+                    param_grid(ui, "media_params_video_guidance", |ui| {
+                        param_label(ui, "NEGATIVE");
+                        ui.add(
+                            egui::TextEdit::multiline(&mut media.video.negative_prompt)
+                                .desired_rows(2)
+                                .desired_width(f32::INFINITY)
+                                .hint_text("blurry, distorted, flickering..."),
+                        )
+                        .on_hover_text("What the motion should steer away from. Empty leaves the plain unconditional branch.");
+                        ui.end_row();
+                    });
+                    widgets::caption_row(ui, "Empty leaves the unconditional branch the model was trained against.");
+                });
+                ui.add_space(widgets::GAP_WIDGETS);
+                widgets::section_panel(ui, "OUTPUT", |ui| {
+                    param_grid(ui, "media_params_video_output", |ui| {
+                        param_label(ui, "FORMAT");
+                        ui.horizontal(|ui| {
+                            for (fmt, label) in [(VideoFormat::Mp4, "MP4"), (VideoFormat::Gif, "GIF")] {
+                                if widgets::selector_pill(ui, label, media.video.format == fmt).clicked() {
+                                    media.video.format = fmt;
+                                }
+                            }
+                        })
+                        .response
+                        .on_hover_text("MP4 is true colour and ~10x smaller; GIF is universal but 256 colours.");
+                        ui.end_row();
+                    });
+                    widgets::caption_row(ui, "MP4 is true colour and ten times smaller; GIF is universal but 256 colours.");
+                });
+                ui.add_space(widgets::GAP_WIDGETS);
+                widgets::section_panel(ui, "SEED", |ui| {
+                    param_grid(ui, "media_params_video_seed", |ui| {
+                        seed_row(ui, media);
+                    });
+                    widgets::caption_row(ui, "Same seed and settings, same result. Empty is a fresh seed each run.");
+                });
+            });
         }
         MediaKind::Speech => {
             use crate::state::SpeechEngine;
-            egui::Grid::new("media_params_speech")
-                .num_columns(2)
-                .min_col_width(120.0)
-                .spacing([16.0, 7.0])
-                .show(ui, |ui| {
-                    if media.speech.engine == SpeechEngine::Parler {
-                        ui.label("Style");
-                        ui.text_edit_singleline(&mut media.speech.voice_description);
-                        ui.end_row();
-                        desc_row(ui, "How the text should sound - voice AND delivery: \
-                             \"an old man shouting angrily\", \"a soft whispering woman\", \
-                             \"an excited sports commentator\"… Overrides the preset voice.");
-                    }
-                    ui.label("Engine");
+            widgets::section_panel(ui, "ENGINE", |ui| {
+                param_grid(ui, "media_params_speech", |ui| {
+                    param_label(ui, "ENGINE");
                     egui::ComboBox::from_id_salt("media_speech_engine")
                         .selected_text(media.speech.engine.label())
                         .show_ui(ui, |ui| {
                             for e in SpeechEngine::ALL {
                                 ui.selectable_value(&mut media.speech.engine, e, e.label());
                             }
-                        });
+                        })
+                        .response
+                        .on_hover_text("Parler: describe any voice freely (Style). Kyutai: natural EN/FR voices. Piper: fast fixed voices.");
                     ui.end_row();
-                    desc_row(ui, "Parler: describe any voice freely in text (Style field). \
-                         Kyutai: natural EN/FR voices. Piper: fast fixed voices.");
-
+                    if media.speech.engine == SpeechEngine::Parler {
+                        param_label(ui, "STYLE");
+                        ui.text_edit_singleline(&mut media.speech.voice_description)
+                            .on_hover_text("How the text should sound, voice and delivery: an old man shouting angrily, a soft whispering woman. Overrides the preset voice.");
+                        ui.end_row();
+                    }
                     match media.speech.engine {
                         SpeechEngine::Parler => {
-                            // One-shot auto-fetch of the OpenAI-style preset voices.
+                            // One-shot fetch of the preset voices.
                             if media.speech.voices.is_empty() && !media.speech.voices_fetched {
                                 media.speech.voices_fetched = true;
                                 out.refresh_voices_clicked = true;
                             }
-                            ui.label("Voice");
+                            param_label(ui, "VOICE");
                             ui.horizontal(|ui| {
                                 let current = if media.speech.voice.is_empty() { "(default)".to_string() } else { media.speech.voice.clone() };
                                 egui::ComboBox::from_id_salt("media_voice_picker")
@@ -932,243 +904,287 @@ fn render_params(
                                         for v in &media.speech.voices {
                                             ui.selectable_value(&mut media.speech.voice, v.clone(), v);
                                         }
-                                    });
-                                if ui
-                                    .add(egui::Button::image_and_text(
-                                        Icon::Refresh.image(11.0, theme::ink()),
-                                        RichText::new("Voices").size(11.0),
-                                    ))
-                                    .on_hover_text("Fetch the voice list from the server")
-                                    .clicked()
-                                {
+                                    })
+                                    .response
+                                    .on_hover_text("Preset voice (OpenAI-style names). A Style overrides it when filled.");
+                                if widgets::icon_button(ui, Icon::Refresh, "Fetch the voice list from the server").clicked() {
                                     out.refresh_voices_clicked = true;
                                 }
                             });
                             ui.end_row();
-                            desc_row(ui, "Preset voice (OpenAI-style names). The Style text \
-                                 above overrides it when filled - presets are quick defaults.");
                         }
                         SpeechEngine::Kyutai => {
-                            ui.label("Voice");
+                            param_label(ui, "VOICE");
                             ui.add(egui::TextEdit::singleline(&mut media.speech.voice_name)
                                 .hint_text("default (e.g. alba-mackenna)")
-                                .desired_width(220.0));
+                                .desired_width(FIELD_W))
+                                .on_hover_text("A kyutai/tts-voices name substring; empty is the server default.");
                             ui.end_row();
-                            desc_row(ui, "A kyutai/tts-voices name substring; empty = server default.");
                         }
                         SpeechEngine::Piper => {
-                            ui.label("Voice");
+                            param_label(ui, "VOICE");
                             ui.add(egui::TextEdit::singleline(&mut media.speech.voice_name)
                                 .hint_text("e.g. fr_FR-tom-medium")
-                                .desired_width(220.0));
+                                .desired_width(FIELD_W))
+                                .on_hover_text("A Piper voice id installed under <hf_models_dir>/piper/<voice>/.");
                             ui.end_row();
-                            desc_row(ui, "A Piper voice id installed under <hf_models_dir>/piper/<voice>/.");
                         }
                     }
                 });
+                widgets::caption_row(ui, "Parler takes a free description of the voice; Kyutai and Piper take a voice name.");
+            });
         }
         MediaKind::ImageEdit => {
-            egui::Grid::new("media_params_image_edit")
-                .num_columns(2)
-                .min_col_width(120.0)
-                .spacing([16.0, 7.0])
-                .show(ui, |ui| {
-                    ui.label("Model");
-                    // Dynamic: every model the SERVER declares edit-capable
-                    // (instruction editors) or img2img-capable (strength-based
-                    // re-imagining) - no hardcoded model list.
-                    let editors: Vec<&crate::api::types::ModelInfo> = models
-                        .iter()
-                        .filter(|m| m.has_capability("edit") || m.has_capability("img2img"))
-                        .collect();
-                    if !editors.is_empty()
-                        && !editors.iter().any(|m| m.name == media.image_edit.model)
-                    {
-                        media.image_edit.model = editors[0].name.clone();
-                    }
-                    egui::ComboBox::from_id_salt("media_edit_model")
-                        .selected_text(media.image_edit.model.clone())
-                        .show_ui(ui, |ui| {
-                            if editors.is_empty() {
-                                ui.label("No edit-capable model available");
-                            }
-                            for m in &editors {
-                                let mode = if m.has_capability("edit") {
-                                    "instruction edit"
-                                } else {
-                                    "img2img"
-                                };
-                                let sel = media.image_edit.model == m.name;
-                                if ui
-                                    .selectable_label(sel, format!("{} ({mode})", m.name))
-                                    .clicked()
-                                {
-                                    media.image_edit.model = m.name.clone();
-                                    // Apply the server's recommended knobs for THIS editor.
-                                    // Editors differ by an order of magnitude: a Kontext-class
-                                    // model needs ~28 steps at guidance ~2.5 to actually apply
-                                    // an instruction, while a distilled editor is done in 4-8.
-                                    // Carrying the previous model's slider over is why an edit
-                                    // sometimes came back barely changed.
-                                    if let Some(st) = m.default_f64("steps") {
-                                        media.image_edit.steps = st as u32;
-                                    }
-                                    // The server publishes the CFG knob as "cfg"
-                                    // (its canonical name across media families);
-                                    // "guidance" is accepted as an alias.
-                                    if let Some(g) = m.default_f64("cfg").or_else(|| m.default_f64("guidance")) {
-                                        media.image_edit.guidance = g as f32;
+            // Every model the server declares edit-capable or img2img-capable.
+            let editors: Vec<&crate::api::types::ModelInfo> = models
+                .iter()
+                .filter(|m| m.has_capability("edit") || m.has_capability("img2img"))
+                .collect();
+            if !editors.is_empty() && !editors.iter().any(|m| m.name == media.image_edit.model) {
+                media.image_edit.model = editors[0].name.clone();
+            }
+            let sel_is_edit = models
+                .iter()
+                .find(|m| m.name == media.image_edit.model)
+                .map(|m| m.has_capability("edit"))
+                .unwrap_or(false);
+            let family = model_family_of(models, &media.image_edit.model);
+            let takes_loras = family_takes_loras(models, &media.image_edit.model);
+            ui.columns(2, |cols| {
+                let ui = &mut cols[0];
+                widgets::section_panel(ui, "MODEL", |ui| {
+                    param_grid(ui, "media_params_edit_model", |ui| {
+                        param_label(ui, "MODEL");
+                        egui::ComboBox::from_id_salt("media_edit_model")
+                            .selected_text(media.image_edit.model.clone())
+                            .show_ui(ui, |ui| {
+                                if editors.is_empty() {
+                                    ui.label("No edit-capable model available");
+                                }
+                                for m in &editors {
+                                    let mode = if m.has_capability("edit") { "instruction edit" } else { "img2img" };
+                                    let sel = media.image_edit.model == m.name;
+                                    if ui.selectable_label(sel, format!("{} ({mode})", m.name)).clicked() {
+                                        media.image_edit.model = m.name.clone();
+                                        // Editors differ by an order of magnitude: a Kontext-class
+                                        // model needs ~28 steps at guidance ~2.5, a distilled editor
+                                        // is done in 4-8.
+                                        if let Some(st) = m.default_f64("steps") {
+                                            media.image_edit.steps = st as u32;
+                                        }
+                                        if let Some(g) = m.default_f64("cfg").or_else(|| m.default_f64("guidance")) {
+                                            media.image_edit.guidance = g as f32;
+                                        }
                                     }
                                 }
-                            }
-                        });
-                    ui.end_row();
-                    let sel_is_edit = models
-                        .iter()
-                        .find(|m| m.name == media.image_edit.model)
-                        .map(|m| m.has_capability("edit"))
-                        .unwrap_or(false);
-                    desc_row(ui, if sel_is_edit {
-                        "Instruction editor: follows a textual instruction (add/remove/\
-                         change) while preserving the rest of the image. Picking a model \
-                         applies its recommended Steps and Guidance - too few steps is the \
-                         usual reason an instruction comes back barely applied."
-                    } else {
-                        "img2img: re-imagines the source guided by the prompt; Strength \
-                         sets how far it may drift."
+                            })
+                            .response
+                            .on_hover_text(if sel_is_edit {
+                                "Instruction editor: follows a textual instruction while preserving the rest of the image."
+                            } else {
+                                "img2img: re-imagines the source guided by the prompt; Strength sets how far it may drift."
+                            });
+                        ui.end_row();
                     });
-
-                    audio_picker_row(ui, media, "Source image", MediaAudioSlot::EditImage,
-                        "Pick the image to edit (png/jpg/webp)");
-
-                    slider_row(
-                        ui,
-                        "Strength",
-                        egui::Slider::new(&mut media.image_edit.strength, 0.0..=1.0),
-                    )
-                    ;
-                    desc_row(ui, "How far the edit may drift from the source image: low keeps \
-                         composition and details, high re-imagines them. 0 = keep the \
-                         source, 1 = full re-generation.");
-                    slider_row(ui, "Steps", egui::Slider::new(&mut media.image_edit.steps, 0..=100))
-                        ;
-                    desc_row(ui, "Denoising iterations: more = finer detail, linearly slower. \
-                             0 = the model's recommended count.");
-                    slider_row(
-                        ui,
-                        "Guidance",
-                        egui::Slider::new(&mut media.image_edit.guidance, 0.0..=30.0),
-                    )
-                    ;
-                    desc_row(ui, "Instruction adherence (CFG): higher applies the edit more \
-                         forcefully but can distort; 0 = the model's default.");
-                    slider_row(ui, "Count", egui::Slider::new(&mut media.image_edit.n, 1..=4))
-                        ;
-                    desc_row(ui, "Number of edit variations rendered in one run.");
-
-                    ui.label("Negative");
-                    ui.add(
-                        egui::TextEdit::multiline(&mut media.image_edit.negative_prompt)
-                            .desired_rows(2)
-                            .desired_width(f32::INFINITY)
-                            .hint_text("watermark, extra fingers, blurry..."),
-                    );
-                    ui.end_row();
-                    desc_row(ui, "What the edit should steer AWAY from  -  the artefacts an \
-                             instruction cannot name. Empty keeps the family's own default.");
-
-                    // Adapters, only for the families whose pipeline applies them. A
-                    // picker shown where the engine ignores the value is a knob that
-                    // silently does nothing - the exact failure this feature exists to
-                    // avoid.
-                    if family_takes_loras(models, &media.image_edit.model) {
-                        let fam = model_family_of(models, &media.image_edit.model);
-                        lora_rows(ui, &mut media.image_edit.loras, loras, &fam);
-                    }
-
-                    seed_row(ui, media);
+                    widgets::caption_row(ui, "Picking a model applies its recommended steps and guidance; too few steps is why an instruction comes back barely applied.");
                 });
+                ui.add_space(widgets::GAP_WIDGETS);
+                widgets::section_panel(ui, "SOURCE", |ui| {
+                    param_grid(ui, "media_params_edit_source", |ui| {
+                        audio_picker_row(ui, media, "SOURCE IMAGE", MediaAudioSlot::EditImage, "Pick the image to edit (png/jpg/webp)");
+                    });
+                    widgets::caption_row(ui, "The picture the instruction applies to.");
+                });
+                ui.add_space(widgets::GAP_WIDGETS);
+                widgets::section_panel(ui, "SAMPLING", |ui| {
+                    param_grid(ui, "media_params_edit_sampling", |ui| {
+                        slider_row(ui, "STRENGTH", &mut media.image_edit.strength, 0.0..=1.0, SliderOpts { decimals: 2, ..Default::default() },
+                            "How far the edit may drift from the source: low keeps composition and details, 1 is a full re-generation.");
+                        slider_row(ui, "STEPS", &mut media.image_edit.steps, 0..=100, SliderOpts::default(),
+                            "Denoising iterations: more is finer detail, linearly slower. 0 is the model's recommended count.");
+                        slider_row(ui, "GUIDANCE", &mut media.image_edit.guidance, 0.0..=30.0, SliderOpts { decimals: 2, ..Default::default() },
+                            "Instruction adherence (CFG): higher applies the edit more forcefully but can distort; 0 is the model's default.");
+                        slider_row(ui, "COUNT", &mut media.image_edit.n, 1..=4, SliderOpts::default(),
+                            "Number of edit variations rendered in one run.");
+                    });
+                    widgets::caption_row(ui, "Strength 0 keeps the source, 1 re-generates it.");
+                });
+
+                let ui = &mut cols[1];
+                widgets::section_panel(ui, "GUIDANCE", |ui| {
+                    param_grid(ui, "media_params_edit_guidance", |ui| {
+                        param_label(ui, "NEGATIVE");
+                        ui.add(
+                            egui::TextEdit::multiline(&mut media.image_edit.negative_prompt)
+                                .desired_rows(2)
+                                .desired_width(f32::INFINITY)
+                                .hint_text("watermark, extra fingers, blurry..."),
+                        )
+                        .on_hover_text("What the edit should steer away from: the artefacts an instruction cannot name.");
+                        ui.end_row();
+                    });
+                    widgets::caption_row(ui, "The negative prompt removes what an instruction cannot name.");
+                });
+                if takes_loras {
+                    ui.add_space(widgets::GAP_WIDGETS);
+                    widgets::section_panel(ui, "ADAPTERS", |ui| {
+                        param_grid(ui, "media_params_edit_adapters", |ui| {
+                            lora_rows(ui, &mut media.image_edit.loras, loras, &family);
+                        });
+                        widgets::caption_row(ui, "Only the adapters this model's architecture can take are offered.");
+                    });
+                }
+                ui.add_space(widgets::GAP_WIDGETS);
+                widgets::section_panel(ui, "SEED", |ui| {
+                    param_grid(ui, "media_params_edit_seed", |ui| {
+                        seed_row(ui, media);
+                    });
+                    widgets::caption_row(ui, "Same seed and settings, same result. Empty is a fresh seed each run.");
+                });
+            });
         }
         MediaKind::Transcribe => {
-            egui::Grid::new("media_params_transcribe")
-                .num_columns(2)
-                .min_col_width(120.0)
-                .spacing([16.0, 7.0])
-                .show(ui, |ui| {
-                    audio_picker_row(ui, media, "Audio file", MediaAudioSlot::TranscribeAudio,
+            widgets::section_panel(ui, "INPUT", |ui| {
+                param_grid(ui, "media_params_transcribe_input", |ui| {
+                    audio_picker_row(ui, media, "AUDIO FILE", MediaAudioSlot::TranscribeAudio,
                         "Pick the audio clip to transcribe (wav/mp3/flac/ogg/m4a)");
-
-                    ui.label("Model");
-                    ui.text_edit_singleline(&mut media.transcribe.model);
-                    ui.end_row();
-                    desc_row(ui, "ASR model id (empty = server default, e.g. whisper / voxtral).");
-
-                    // WHAT LANGUAGE IS SPOKEN. Detection is the default and it is not
-                    // free of mistakes - a short clip, an accent, music under the voice -
-                    // and without this a user whose French was heard as English had no
-                    // correction available at all.
-                    ui.label("Language");
-                    ui.horizontal(|ui| {
-                        let cur = SPOKEN_LANGUAGES
-                            .iter()
-                            .find(|(code, _)| *code == media.transcribe.language)
-                            .map(|(_, name)| *name)
-                            .unwrap_or("Detect");
-                        egui::ComboBox::from_id_salt("transcribe_language")
-                            .selected_text(cur)
-                            .show_ui(ui, |ui| {
-                                for (code, name) in SPOKEN_LANGUAGES {
-                                    let mut sel = media.transcribe.language.clone();
-                                    if ui
-                                        .selectable_value(&mut sel, code.to_string(), *name)
-                                        .clicked()
-                                    {
-                                        media.transcribe.language = code.to_string();
-                                    }
-                                }
-                            });
-                    });
-                    ui.end_row();
-                    desc_row(ui, "Leave on Detect unless it gets it wrong - naming the \
-                                  language also stops it drifting mid-file.");
-
-                    ui.label("Translate");
-                    ui.checkbox(&mut media.transcribe.translate, "to English");
-                    ui.end_row();
-                    desc_row(ui, "Translate the transcription to English (Whisper translate task).");
                 });
+                widgets::caption_row(ui, "Any common format; the server converts it.");
+            });
+            ui.add_space(widgets::GAP_WIDGETS);
+            widgets::section_panel(ui, "RECOGNITION", |ui| {
+                param_grid(ui, "media_params_transcribe", |ui| {
+                    param_label(ui, "MODEL");
+                    ui.text_edit_singleline(&mut media.transcribe.model)
+                        .on_hover_text("ASR model id; empty is the server default (whisper, voxtral).");
+                    ui.end_row();
+                    // Detection is the default and not free of mistakes: a short clip, an
+                    // accent, music under the voice.
+                    param_label(ui, "LANGUAGE");
+                    let cur = SPOKEN_LANGUAGES
+                        .iter()
+                        .find(|(code, _)| *code == media.transcribe.language)
+                        .map(|(_, name)| *name)
+                        .unwrap_or("Detect");
+                    egui::ComboBox::from_id_salt("transcribe_language")
+                        .selected_text(cur)
+                        .show_ui(ui, |ui| {
+                            for (code, name) in SPOKEN_LANGUAGES {
+                                let mut sel = media.transcribe.language.clone();
+                                if ui.selectable_value(&mut sel, code.to_string(), *name).clicked() {
+                                    media.transcribe.language = code.to_string();
+                                }
+                            }
+                        })
+                        .response
+                        .on_hover_text("Leave on Detect unless it gets it wrong; naming the language also stops it drifting mid-file.");
+                    ui.end_row();
+                    param_label(ui, "TRANSLATE");
+                    ui.checkbox(&mut media.transcribe.translate, "to English")
+                        .on_hover_text("Translate the transcription to English (Whisper translate task).");
+                    ui.end_row();
+                });
+                widgets::caption_row(ui, "Detection can mishear a short clip or an accent; naming the language fixes it.");
+            });
         }
         MediaKind::Separate => {
-            egui::Grid::new("media_params_separate")
-                .num_columns(2)
-                .min_col_width(120.0)
-                .spacing([16.0, 7.0])
-                .show(ui, |ui| {
-                    audio_picker_row(ui, media, "Track", MediaAudioSlot::SeparateAudio,
+            widgets::section_panel(ui, "INPUT", |ui| {
+                param_grid(ui, "media_params_separate_input", |ui| {
+                    audio_picker_row(ui, media, "TRACK", MediaAudioSlot::SeparateAudio,
                         "Pick the song to split (wav/mp3/flac/ogg/m4a)");
-                    desc_row(ui, "The mix to split. Any common format; it is converted to the \
-                             model's 44.1 kHz stereo automatically.");
-
-                    ui.label("Stems");
+                });
+                widgets::caption_row(ui, "Any common format; it is converted to the model's 44.1 kHz stereo.");
+            });
+            ui.add_space(widgets::GAP_WIDGETS);
+            widgets::section_panel(ui, "STEMS", |ui| {
+                param_grid(ui, "media_params_separate", |ui| {
+                    param_label(ui, "STEMS");
                     egui::ComboBox::from_id_salt("media_separate_stems")
                         .selected_text(media.separate.stems.label())
                         .show_ui(ui, |ui| {
-                            for s in [
+                            for st in [
                                 crate::state::SeparateStems::Both,
                                 crate::state::SeparateStems::Vocals,
                                 crate::state::SeparateStems::Instrumental,
                             ] {
-                                ui.selectable_value(&mut media.separate.stems, s, s.label());
+                                ui.selectable_value(&mut media.separate.stems, st, st.label());
                             }
-                        });
+                        })
+                        .response
+                        .on_hover_text("Which stems to return. Both adds back to the original exactly.");
                     ui.end_row();
-                    desc_row(ui, "Which stems to return. Both is the default: the pair adds back \
-                             to the original exactly, so you can hear what was taken out.");
                 });
+                widgets::caption_row(ui, "Both stems add back to the original exactly, so what was taken out can be heard.");
+            });
         }
     }
 }
 
+/// The grid of a section: a label column of fixed width and the controls.
+fn param_grid(ui: &mut egui::Ui, id: &str, add: impl FnOnce(&mut egui::Ui)) {
+    egui::Grid::new(id)
+        .num_columns(2)
+        .min_col_width(widgets::PARAM_LABEL_W)
+        .spacing([widgets::GAP_WIDGETS, widgets::GAP_LABEL])
+        .show(ui, add);
+}
+
+/// A parameter's label: capitals, dim.
+fn param_label(ui: &mut egui::Ui, caps: &str) {
+    ui.label(text::label(caps));
+}
+
+/// How a slider row formats its value.
+#[derive(Default, Clone, Copy)]
+struct SliderOpts {
+    suffix: &'static str,
+    logarithmic: bool,
+    decimals: usize,
+}
+
+/// One grid row: the label, a slider of fixed track width, the value in a
+/// monospace cell of fixed width. The description is on hover.
+fn slider_row<T: egui::emath::Numeric>(
+    ui: &mut egui::Ui,
+    caps: &str,
+    value: &mut T,
+    range: std::ops::RangeInclusive<T>,
+    opts: SliderOpts,
+    tip: &str,
+) -> egui::Response {
+    param_label(ui, caps);
+    let response = ui
+        .horizontal(|ui| {
+            let slider = ui
+                .scope(|ui| {
+                    ui.spacing_mut().slider_width = widgets::SLIDER_TRACK_W;
+                    ui.add(
+                        egui::Slider::new(value, range.clone())
+                            .show_value(false)
+                            .logarithmic(opts.logarithmic),
+                    )
+                })
+                .inner
+                .on_hover_text(tip);
+            ui.scope(|ui| {
+                ui.style_mut().override_font_id = Some(egui::FontId::monospace(text::VALUE_PT));
+                widgets::drag_fixed(
+                    ui,
+                    egui::DragValue::new(value)
+                        .range(range)
+                        .fixed_decimals(opts.decimals)
+                        .suffix(opts.suffix),
+                    widgets::READOUT_WIDE_W,
+                )
+            })
+            .inner
+            .on_hover_text(tip);
+            slider
+        })
+        .inner;
+    ui.end_row();
+    response
+}
 
 /// How tall a chosen-file preview is. Small enough that a filled row does not push the
 /// form around, large enough to recognise what is in it.
@@ -1330,41 +1346,36 @@ fn slot_bytes(media: &MediaState, slot: MediaAudioSlot) -> Option<&Vec<u8>> {
     entry.as_ref().map(|(_, b)| b)
 }
 
-/// A labelled "choose an audio file" grid row that fills the MediaState
-/// slot named by `slot` with (name, bytes).
+/// A grid row that fills the MediaState slot named by `slot` with a chosen
+/// file: Choose, Clear, the preview and the name.
 ///
-/// The rfd dialog AND the file read run on a worker thread via
-/// `dialog::spawn_dialog_worker` — the sync `pick_file()` would
-/// deadlock the egui main thread against the XDG portal on Linux (see
-/// spawn_dialog_worker's doc), and `fs::read` of a multi-MB clip would
-/// stall the frame. The pick lands in `pending_dialog` as
-/// `ChatDialogResult::MediaAudio`; `drain_pending_dialog` routes it
-/// into the right slot on the next frame.
+/// The rfd dialog and the file read run on a worker thread: the synchronous
+/// picker would deadlock the egui thread against the XDG portal on Linux, and
+/// reading a multi-MB clip would stall the frame. The pick lands in
+/// `pending_dialog` as `ChatDialogResult::MediaAudio`.
 fn audio_picker_row(
     ui: &mut egui::Ui,
     media: &mut MediaState,
-    label: &str,
+    caps: &str,
     slot: MediaAudioSlot,
     hover: &str,
 ) {
-    ui.label(label);
+    param_label(ui, caps);
     ui.horizontal(|ui| {
-        // Gate on the shared in-flight flag: a second overlapping
-        // dialog would clobber the first result in pending_dialog
-        // (same rule as save_button).
+        // One dialog at a time: a second would clobber the first's result.
         let busy = media.dialog_in_flight.load(std::sync::atomic::Ordering::Relaxed);
+        let choose = if busy {
+            "Choosing..."
+        } else if slot.is_image() {
+            "Choose image"
+        } else {
+            "Choose audio"
+        };
         if ui
-            .add_enabled(!busy, egui::Button::image_and_text(
-                Icon::Refresh.image(11.0, theme::ink()),
-                RichText::new(if busy {
-                    "Choosing…"
-                } else if slot.is_image() {
-                    "Choose image…"
-                } else {
-                    "Choose audio…"
-                })
-                .size(11.0),
-            ))
+            .add_enabled(
+                !busy,
+                egui::Button::image_and_text(Icon::Folder.image(ICON_PT_SMALL, theme::ink()), text::note(choose)),
+            )
             .on_hover_text(hover)
             .clicked()
         {
@@ -1374,20 +1385,15 @@ fn audio_picker_row(
                 ui.ctx().clone(),
                 move |_| {
                     let dlg = if slot.is_image() {
-                        rfd::FileDialog::new()
-                            .add_filter("Image", crate::modality::CHAT_IMAGE_EXTS)
+                        rfd::FileDialog::new().add_filter("Image", crate::modality::CHAT_IMAGE_EXTS)
                     } else {
-                        rfd::FileDialog::new()
-                            .add_filter("Audio", crate::modality::CHAT_AUDIO_EXTS)
+                        rfd::FileDialog::new().add_filter("Audio", crate::modality::CHAT_AUDIO_EXTS)
                     };
-                    let Some(path) = dlg.pick_file()
-                    else {
-                        return; // cancelled
+                    let Some(path) = dlg.pick_file() else {
+                        return;
                     };
-                    // ASK THE SIZE BEFORE READING IT. The server caps a source's size,
-                    // and this tab checked nothing - so a phone photo or a lossless clip
-                    // was read, previewed, uploaded whole, and only then refused. The
-                    // number was in hand the entire time.
+                    // The size is checked before the read, so the refusal arrives while
+                    // the user still looks at the dialog rather than after an upload.
                     if let Some(msg) = oversize_message(&path) {
                         if let Ok(mut g) = pending.lock() {
                             *g = Some(crate::state::ChatDialogResult::MediaAudio {
@@ -1403,10 +1409,6 @@ fn audio_picker_row(
                         .and_then(|n| n.to_str())
                         .unwrap_or(if slot.is_image() { "image" } else { "audio" })
                         .to_string();
-                    // Read on the worker too: the whole point is that
-                    // neither the portal wait nor the disk read runs
-                    // on the frame path. Errors travel in-band so the
-                    // GUI thread can surface them.
                     let bytes = std::fs::read(&path).map_err(|e| format!("Read audio: {e}"));
                     if let Ok(mut g) = pending.lock() {
                         *g = Some(ChatDialogResult::MediaAudio { slot, name, bytes });
@@ -1414,20 +1416,11 @@ fn audio_picker_row(
                 },
             );
         }
-        // Clearing a chosen file must be possible: without it a slot picked by mistake
-        // can only be replaced, never emptied, so an optional input (an init clip, a
-        // pose image) becomes impossible to turn back off once set.
-        let chosen = match slot {
-            MediaAudioSlot::EditImage => media.image_edit.source.is_some(),
-            MediaAudioSlot::TranscribeAudio => media.transcribe.audio.is_some(),
-            MediaAudioSlot::SfxInit => media.sfx.init_audio.is_some(),
-            MediaAudioSlot::VideoStartImage => media.video.start_image.is_some(),
-            MediaAudioSlot::ImageControl => media.image.control.is_some(),
-            MediaAudioSlot::SeparateAudio => media.separate.audio.is_some(),
-        };
+        // A slot picked by mistake can be emptied, not only replaced.
+        let chosen = slot_bytes(media, slot).is_some();
         if chosen
             && ui
-                .add_enabled(!busy, egui::Button::new(RichText::new("Clear").size(11.0)))
+                .add_enabled(!busy, egui::Button::new(text::note("Clear")).frame(false))
                 .on_hover_text("Remove the chosen file from this slot")
                 .clicked()
         {
@@ -1441,8 +1434,7 @@ fn audio_picker_row(
             }
         }
         // Built before `current` borrows the slot: the cache lives in the same state.
-        let thumb =
-            if slot.is_image() { thumbnail_for(ui.ctx(), media, slot) } else { None };
+        let thumb = if slot.is_image() { thumbnail_for(ui.ctx(), media, slot) } else { None };
         let current = match slot {
             MediaAudioSlot::EditImage => &media.image_edit.source,
             MediaAudioSlot::TranscribeAudio => &media.transcribe.audio,
@@ -1453,74 +1445,20 @@ fn audio_picker_row(
         };
         match current {
             Some((name, bytes)) => {
-                // SHOW THE PICTURE, not just its name and its weight in kilobytes. The
-                // question a user has after choosing a file is whether it is the right
-                // one, and "portrait_final_v3.png (842 KB)" does not answer it - the
-                // more so when several slots are filled at once (a clip to extend, a
-                // target to put it on) and swapping them silently produces nonsense.
+                // The picture itself, so the user can tell it is the right one.
                 if let Some(tex) = &thumb {
-                    ui.add(
-                        egui::Image::new(tex).max_height(THUMBNAIL_HEIGHT).corner_radius(3.0),
-                    )
-                    .on_hover_text(name.clone());
+                    ui.add(egui::Image::new(tex).max_height(THUMBNAIL_HEIGHT).corner_radius(theme::RADIUS))
+                        .on_hover_text(name.clone());
                 }
-                ui.label(RichText::new(format!("{name} ({} KB)", bytes.len() / 1024))
-                    .size(11.0).color(theme::ink_dim()));
+                ui.label(text::note(&format!("{name} ({} KB)", bytes.len() / 1024)));
             }
             None => {
-                ui.label(RichText::new("no file chosen").size(11.0).color(theme::ink_dim()));
+                ui.label(text::note("no file chosen"));
             }
         }
     });
     ui.end_row();
-    desc_row(ui, hover);
 }
-
-/// One two-column grid row of the params form: label + slider +
-/// `end_row`. Takes the pre-built `Slider` (rather than value + range)
-/// so the Duration rows can chain `.suffix(" s")`; returns the slider's
-/// `Response` so callers can hang hover text on it (Strength τ).
-fn slider_row(ui: &mut egui::Ui, label: &str, slider: egui::Slider<'_>) -> egui::Response {
-    ui.label(label);
-    let response = ui.add(slider);
-    ui.end_row();
-    response
-}
-
-/// A full-width mini section header inside a params grid: visually groups
-/// related parameters (extra top air + small caps-style strong label).
-fn section_row(ui: &mut egui::Ui, title: &str) {
-    // The air above the header must come from an EMPTY ROW, not `add_space`: egui
-    // asserts on `add_space` inside a grid layout ("add_space makes no sense in a
-    // grid layout"), so the music tab's COMPOSITION / RENDERING / CONDITIONING
-    // headers panicked the whole tab on render.
-    ui.label("");
-    ui.label("");
-    ui.end_row();
-    ui.label(
-        RichText::new(title)
-            .size(10.5)
-            .strong()
-            .color(theme::ink_dim()),
-    );
-    ui.label("");
-    ui.end_row();
-}
-
-/// A small always-visible description line under a parameter row (rendered in
-/// the control column). Every Media Studio parameter documents its impact this
-/// way - visible, not hidden behind a hover.
-fn desc_row(ui: &mut egui::Ui, text: &str) {
-    ui.label("");
-    ui.add(
-        egui::Label::new(
-            RichText::new(text).size(11.0).color(theme::ink_dim()),
-        )
-        .wrap(),
-    );
-    ui.end_row();
-}
-
 
 /// The standard latent-diffusion shapes, all within a few percent of one megapixel.
 ///
@@ -1543,10 +1481,8 @@ fn shape_row(ui: &mut egui::Ui, width: &mut u32, height: &mut u32) {
         .iter()
         .find(|(_, w, h)| *w == *width && *h == *height)
         .map(|(n, _, _)| *n)
-        // Not "1024x1024" again - the numbers are already on the row below, and repeating
-        // them here would read as a second control that disagrees with the first.
         .unwrap_or("Custom");
-    ui.label("Shape");
+    param_label(ui, "SHAPE");
     egui::ComboBox::new("image_shape", "")
         .selected_text(current)
         .show_ui(ui, |ui| {
@@ -1556,20 +1492,20 @@ fn shape_row(ui: &mut egui::Ui, width: &mut u32, height: &mut u32) {
                     *height = h;
                 }
             }
-        });
+        })
+        .response
+        .on_hover_text(
+            "Aspect ratio, at the sizes these models are trained on. Anything else still \
+             works, set the numbers below, but an off-bucket shape usually costs some \
+             composition quality.",
+        );
     ui.end_row();
-    desc_row(
-        ui,
-        "Aspect ratio, at the sizes these models are trained on. Anything else still \
-         works - set the numbers below - but an off-bucket shape usually costs some \
-         composition quality.",
-    );
 }
 
 /// How the finished image comes back.
 fn file_format_row(ui: &mut egui::Ui, fmt: &mut crate::state::ImageFileFormat) {
     use crate::state::ImageFileFormat as F;
-    ui.label("File format");
+    param_label(ui, "FILE FORMAT");
     egui::ComboBox::new("image_file_format", "")
         .selected_text(fmt.label())
         .show_ui(ui, |ui| {
@@ -1578,36 +1514,34 @@ fn file_format_row(ui: &mut egui::Ui, fmt: &mut crate::state::ImageFileFormat) {
                     *fmt = opt;
                 }
             }
-        });
+        })
+        .response
+        .on_hover_text(
+            "PNG keeps every pixel exactly and is what the server returns by default; JPEG \
+             and WebP are a fraction of the size and lose a little detail. The server \
+             transcodes, so the render itself is identical either way.",
+        );
     ui.end_row();
-    desc_row(
-        ui,
-        "PNG keeps every pixel exactly and is what the server returns by default; JPEG \
-         and WebP are a fraction of the size and lose a little detail. The server \
-         transcodes, so the render itself is identical either way.",
-    );
 }
 
-/// The paired width × height DragValue row — Image and Video share the
-/// shape, only the permitted range differs.
-fn size_row(
-    ui: &mut egui::Ui,
-    width: &mut u32,
-    height: &mut u32,
-    range: std::ops::RangeInclusive<u32>,
-) {
-    ui.label("Size");
+/// The paired width x height row; Image and Video share it, only the range differs.
+fn size_row(ui: &mut egui::Ui, width: &mut u32, height: &mut u32, range: std::ops::RangeInclusive<u32>) {
+    param_label(ui, "SIZE");
     ui.horizontal(|ui| {
-        ui.add(egui::DragValue::new(width).range(range.clone()).speed(16.0));
-        ui.label("×");
-        ui.add(egui::DragValue::new(height).range(range).speed(16.0));
-    });
+        ui.scope(|ui| {
+            ui.style_mut().override_font_id = Some(egui::FontId::monospace(text::VALUE_PT));
+            widgets::drag_fixed(ui, egui::DragValue::new(width).range(range.clone()).speed(SIZE_STEP), widgets::READOUT_W);
+            ui.label(text::label("x"));
+            widgets::drag_fixed(ui, egui::DragValue::new(height).range(range).speed(SIZE_STEP), widgets::READOUT_W);
+        });
+    })
+    .response
+    .on_hover_text("Resolution in pixels (multiples of 16): more detail but slower and more VRAM.");
     ui.end_row();
-    desc_row(
-        ui,
-        "Resolution in pixels (multiples of 16): more detail but slower and more VRAM.",
-    );
 }
+
+/// Pixels a size drag moves per point.
+const SIZE_STEP: f64 = 16.0;
 
 /// Whether the model's family applies LoRA adapters at all.
 ///
@@ -1634,24 +1568,19 @@ fn family_takes_loras(models: &[crate::api::types::ModelInfo], name: &str) -> bo
 /// never types a path. Strength runs past 1.0 because over-driving an adapter is a real
 /// technique, and below 0 because subtracting a style is one too.
 
-/// Regional prompts: one row per area, each with what belongs there and how hard.
-///
-/// The problem this solves is concrete - a single prompt naming two people renders
-/// them as one merged body, because nothing in the conditioning says where each
-/// belongs. Saying "this one on the left, that one on the right" is the fix, and it
-/// only needs an area, not a canvas.
-///
-/// The base prompt still applies everywhere; a region ADDS to it over its rectangle.
+/// Regional prompts: one row per area, each with what belongs there and how
+/// hard. The base prompt still applies everywhere; a region adds to it over
+/// its rectangle.
 fn region_rows(ui: &mut egui::Ui, regions: &mut Vec<crate::state::ImageRegion>) {
     use crate::state::{ImageRegion, RegionArea};
-    ui.label("Regions");
+    param_label(ui, "REGIONS");
     ui.vertical(|ui| {
         let mut remove: Option<usize> = None;
         for (i, r) in regions.iter_mut().enumerate() {
             ui.horizontal(|ui| {
                 egui::ComboBox::from_id_salt(("region-area", i))
                     .selected_text(r.area.label())
-                    .width(110.0)
+                    .width(REGION_AREA_W)
                     .show_ui(ui, |ui| {
                         for a in RegionArea::ALL {
                             ui.selectable_value(&mut r.area, a, a.label());
@@ -1660,16 +1589,15 @@ fn region_rows(ui: &mut egui::Ui, regions: &mut Vec<crate::state::ImageRegion>) 
                 ui.add(
                     egui::TextEdit::singleline(&mut r.prompt)
                         .hint_text("what goes here")
-                        .desired_width(180.0),
+                        .desired_width(REGION_PROMPT_W),
                 );
-                ui.add(
-                    egui::DragValue::new(&mut r.strength)
-                        .speed(0.05)
-                        .range(0.0..=8.0)
-                        .fixed_decimals(2),
+                widgets::drag_fixed(
+                    ui,
+                    egui::DragValue::new(&mut r.strength).speed(0.05).range(0.0..=8.0).fixed_decimals(2),
+                    widgets::READOUT_W,
                 )
                 .on_hover_text("How hard this region's prompt outweighs the base one there.");
-                if ui.button(RichText::new("Remove").size(11.0)).clicked() {
+                if widgets::close_button(ui, REGION_CLOSE_PX).on_hover_text("Remove this region").clicked() {
                     remove = Some(i);
                 }
             });
@@ -1677,21 +1605,19 @@ fn region_rows(ui: &mut egui::Ui, regions: &mut Vec<crate::state::ImageRegion>) 
         if let Some(i) = remove {
             regions.remove(i);
         }
-        if ui.button(RichText::new("Add a region").size(11.0)).clicked() {
-            // A second region defaults to the opposite half: the first thing anyone
-            // wants after "left" is "right".
+        if ui.add(egui::Button::new(text::note("Add a region"))).clicked() {
+            // A second region defaults to the opposite half.
             let area = if regions.len() == 1 { RegionArea::Right } else { RegionArea::Left };
             regions.push(ImageRegion { area, ..Default::default() });
         }
     });
     ui.end_row();
-    desc_row(
-        ui,
-        "Optional. A prompt naming two subjects renders them merged, because nothing \
-         says where each belongs. Give each one an area and they stay apart. The main \
-         prompt still applies everywhere; a region adds to it over its part of the frame.",
-    );
 }
+
+/// Widths of a region row's area picker and prompt, and the side of its close mark.
+const REGION_AREA_W: f32 = 110.0;
+const REGION_PROMPT_W: f32 = 180.0;
+const REGION_CLOSE_PX: f32 = 16.0;
 
 /// The adapter picker, showing only what can actually be applied to `model_family`.
 ///
@@ -1726,21 +1652,19 @@ fn lora_rows_inner(
     available: &[String],
     hidden: usize,
 ) {
-    ui.label("Adapters");
+    param_label(ui, "ADAPTERS");
     if available.is_empty() {
-        ui.label(
-            RichText::new(if hidden > 0 {
-                format!("none for this model ({hidden} for other architectures)")
-            } else {
-                "none on this server".to_string()
-            })
-            .size(11.0)
-            .color(theme::ink_dim()),
+        ui.label(text::note(&if hidden > 0 {
+            format!("none for this model ({hidden} for other architectures)")
+        } else {
+            "none on this server".to_string()
+        }))
+        .on_hover_text(
+            "LoRA adapters let a model render a style, character or concept it was not \
+             trained on. Drop .safetensors files in the server's lora directory and they \
+             appear here.",
         );
         ui.end_row();
-        desc_row(ui, "LoRA adapters let a model render a style, character or concept it \
-                 was not trained on. Drop .safetensors files in the server's lora \
-                 directory and they appear here.");
         return;
     }
     ui.vertical(|ui| {
@@ -1754,22 +1678,25 @@ fn lora_rows_inner(
                 }
             }
             if let Some(entry) = selected.iter_mut().find(|(n, _)| n == name) {
-                ui.add(
-                    egui::Slider::new(&mut entry.1, -1.0..=2.0)
-                        .text("strength")
-                        .fixed_decimals(2),
-                );
+                ui.horizontal(|ui| {
+                    ui.label(text::label("STRENGTH"));
+                    widgets::drag_fixed(
+                        ui,
+                        egui::DragValue::new(&mut entry.1).speed(0.05).range(-1.0..=2.0).fixed_decimals(2),
+                        widgets::READOUT_W,
+                    )
+                    .on_hover_text("1.0 is as trained; 0 disables one without removing it; past 1 over-drives it.");
+                });
             }
         }
-    });
+    })
+    .response
+    .on_hover_text("LoRA adapters apply a style, character or concept on top of the model. Several stack.");
     ui.end_row();
-    desc_row(ui, "LoRA adapters apply a style, character or concept on top of the \
-             model. Several stack. Strength 1.0 is as trained; 0 disables one without \
-             removing it from the list.");
 }
 
-/// Solver and sigma-curve pickers. Empty string = the model's own default, which is
-/// what almost every render should use.
+/// Solver and sigma-curve pickers. Empty string is the model's own default,
+/// which is what almost every render should use.
 fn solver_rows(ui: &mut egui::Ui, sampler: &mut String, scheduler: &mut String) {
     const SAMPLERS: &[(&str, &str)] = &[
         ("", "Default"),
@@ -1782,49 +1709,46 @@ fn solver_rows(ui: &mut egui::Ui, sampler: &mut String, scheduler: &mut String) 
         ("karras", "Karras"),
         ("exponential", "Exponential"),
     ];
-    let pick = |ui: &mut egui::Ui, id: &str, cur: &mut String, opts: &[(&str, &str)]| {
-        let label = opts
-            .iter()
-            .find(|(v, _)| v == cur)
-            .map(|(_, l)| *l)
-            .unwrap_or("Default");
-        egui::ComboBox::from_id_salt(id).selected_text(label).show_ui(ui, |ui| {
-            for (v, l) in opts {
-                ui.selectable_value(cur, v.to_string(), *l);
-            }
-        });
+    let pick = |ui: &mut egui::Ui, id: &str, cur: &mut String, opts: &[(&str, &str)], tip: &str| {
+        let label = opts.iter().find(|(v, _)| v == cur).map(|(_, l)| *l).unwrap_or("Default");
+        egui::ComboBox::from_id_salt(id)
+            .selected_text(label)
+            .show_ui(ui, |ui| {
+                for (v, l) in opts {
+                    ui.selectable_value(cur, v.to_string(), *l);
+                }
+            })
+            .response
+            .on_hover_text(tip);
     };
-    ui.label("Sampler");
-    pick(ui, "media_image_sampler", sampler, SAMPLERS);
+    param_label(ui, "SAMPLER");
+    pick(ui, "media_image_sampler", sampler, SAMPLERS,
+        "How the run moves between two noise levels. DPM++ 2M reaches the same quality in fewer steps; Euler is the plain first-order step.");
     ui.end_row();
-    desc_row(ui, "How the run moves between two noise levels. DPM++ 2M reaches the \
-             same quality in fewer steps by reusing the previous estimate; Euler is \
-             the plain first-order step.");
-    ui.label("Schedule");
-    pick(ui, "media_image_scheduler", scheduler, SCHEDULERS);
+    param_label(ui, "SCHEDULE");
+    pick(ui, "media_image_scheduler", scheduler, SCHEDULERS,
+        "Which noise levels the run visits. Karras spends more of the budget at low noise, where detail is decided.");
     ui.end_row();
-    desc_row(ui, "Which noise levels the run visits. Karras spends more of the budget \
-             at low noise, where detail is decided, and usually helps at low step \
-             counts.");
 }
 
-/// The shared seed row — a free-text field where empty means "random".
+/// The seed: free text, empty means random.
 fn seed_row(ui: &mut egui::Ui, media: &mut MediaState) {
-    ui.label("Seed");
-    ui.add(
-        egui::TextEdit::singleline(&mut media.seed)
-            .hint_text("random")
-            .desired_width(140.0),
-    );
+    param_label(ui, "SEED");
+    ui.scope(|ui| {
+        ui.style_mut().override_font_id = Some(egui::FontId::monospace(text::VALUE_PT));
+        ui.add(egui::TextEdit::singleline(&mut media.seed).hint_text("random").desired_width(SEED_W))
+    })
+    .inner
+    .on_hover_text("Same seed and settings, the exact same result. Empty is a fresh random seed each run.");
     ui.end_row();
-    desc_row(
-        ui,
-        "Same seed + same settings = the exact same result. Empty = fresh random seed each run.",
-    );
 }
 
-/// Render the progress bar (SSE step progress, when available) plus an
-/// elapsed / ETA line, or a plain status string.
+/// Width of the seed field.
+const SEED_W: f32 = 140.0;
+
+/// The status line: a lamp, the phase and the count as text, a meter. The
+/// phase stays beside the count, because a load that counts each file
+/// separately otherwise reads as a bar restarting for no reason.
 fn render_status(ui: &mut egui::Ui, media: &MediaState) {
     if !media.is_generating && media.status.is_empty() {
         return;
@@ -1836,55 +1760,42 @@ fn render_status(ui: &mut egui::Ui, media: &MediaState) {
         let eta = if step > 0 && frac > 0.0 {
             let per = elapsed / step as f32;
             let remaining = per * (total.saturating_sub(step)) as f32;
-            format!(" · ~{remaining:.0}s left")
+            format!(" ~{remaining:.0}s left")
         } else {
             String::new()
         };
-        // WHAT is being counted, not just how far in. The phase is already in the status
-        // line the stream produced ("Loading the model 34/100"), and dropping it for a
-        // bare "Step 34/100" is what made a multi-file load look like a bar that keeps
-        // restarting for no reason - each file is counted separately, so without the
-        // phase there is nothing on screen to say the load is still going.
         let what = if media.status.is_empty() {
             format!("Step {step}/{total}")
         } else {
             media.status.clone()
         };
         ui.horizontal(|ui| {
-            ui.spinner();
-            ui.label(
-                // The separator is the middle dot every other status line here uses,
-                // written as an escape so this stays an ASCII source line.
-                RichText::new(format!("{what} \u{b7} {elapsed:.0}s{eta}"))
-                    .size(12.0)
-                    .color(theme::warning()),
-            );
+            widgets::lamp_inline(ui, true, theme::accent());
+            ui.label(text::mono(&format!("{what}  {elapsed:.0}s{eta}")));
         });
-        ui.add_space(4.0);
-        ui.add(egui::ProgressBar::new(frac).text(format!("{:.0}%", frac * 100.0)));
+        ui.add_space(widgets::GAP_LABEL);
+        surface::meter(ui, frac, widgets::METER_SIZE, theme::accent());
     } else if media.is_generating {
         let elapsed = media.started_at.map(|t| t.elapsed().as_secs_f32()).unwrap_or(0.0);
         ui.horizontal(|ui| {
-            ui.spinner();
+            widgets::lamp_inline(ui, true, theme::accent());
             let label = if media.status.is_empty() {
-                format!("Generating… {elapsed:.0}s")
+                format!("Generating  {elapsed:.0}s")
             } else {
-                format!("{} · {elapsed:.0}s", media.status)
+                format!("{}  {elapsed:.0}s", media.status)
             };
-            ui.label(RichText::new(label).size(12.0).color(theme::warning()));
+            ui.label(text::mono(&label));
         });
-        ui.add_space(4.0);
-        // Indeterminate bar for the kinds without server step events: a slow
-        // sawtooth sweep driven by the elapsed clock, so EVERY generation shows
-        // a moving bar (the determinate branch above covers streamed kinds).
-        let sweep = (elapsed / 3.0).fract();
-        ui.add(egui::ProgressBar::new(sweep).animate(true).text("working…"));
-        ui.ctx().request_repaint_after(std::time::Duration::from_millis(100));
+        ui.add_space(widgets::GAP_LABEL);
+        // A kind without step events gets a sweep driven by the clock, so every
+        // generation shows a moving meter.
+        let sweep = (elapsed / SWEEP_PERIOD_S).fract();
+        surface::meter(ui, sweep, widgets::METER_SIZE, theme::accent_dim());
+        ui.ctx().request_repaint_after(std::time::Duration::from_millis(SWEEP_REPAINT_MS));
     } else if !media.status.is_empty() {
         ui.horizontal(|ui| {
-            Icon::Play.show(ui, 12.0, theme::success());
-            ui.add_space(4.0);
-            ui.label(RichText::new(&media.status).size(12.0).color(theme::success()));
+            widgets::lamp_inline(ui, true, theme::success());
+            ui.label(text::note(&media.status));
         });
     }
 }
@@ -1910,18 +1821,20 @@ fn overlay_button(
     let id = ui.id().with(("media_overlay", role, index));
     let resp = ui.interact(rect, id, egui::Sense::click());
     let hovered = enabled && resp.hovered();
-    let fill = if hovered {
-        theme::accent().gamma_multiply(0.85)
+    let fill = if hovered { theme::accent() } else { OVERLAY_BUTTON_SCRIM };
+    ui.painter().rect_filled(rect, theme::RADIUS, fill);
+    let text_col = if hovered {
+        theme::on_accent()
+    } else if enabled {
+        egui::Color32::WHITE
     } else {
-        egui::Color32::from_black_alpha(120)
+        theme::ink_dim()
     };
-    ui.painter().rect_filled(rect, 4.0, fill);
-    let text_col = if enabled { theme::ink() } else { theme::ink_dim() };
     ui.painter().text(
         rect.center(),
         egui::Align2::CENTER_CENTER,
         label,
-        egui::FontId::proportional(12.0),
+        egui::FontId::proportional(text::VALUE_PT),
         text_col,
     );
     resp
@@ -1946,27 +1859,26 @@ fn render_results(
         return;
     }
 
-    ui.add_space(12.0);
-    ui.separator();
-    ui.add_space(6.0);
-    ui.label(RichText::new("Result").size(14.0).strong().color(theme::accent()));
-    ui.add_space(6.0);
-
-    // ── Text (Transcribe) ────────────────────────────────────────────
-    if let Some(text) = &media.result_text {
-        let mut shown = text.clone();
-        ui.add(
-            egui::TextEdit::multiline(&mut shown)
-                .desired_rows(6)
-                .desired_width(f32::INFINITY)
-                .interactive(true),
-        );
+    ui.add_space(widgets::GAP_WIDGETS);
+    widgets::section_panel(ui, "RESULT", |ui| {
+    // Text (Transcribe).
+    if let Some(result) = &media.result_text {
+        let mut shown = result.clone();
+        widgets::well(ui, |ui| {
+            ui.add(
+                egui::TextEdit::multiline(&mut shown)
+                    .frame(egui::Frame::NONE)
+                    .desired_rows(TRANSCRIPT_ROWS)
+                    .desired_width(f32::INFINITY)
+                    .interactive(true),
+            );
+        });
         ui.horizontal(|ui| {
-            if ui.button("Copy text").clicked() {
-                ui.ctx().copy_text(text.clone());
+            if ui.add(egui::Button::new(text::note("Copy text")).frame(false)).clicked() {
+                ui.ctx().copy_text(result.clone());
             }
         });
-        ui.add_space(6.0);
+        ui.add_space(widgets::GAP_LABEL);
     }
 
     // ── Images (inline) ──────────────────────────────────────────────
@@ -1989,11 +1901,11 @@ fn render_results(
         // Which image the hover controls acted on, resolved after the borrow ends.
         let mut edit_idx: Option<usize> = None;
         let mut save_idx: Option<usize> = None;
+        widgets::screen_well(ui, |ui| {
         ui.horizontal_wrapped(|ui| {
             for (i, tex_handle) in texes.iter().enumerate() {
                 let tex_size = tex_handle.size_vec2();
-                let max_side = 360.0;
-                let scale = (max_side / tex_size.x.max(tex_size.y)).min(1.0);
+                let scale = (RESULT_MAX_PX / tex_size.x.max(tex_size.y)).min(1.0);
                 let resp = crate::image_viewer::image_response(
                     ui,
                     tex_handle,
@@ -2009,14 +1921,12 @@ fn render_results(
                 // once the pointer is over one of these buttons the BUTTON owns the
                 // hover, and the controls would flicker out from under the cursor.
                 let rect = resp.rect;
-                let pad = 6.0;
-                // Cap the bar at a third of the image so it can never swallow the whole
-                // thumbnail - which would also swallow the click that opens the viewer.
-                // Generated results are >=256 px so this clamp is a floor, not a resize.
-                let bar_h = 24.0_f32.min(rect.height() / 3.0);
+                // Capped at a third of the image so the bar can never swallow the
+                // click that opens the viewer.
+                let bar_h = OVERLAY_BAR_H.min(rect.height() / 3.0);
                 let bar = egui::Rect::from_min_max(
-                    egui::pos2(rect.left() + pad, rect.bottom() - pad - bar_h),
-                    egui::pos2(rect.right() - pad, rect.bottom() - pad),
+                    egui::pos2(rect.left() + OVERLAY_PAD, rect.bottom() - OVERLAY_PAD - bar_h),
+                    egui::pos2(rect.right() - OVERLAY_PAD, rect.bottom() - OVERLAY_PAD),
                 );
                 // A click on the image opens the viewer - EXCEPT over the control bar,
                 // where it belongs to Edit/Save. Decided here rather than left to widget
@@ -2027,14 +1937,14 @@ fn render_results(
                 }
                 if ui.rect_contains_pointer(rect) {
                     ui.painter().rect_filled(
-                        bar.expand2(egui::vec2(0.0, 3.0)),
-                        4.0,
-                        egui::Color32::from_black_alpha(170),
+                        bar.expand2(egui::vec2(0.0, OVERLAY_GAP / 2.0)),
+                        theme::RADIUS,
+                        OVERLAY_SCRIM,
                     );
-                    let half = (bar.width() - 6.0) * 0.5;
+                    let half = (bar.width() - OVERLAY_GAP) * 0.5;
                     let left = egui::Rect::from_min_size(bar.min, egui::vec2(half, bar.height()));
                     let right = egui::Rect::from_min_size(
-                        egui::pos2(bar.min.x + half + 6.0, bar.min.y),
+                        egui::pos2(bar.min.x + half + OVERLAY_GAP, bar.min.y),
                         egui::vec2(half, bar.height()),
                     );
                     let saving = media.dialog_in_flight.load(std::sync::atomic::Ordering::Relaxed);
@@ -2060,7 +1970,8 @@ fn render_results(
                 }
             }
         });
-        ui.add_space(6.0);
+        });
+        ui.add_space(widgets::GAP_LABEL);
         // Act on whichever image the hover controls named. Resolved here, after the
         // borrow of result_images inside the loop has ended.
         if let Some(i) = edit_idx {
@@ -2094,33 +2005,24 @@ fn render_results(
     // indexing keeps each `&media.result_audios[i]` borrow short-lived
     // instead of cloning the multi-MB base64 WAVs every frame.
     if !media.result_audios.is_empty() {
-        ui.add_space(6.0);
+        ui.add_space(widgets::GAP_LABEL);
         let n_audios = media.result_audios.len();
         for i in 0..n_audios {
             ui.horizontal(|ui| {
-                Icon::Music.show(ui, 14.0, theme::accent());
-                ui.add_space(4.0);
-                ui.label(
-                    RichText::new(if n_audios == 1 {
-                        "Audio".to_string()
-                    } else {
-                        format!("Audio #{}", i + 1)
-                    })
-                    .size(12.0),
-                );
+                Icon::Music.show(ui, ICON_PT, theme::ink_dim());
+                ui.label(text::note(&if n_audios == 1 {
+                    "Audio".to_string()
+                } else {
+                    format!("Audio #{}", i + 1)
+                }));
                 // Transport: play/pause toggle + stop + seek slider, one row per
                 // result; only the row that owns the current track shows the
                 // position controls.
                 let row_id = format!("media_audio_{i}");
                 let is_current = player.playing_id().as_deref() == Some(row_id.as_str());
-                let play_label = if is_current && !player.is_paused() { "Pause" } else { "Play" };
-                if ui
-                    .add(egui::Button::image_and_text(
-                        Icon::Play.image(11.0, theme::ink()),
-                        RichText::new(play_label).size(11.0),
-                    ))
-                    .clicked()
-                {
+                let playing = is_current && !player.is_paused();
+                let (play_icon, play_tip) = if playing { (Icon::Pause, "Pause") } else { (Icon::Play, "Play") };
+                if widgets::icon_button(ui, play_icon, play_tip).clicked() {
                     if is_current {
                         player.toggle_pause();
                     } else if let Err(e) = player.play(&row_id, &media.result_audios[i]) {
@@ -2128,32 +2030,33 @@ fn render_results(
                     }
                 }
                 if is_current {
-                    if ui.button("Stop").clicked() {
+                    if widgets::icon_button(ui, Icon::Stop, "Stop").clicked() {
                         player.stop();
                     }
                     let dur = player.duration().max(0.01);
                     let mut pos = player.position();
-                    let resp = ui.add(
-                        egui::Slider::new(&mut pos, 0.0..=dur)
-                            .show_value(false)
-                            .trailing_fill(true),
-                    );
+                    let resp = ui
+                        .scope(|ui| {
+                            ui.spacing_mut().slider_width = widgets::SLIDER_TRACK_W;
+                            ui.add(egui::Slider::new(&mut pos, 0.0..=dur).show_value(false))
+                        })
+                        .inner;
                     if resp.drag_stopped() || (resp.changed() && !resp.dragged()) {
                         player.seek(pos);
                     }
-                    ui.label(
-                        RichText::new(format!(
+                    widgets::readout(
+                        ui,
+                        widgets::READOUT_WIDE_W,
+                        &format!(
                             "{}:{:02} / {}:{:02}",
                             (pos as u32) / 60,
                             (pos as u32) % 60,
                             (dur as u32) / 60,
                             (dur as u32) % 60
-                        ))
-                        .size(11.0)
-                        .color(theme::ink_dim()),
+                        ),
                     );
-                    // Keep the position slider moving while playing.
-                    ui.ctx().request_repaint_after(std::time::Duration::from_millis(200));
+                    // The position moves while playing.
+                    ui.ctx().request_repaint_after(std::time::Duration::from_millis(AUDIO_REPAINT_MS));
                 }
                 if crate::dialog::save_button(ui, &media.dialog_in_flight, "Save").clicked() {
                     let bytes = decode_b64(&media.result_audios[i]);
@@ -2179,22 +2082,18 @@ fn render_results(
     // rather than cloning every blob every frame. Save still clones —
     // but only the one clicked file's bytes, at click time.
     if !media.result_files.is_empty() {
-        ui.add_space(6.0);
+        ui.add_space(widgets::GAP_LABEL);
         if render_video_player(ui, video) {
             media.video_viewer.open = true;
         }
         for i in 0..media.result_files.len() {
             ui.horizontal(|ui| {
                 let (name, bytes) = &media.result_files[i];
-                Icon::Film.show(ui, 14.0, theme::accent());
-                ui.add_space(4.0);
-                ui.label(
-                    RichText::new(format!(
-                        "{name} ({})",
-                        crate::api::types::format_size(bytes.len() as u64)
-                    ))
-                    .size(12.0),
-                );
+                Icon::Film.show(ui, ICON_PT, theme::ink_dim());
+                ui.label(text::note(&format!(
+                    "{name} ({})",
+                    crate::api::types::format_size(bytes.len() as u64)
+                )));
                 if crate::dialog::save_button(ui, &media.dialog_in_flight, "Save").clicked() {
                     let ext = std::path::Path::new(name)
                         .extension()
@@ -2220,21 +2119,12 @@ fn render_results(
                 // Playing HERE is the point of the in-app decoder; "Open" stays for
                 // handing the file to something else.
                 if name.to_lowercase().ends_with(".mp4")
-                    && ui
-                        .add(egui::Button::image_and_text(
-                            Icon::Play.image(11.0, theme::ink()),
-                            RichText::new("Play").size(11.0),
-                        ))
-                        .on_hover_text("Decode and play in the app")
-                        .clicked()
+                    && widgets::icon_button(ui, Icon::Play, "Decode and play in the app").clicked()
                 {
                     video.open(i, bytes.clone());
                 }
                 if ui
-                    .add(egui::Button::image_and_text(
-                        Icon::Play.image(11.0, theme::ink()),
-                        RichText::new("Open").size(11.0),
-                    ))
+                    .add(egui::Button::new(text::note("Open")).frame(false))
                     .on_hover_text("Write to a temp file and open in the system default app")
                     .clicked()
                 {
@@ -2246,9 +2136,15 @@ fn render_results(
         }
     }
 
+    });
+
     // Earlier generations, kept so a new run never destroys what came before.
     render_history(ui, media, image_textures);
 }
+
+/// Rows of the transcript box.
+const TRANSCRIPT_ROWS: usize = 6;
+
 /// The in-app video player: current frame plus a transport.
 ///
 /// Draws nothing until a clip is opened, so the panel does not reserve space for a
@@ -2258,14 +2154,14 @@ fn render_results(
 fn render_video_player(ui: &mut egui::Ui, video: &mut crate::video_engine::VideoPlayback) -> bool {
     if video.decoding.is_some() {
         ui.horizontal(|ui| {
-            ui.spinner();
-            ui.label(RichText::new("Decoding video...").size(12.0).color(theme::ink_dim()));
+            widgets::lamp_inline(ui, true, theme::accent());
+            ui.label(text::label("DECODING"));
         });
         ui.ctx().request_repaint();
         return false;
     }
     if let Some(err) = &video.error {
-        ui.label(RichText::new(format!("Video: {err}")).size(12.0).color(theme::accent()));
+        ui.label(text::note(&format!("Video: {err}")).color(theme::error()));
         return false;
     }
     let Some(tex) = video.texture.clone() else { return false };
@@ -2274,30 +2170,31 @@ fn render_video_player(ui: &mut egui::Ui, video: &mut crate::video_engine::Video
     let mut open_viewer = false;
 
     let size = tex.size_vec2();
-    let scale = (420.0 / size.x.max(size.y)).min(1.0);
-    // Clicking the picture opens the fullscreen viewer, the same gesture a rendered image
-    // answers to. A 420-px strip is not what a clip is judged on, and hunting for the
-    // one button that enlarges it is not something anyone should have to learn twice.
-    if crate::image_viewer::image_response(
-        ui,
-        &tex,
-        size * scale,
-        "Click to watch it fullscreen (zoom, pan, step frame by frame)",
-    )
-    .clicked()
-    {
-        open_viewer = true;
-    }
+    let scale = (VIDEO_INLINE_MAX_PX / size.x.max(size.y)).min(1.0);
+    // Clicking the picture opens the fullscreen viewer, the same gesture a rendered
+    // image answers to.
+    widgets::screen_well(ui, |ui| {
+        if crate::image_viewer::image_response(
+            ui,
+            &tex,
+            size * scale,
+            "Click to watch it fullscreen (zoom, pan, step frame by frame)",
+        )
+        .clicked()
+        {
+            open_viewer = true;
+        }
+    });
     // A frame the decoder refused leaves the PREVIOUS one on screen while the counter
     // walks on: the clip looks frozen and nothing says why. Name it.
-    if let ViewerNotice::Over(text) | ViewerNotice::Instead(text) = viewer_notice(
+    if let ViewerNotice::Over(notice) | ViewerNotice::Instead(notice) = viewer_notice(
         true,
         false,
         None,
         video.stale_frame(),
         video.shown_frame(),
     ) {
-        ui.label(RichText::new(text).size(11.0).color(theme::accent()));
+        ui.label(text::note(&notice).color(theme::warning()));
     }
     let (idx, total, playing, fps, looping, samples, dur) = match &video.player {
         Some(p) => (
@@ -2315,57 +2212,45 @@ fn render_video_player(ui: &mut egui::Ui, video: &mut crate::video_engine::Video
     // user assumes that is the render. Say it instead.
     if total < samples {
         ui.label(
-            RichText::new(format!(
-                "Only {total} of {samples} frames decoded - the file uses features this \
+            text::note(&format!(
+                "Only {total} of {samples} frames decoded: the file uses features this \
                  decoder does not support"
             ))
-            .size(11.0)
-            .color(theme::accent()),
+            .color(theme::warning()),
         );
     }
     ui.horizontal(|ui| {
-        if ui
-            .add(egui::Button::new(if playing { "  ||  " } else { "  >  " }))
-            .on_hover_text(if playing { "Pause" } else { "Play" })
-            .clicked()
-        {
+        let (icon, tip) = if playing { (Icon::Pause, "Pause") } else { (Icon::Play, "Play") };
+        if widgets::icon_button(ui, icon, tip).clicked() {
             toggle = true;
         }
         let mut pos = idx;
-        // Seeking is instant because the clip is decoded up front; a decoder that had
-        // to run backwards could not offer this at all.
-        if ui
-            .add(egui::Slider::new(&mut pos, 0..=total.saturating_sub(1)).show_value(false))
-            .changed()
-        {
+        // Seeking is instant because the clip is decoded up front.
+        let seek = ui
+            .scope(|ui| {
+                ui.spacing_mut().slider_width = widgets::SLIDER_TRACK_W;
+                ui.add(egui::Slider::new(&mut pos, 0..=total.saturating_sub(1)).show_value(false))
+            })
+            .inner;
+        if seek.changed() {
             seek_to = Some(pos);
         }
-        ui.label(
-            RichText::new(format!(
-                "{}/{}  {:.1}s  {:.0} fps",
-                idx + 1,
-                total,
-                dur,
-                fps
-            ))
-                .size(11.0)
-                .monospace()
-                .color(theme::ink_dim()),
+        widgets::readout(
+            ui,
+            VIDEO_READOUT_W,
+            &format!("{}/{}  {:.1}s  {:.0} fps", idx + 1, total, dur, fps),
         );
-        let mut lp = looping;
-        if ui.checkbox(&mut lp, "Loop").changed() {
+        if widgets::selector_pill(ui, "LOOP", looping).clicked() {
             if let Some(p) = video.player.as_mut() {
-                p.looping = lp;
+                p.looping = !looping;
             }
         }
-        if ui
-            .add(egui::Button::new(" [ ] "))
-            .on_hover_text("Fullscreen - zoom, pan and step frame by frame")
+        if widgets::icon_button(ui, Icon::Expand, "Fullscreen: zoom, pan and step frame by frame")
             .clicked()
         {
             open_viewer = true;
         }
-        if ui.add(egui::Button::new("Close")).clicked() {
+        if ui.add(egui::Button::new(text::note("Close")).frame(false)).clicked() {
             close = true;
         }
     });
@@ -2383,6 +2268,9 @@ fn render_video_player(ui: &mut egui::Ui, video: &mut crate::video_engine::Video
     open_viewer
 }
 
+/// Width of the frame, time and rate readout under a clip.
+const VIDEO_READOUT_W: f32 = 160.0;
+
 /// Strip of earlier generations. Clicking one brings it back into the Result panel
 /// (the current one is archived in turn, so nothing is lost either way).
 fn render_history(
@@ -2393,74 +2281,72 @@ fn render_history(
     if media.history.is_empty() {
         return;
     }
-    ui.add_space(10.0);
-    ui.separator();
-    ui.add_space(4.0);
-    ui.horizontal(|ui| {
-        ui.label(
-            RichText::new(format!("Earlier ({})", media.history.len()))
-                .size(12.0)
-                .strong()
-                .color(theme::ink_dim()),
-        );
-        if ui
-            .add(egui::Button::new(RichText::new("Clear").size(11.0)))
-            .on_hover_text("Forget the earlier results (frees their memory)")
-            .clicked()
-        {
-            media.history.clear();
+    ui.add_space(widgets::GAP_WIDGETS);
+    let mut restore: Option<usize> = None;
+    let mut clear = false;
+    widgets::section_panel(ui, "EARLIER", |ui| {
+        ui.horizontal(|ui| {
+            widgets::readout(ui, widgets::READOUT_W, &media.history.len().to_string());
+            if ui
+                .add(egui::Button::new(text::note("Clear")).frame(false))
+                .on_hover_text("Forget the earlier results (frees their memory)")
+                .clicked()
+            {
+                clear = true;
+            }
+        });
+        if clear {
             return;
         }
-    });
-    ui.add_space(4.0);
-    let mut restore: Option<usize> = None;
-    ui.horizontal_wrapped(|ui| {
-        for (i, e) in media.history.iter().enumerate() {
-            let label = if e.prompt.chars().count() > 40 {
-                format!("{}…", e.prompt.chars().take(39).collect::<String>())
-            } else if e.prompt.is_empty() {
-                format!("{:?}", e.kind)
-            } else {
-                e.prompt.clone()
-            };
-            ui.vertical(|ui| {
-                let clicked = match e.images.first() {
-                    Some(b64) => {
-                        let key = crate::texture::image_cache_key("media_hist", b64, i);
-                        let tex = image_textures
-                            .entry(key.clone())
-                            .or_insert_with(|| crate::texture::load_base64_texture(ui, b64, &key));
-                        ui.add(
-                            egui::Image::new(&*tex)
-                                .fit_to_exact_size(egui::vec2(84.0, 84.0))
-                                .corner_radius(theme::RADIUS)
-                                .sense(egui::Sense::click()),
-                        )
-                        .on_hover_text(format!("{label}\nClick to bring this result back"))
-                        .clicked()
+        widgets::screen_well(ui, |ui| {
+            ui.horizontal_wrapped(|ui| {
+                for (i, e) in media.history.iter().enumerate() {
+                    let label = if e.prompt.chars().count() > HISTORY_LABEL_CHARS {
+                        format!("{}...", e.prompt.chars().take(HISTORY_LABEL_CHARS - 1).collect::<String>())
+                    } else if e.prompt.is_empty() {
+                        format!("{:?}", e.kind)
+                    } else {
+                        e.prompt.clone()
+                    };
+                    let thumb = egui::vec2(widgets::THUMB_PX, widgets::THUMB_PX);
+                    let clicked = match e.images.first() {
+                        Some(b64) => {
+                            let key = crate::texture::image_cache_key("media_hist", b64, i);
+                            let tex = image_textures
+                                .entry(key.clone())
+                                .or_insert_with(|| crate::texture::load_base64_texture(ui, b64, &key));
+                            ui.add(
+                                egui::Image::new(&*tex)
+                                    .fit_to_exact_size(thumb)
+                                    .corner_radius(theme::RADIUS)
+                                    .sense(egui::Sense::click()),
+                            )
+                            .on_hover_text(format!("{label}\nClick to bring this result back"))
+                            .clicked()
+                        }
+                        None => {
+                            let what = if !e.audios.is_empty() {
+                                format!("{} audio", e.audios.len())
+                            } else if !e.files.is_empty() {
+                                e.files[0].0.clone()
+                            } else {
+                                "text".to_string()
+                            };
+                            ui.add_sized(thumb, egui::Button::new(text::note(&what)))
+                                .on_hover_text(format!("{label}\nClick to bring this result back"))
+                                .clicked()
+                        }
+                    };
+                    if clicked {
+                        restore = Some(i);
                     }
-                    None => {
-                        let what = if !e.audios.is_empty() {
-                            format!("{} audio", e.audios.len())
-                        } else if !e.files.is_empty() {
-                            e.files[0].0.clone()
-                        } else {
-                            "text".to_string()
-                        };
-                        ui.add_sized(
-                            egui::vec2(84.0, 84.0),
-                            egui::Button::new(RichText::new(what).size(11.0)),
-                        )
-                        .on_hover_text(format!("{label}\nClick to bring this result back"))
-                        .clicked()
-                    }
-                };
-                if clicked {
-                    restore = Some(i);
                 }
             });
-        }
+        });
     });
+    if clear {
+        media.history.clear();
+    }
     if let Some(i) = restore {
         media.restore_from_history(i);
     }
