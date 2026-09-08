@@ -383,6 +383,18 @@ impl ChatState {
         }
     }
 
+    /// Whether a plain Up or Down press on the input recalls history rather than
+    /// moving the caret: Up when the caret is on the first line, Down when it is on the
+    /// last, the way a shell treats them. `caret` is a char index into `input`.
+    pub fn arrow_recalls_history(input: &str, caret: usize, up: bool) -> bool {
+        let before: String = input.chars().take(caret).collect();
+        if up {
+            !before.contains('\n')
+        } else {
+            !input.chars().skip(caret).any(|c| c == '\n')
+        }
+    }
+
     /// Detach from history navigation if the user has edited the
     /// recalled prompt — i.e. input no longer matches the entry the
     /// cursor points at. Without this, a subsequent history_forward
@@ -2221,6 +2233,20 @@ impl ServerState {
 // readable here; suppress the lint at the module boundary.
 #[allow(clippy::field_reassign_with_default)]
 mod chat_history_tests {
+    #[test]
+    fn plain_arrows_recall_history_only_at_the_edges_of_the_text() {
+        use super::ChatState;
+        assert!(ChatState::arrow_recalls_history("", 0, true));
+        assert!(ChatState::arrow_recalls_history("", 0, false));
+        assert!(ChatState::arrow_recalls_history("one line", 3, true));
+        assert!(ChatState::arrow_recalls_history("one line", 3, false));
+        let two = "first\nsecond";
+        assert!(ChatState::arrow_recalls_history(two, 2, true));
+        assert!(!ChatState::arrow_recalls_history(two, 2, false));
+        assert!(!ChatState::arrow_recalls_history(two, 8, true));
+        assert!(ChatState::arrow_recalls_history(two, 8, false));
+    }
+
     use super::*;
 
     // ── Media Studio state ──────────────────────────────────────────

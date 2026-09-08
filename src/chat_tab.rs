@@ -1314,13 +1314,55 @@ fn render_input_area(
 
             // Multi-line input. Enter sends (app.rs), Shift+Enter breaks the
             // line. It sits on the well: no frame of its own.
+            // Plain Up and Down recall the prompt history when the caret has no line
+            // to move to in that direction, as in a shell; inside a multi-line prompt
+            // they keep moving the caret. Ctrl+Up and Ctrl+Down recall from anywhere.
+            let input_id = ui.make_persistent_id("chat_input");
+            let focused = ui.ctx().memory(|m| m.has_focus(input_id));
+            if focused && !chat.is_generating {
+                let caret = egui::TextEdit::load_state(ui.ctx(), input_id)
+                    .and_then(|s| s.cursor.char_range())
+                    .map(|r| r.primary.index.0)
+                    .unwrap_or(chat.input.chars().count());
+                let (up, down) = ui.input(|i| {
+                    let plain = i.modifiers.is_none();
+                    (
+                        plain && i.key_pressed(egui::Key::ArrowUp),
+                        plain && i.key_pressed(egui::Key::ArrowDown),
+                    )
+                });
+                let recall = (up && ChatState::arrow_recalls_history(&chat.input, caret, true))
+                    || (down && ChatState::arrow_recalls_history(&chat.input, caret, false));
+                if recall {
+                    let key = if up {
+                        egui::Key::ArrowUp
+                    } else {
+                        egui::Key::ArrowDown
+                    };
+                    ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, key));
+                    if up {
+                        chat.history_back();
+                    } else {
+                        chat.history_forward();
+                    }
+                    // The recalled text is edited from its end, as in a shell.
+                    let mut state =
+                        egui::TextEdit::load_state(ui.ctx(), input_id).unwrap_or_default();
+                    let end =
+                        egui::text::CCursor::new(egui::text::CharIndex(chat.input.chars().count()));
+                    state
+                        .cursor
+                        .set_char_range(Some(egui::text::CCursorRange::one(end)));
+                    state.store(ui.ctx(), input_id);
+                }
+            }
             let response = ui.add(
                 egui::TextEdit::multiline(&mut chat.input)
                     .frame(egui::Frame::NONE)
                     .desired_width(ui.available_width() - SEND_RESERVE_W)
                     .desired_rows(visible_rows)
                     .hint_text(modality.input_hint())
-                    .id_salt("chat_input")
+                    .id(input_id)
                     .return_key(Some(egui::KeyboardShortcut::new(
                         egui::Modifiers::SHIFT,
                         egui::Key::Enter,
