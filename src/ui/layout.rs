@@ -11,8 +11,8 @@
 //! +------+----------------------------------------------+
 //! ```
 
-use eframe::egui::{self, Color32, RichText, CornerRadius, Stroke, Vec2};
-use crate::theme::{self, text};
+use eframe::egui::{self, Align2, Color32, FontId, Pos2, Rect, Response, Sense, Stroke, Vec2, WidgetInfo, WidgetType};
+use crate::theme::{self, text, HAIRLINE};
 use crate::state::Section;
 use crate::icons::Icon;
 use crate::ui::{surface, widgets};
@@ -23,6 +23,25 @@ const SIDEBAR_WIDTH_EXPANDED: f32 = 160.0;
 
 /// Point size of a navigation icon or glyph.
 const NAV_ICON_PT: f32 = 16.0;
+/// Padding of the rail.
+const SIDEBAR_PAD_X: i8 = 4;
+const SIDEBAR_PAD_Y: i8 = 8;
+/// A navigation item: its height, its corner, the wash behind the active
+/// one, the gap to the next.
+const NAV_ITEM_H: f32 = 32.0;
+const NAV_RADIUS: f32 = 4.0;
+const NAV_WASH_A: u8 = 24;
+const NAV_ITEM_GAP: f32 = 2.0;
+/// The stripe beside the active item.
+const NAV_STRIPE: Vec2 = Vec2::new(3.0, 18.0);
+const NAV_STRIPE_RADIUS: f32 = 1.5;
+/// Inset of the icon from the stripe, and the gap between icon and label.
+const NAV_PAD_X: f32 = 8.0;
+const NAV_GAP: f32 = 6.0;
+/// The toggle row, and the chevron drawn in it.
+const TOGGLE_H: f32 = 24.0;
+const CHEVRON_W: f32 = 10.0;
+const CHEVRON_STROKE_W: f32 = 1.5;
 
 /// Sidebar navigation item. `icon` is an Icon variant rather than an emoji
 /// character. Terminal keeps a text glyph (">_"), which is a command-prompt
@@ -173,122 +192,124 @@ pub fn top_bar(ui: &mut egui::Ui, input: &TopBarInput) -> TopBarOutput {
 /// per-item hover tooltips - label plus a one-line description - are how a section
 /// is identified.
 #[allow(deprecated)] // see top_bar — Panel::show(&Context) until eframe top-level Ui exists.
-pub fn sidebar(
-    ui: &mut egui::Ui,
-    current: &mut Section,
-    sidebar_expanded: bool,
-) -> bool {
-    let width = if sidebar_expanded { SIDEBAR_WIDTH_EXPANDED } else { SIDEBAR_WIDTH };
-    let bg = if theme::is_dark() { Color32::from_rgb(24, 26, 30) } else { Color32::WHITE };
-    let border = theme::border();
-    let toggle_color = theme::ink_dim();
+pub fn sidebar(ui: &mut egui::Ui, current: &mut Section, expanded: bool) -> bool {
+    let width = if expanded { SIDEBAR_WIDTH_EXPANDED } else { SIDEBAR_WIDTH };
+    let margin = egui::Margin::symmetric(SIDEBAR_PAD_X, SIDEBAR_PAD_Y);
     let mut toggle_clicked = false;
 
     egui::Panel::left("nav_sidebar")
         .exact_size(width)
         .resizable(false)
-        .frame(egui::Frame {
-            inner_margin: egui::Margin::symmetric(4, 8),
-            fill: bg,
-            stroke: Stroke::new(1.0, border),
-            ..Default::default()
-        })
+        .frame(egui::Frame::NONE.fill(theme::panel()).inner_margin(margin))
         .show(ui, |ui| {
-            ui.add_space(4.0);
+            // One hairline on the edge the content meets; the top bar owns
+            // the other.
+            let outer = ui.max_rect().expand2(margin.sum() / 2.0);
+            ui.painter().vline(
+                outer.right() - HAIRLINE / 2.0,
+                outer.y_range(),
+                Stroke::new(HAIRLINE, theme::border()),
+            );
 
-            // Collapse/expand toggle. A chevron pointing "«" (collapse)
-            // when expanded and "»" (expand) when collapsed — the glyph
-            // shows the direction the rail will move. Full-width button
-            // so it stays clickable in the 56px collapsed rail.
-            let (glyph, tip) = if sidebar_expanded {
-                ("\u{00AB}", "Collapse sidebar to icons only")
-            } else {
-                ("\u{00BB}", "Expand sidebar to show labels")
-            };
-            let toggle = egui::Button::new(RichText::new(glyph).size(NAV_ICON_PT).color(toggle_color))
-                .fill(Color32::TRANSPARENT)
-                .min_size(Vec2::new(ui.available_width(), 24.0));
-            if ui.add(toggle).on_hover_text(tip).clicked() {
+            if sidebar_toggle(ui, expanded).clicked() {
                 toggle_clicked = true;
             }
-            ui.add_space(4.0);
+            ui.add_space(NAV_GAP);
 
             for item in NAV_ITEMS {
-                render_nav_item(ui, current, &item.icon, item.label, item.tip, item.section, sidebar_expanded);
-                ui.add_space(2.0);
+                let active = *current == item.section;
+                if nav_pill(ui, &item.icon, item.label, item.tip, active, expanded).clicked() {
+                    *current = item.section;
+                }
+                ui.add_space(NAV_ITEM_GAP);
             }
         });
 
     toggle_clicked
 }
 
-/// Render a single navigation item. The active item carries the accent.
-#[allow(clippy::too_many_arguments)]
-fn render_nav_item(
+/// The collapse toggle: a chevron pointing the way the rail will move.
+fn sidebar_toggle(ui: &mut egui::Ui, expanded: bool) -> Response {
+    let (rect, response) =
+        ui.allocate_exact_size(Vec2::new(ui.available_width(), TOGGLE_H), Sense::click());
+    let (dir, tip) = if expanded {
+        (surface::Chevron::Left, "Collapse sidebar")
+    } else {
+        (surface::Chevron::Right, "Expand sidebar")
+    };
+    let hovered = response.hovered();
+    if hovered {
+        ui.painter().rect_filled(rect, NAV_RADIUS, theme::raised());
+    }
+    let ink = if hovered { theme::ink() } else { theme::ink_dim() };
+    let glyph = Rect::from_center_size(rect.center(), Vec2::splat(CHEVRON_W));
+    surface::chevron(ui, glyph, dir, Stroke::new(CHEVRON_STROKE_W, ink));
+    response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, tip));
+    response.on_hover_text(tip)
+}
+
+/// One navigation item. The active one carries the accent three ways: a
+/// stripe, a wash and its tint; the others are dim ink.
+fn nav_pill(
     ui: &mut egui::Ui,
-    current: &mut Section,
     icon: &NavIcon,
     label: &str,
     tip: &str,
-    section: Section,
-    sidebar_expanded: bool,
-) {
+    active: bool,
+    expanded: bool,
+) -> Response {
     let accent = theme::accent();
-    let is_active = *current == section;
-    let (fill, text_color) = if is_active {
-        (
-            theme::tinted(accent, 30),
-            accent,
-        )
+    let (rect, response) =
+        ui.allocate_exact_size(Vec2::new(ui.available_width(), NAV_ITEM_H), Sense::click());
+    let painter = ui.painter();
+    if active {
+        painter.rect_filled(rect, NAV_RADIUS, theme::tinted(accent, NAV_WASH_A));
+        let bar = Rect::from_center_size(
+            Pos2::new(rect.left() + NAV_STRIPE.x / 2.0, rect.center().y),
+            NAV_STRIPE,
+        );
+        painter.rect_filled(bar, NAV_STRIPE_RADIUS, accent);
+    } else if response.hovered() {
+        painter.rect_filled(rect, NAV_RADIUS, theme::raised());
+    }
+    let ink = if active { accent } else { theme::ink_dim() };
+
+    let icon_cx = if expanded {
+        rect.left() + NAV_STRIPE.x + NAV_PAD_X + NAV_ICON_PT / 2.0
     } else {
-        (
-            Color32::TRANSPARENT,
-            theme::ink_dim(),
-        )
+        rect.center().x
     };
-
-    let resp = egui::Frame {
-        inner_margin: egui::Margin::symmetric(8, 6),
-        corner_radius: CornerRadius::same(6),
-        fill,
-        ..Default::default()
+    let icon_rect = Rect::from_center_size(
+        Pos2::new(icon_cx, rect.center().y),
+        Vec2::splat(NAV_ICON_PT),
+    );
+    match icon {
+        NavIcon::Svg(ic) => ic.image(NAV_ICON_PT, ink).paint_at(ui, icon_rect),
+        NavIcon::Text(s) => {
+            ui.painter().text(
+                icon_rect.center(),
+                Align2::CENTER_CENTER,
+                *s,
+                FontId::monospace(NAV_ICON_PT),
+                ink,
+            );
+        }
     }
-    .show(ui, |ui| {
-        ui.horizontal(|ui| {
-            if is_active {
-                let (bar_rect, _) = ui.allocate_exact_size(Vec2::new(3.0, 18.0), egui::Sense::hover());
-                ui.painter().rect_filled(bar_rect, 1.5, accent);
-                ui.add_space(2.0);
-            }
-
-            // SVG icons tint via `text_color` so the colour scheme
-            // (active accent vs muted) carries through. Text-glyph
-            // fallback ("Terminal" → ">_") keeps the same RichText
-            // path it had before the conversion.
-            match icon {
-                NavIcon::Svg(ic)   => { ic.show(ui, NAV_ICON_PT, text_color); }
-                NavIcon::Text(s)   => { ui.label(RichText::new(*s).size(NAV_ICON_PT).color(text_color)); }
-            }
-            if sidebar_expanded {
-                ui.add_space(6.0);
-                ui.label(text::value(label).color(text_color));
-            }
-        });
-    });
-
-    let click_resp = resp.response.interact(egui::Sense::click());
-    // Tooltip shows the section label + a one-line description.
-    // Especially valuable in collapsed-sidebar mode where only the
-    // icon glyph is visible — the bold label disambiguates the icon
-    // and the tip teaches what the section actually does, so new
-    // users don't have to click every icon to discover the layout.
-    let click_resp = click_resp.on_hover_ui(|ui| {
-        ui.label(egui::RichText::new(label).strong());
-        ui.label(egui::RichText::new(tip).small());
-    });
-    if click_resp.clicked() {
-        *current = section;
+    if expanded {
+        ui.painter().text(
+            Pos2::new(icon_rect.right() + NAV_GAP, rect.center().y),
+            Align2::LEFT_CENTER,
+            label,
+            FontId::proportional(text::VALUE_PT),
+            ink,
+        );
     }
+
+    response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, label));
+    response.on_hover_ui(|ui| {
+        ui.label(text::value(label));
+        ui.label(text::note(tip));
+    })
 }
 
 /// Classify the top-bar connection status into a (dot colour, short
@@ -404,13 +425,8 @@ mod tests {
                 .root()
                 .children_recursive()
                 .filter(|n| {
-                    let ak = n.accesskit_node();
-                    let text = format!(
-                        "{}{}",
-                        ak.label().unwrap_or_default(),
-                        ak.value().unwrap_or_default()
-                    );
-                    text.contains('\u{00AB}') || text.contains('\u{00BB}')
+                    let label = n.accesskit_node().label().unwrap_or_default();
+                    label == "Collapse sidebar" || label == "Expand sidebar"
                 })
                 .count()
         }
