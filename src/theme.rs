@@ -158,15 +158,6 @@ pub const ICON_EMPTY: &str = "\u{25CB}";    // white circle (status: inactive/di
 
 // Palette fields under their former names. Call sites that branch on the
 // theme themselves read these; they collapse onto the accessors above.
-pub mod dark {
-    use super::{Color32, DARK};
-    pub const BG: Color32 = DARK.bg;
-    pub const SURFACE: Color32 = DARK.panel;
-    pub const SURFACE_ELEVATED: Color32 = DARK.raised;
-    pub const BORDER: Color32 = DARK.border;
-    pub const TEXT: Color32 = DARK.ink;
-}
-
 pub mod light {
     use super::{Color32, LIGHT};
     pub const BG: Color32 = LIGHT.bg;
@@ -192,134 +183,110 @@ pub const RADIUS: CornerRadius = CornerRadius::same(RADIUS_PX);
 // Theme Application
 // ============================================================================
 
-/// Build the matching egui `Visuals` for `dark` and install them on `ctx`.
+/// Stroke width of every border, rule and ring.
+pub const HAIRLINE: f32 = 1.0;
+
+/// Alpha of the accent wash under a selection.
+const SELECTION_A: u8 = 90;
+
+/// Alpha of the accent wash on a pressed widget.
+const ACTIVE_WASH_A: u8 = 60;
+
+/// Strength of the focus ring on hover; the full ring appears when pressed.
+const FOCUS_RING_HOVER_GAMMA: f32 = 0.5;
+
+/// Gap between widgets, horizontally, and the padding inside a button.
+pub const GAP_WIDGETS: f32 = 8.0;
+
+/// Gap between a control and its label, and the vertical pitch of a form.
+pub const GAP_LABEL: f32 = 4.0;
+
+/// Height of every interactive control.
+pub const CONTROL_H: f32 = 24.0;
+
+/// Width sliders and combos share so form columns line up.
+pub const FORM_CONTROL_W: f32 = 240.0;
+
+/// Thickness of a slider rail.
+const SLIDER_RAIL_H: f32 = 4.0;
+
+/// Padding inside windows and menus.
+const PANEL_PADDING: i8 = 8;
+
+/// Build the egui visuals and style for `dark` and install them on `ctx`.
 /// Records the active skin for `palette()`.
 pub fn apply(ctx: &egui::Context, dark: bool) {
-    let mut visuals = if dark {
-        egui::Visuals::dark()
-    } else {
-        egui::Visuals::light()
-    };
-    if dark {
-        apply_dark_theme(&mut visuals);
-    } else {
-        apply_light_theme(&mut visuals);
+    let p = if dark { &DARK } else { &LIGHT };
+    DARK_ACTIVE.store(dark, Ordering::Relaxed);
+    ctx.set_visuals(visuals_for(p));
+    ctx.all_styles_mut(|style| style_for(p, style));
+}
+
+/// One widget state: a fill, a weaker fill for buttons, a border and an ink.
+/// No expansion, so nothing grows under the pointer.
+fn wv(bg_fill: Color32, weak_bg_fill: Color32, bg_stroke: Color32, fg: Color32) -> egui::style::WidgetVisuals {
+    egui::style::WidgetVisuals {
+        bg_fill,
+        weak_bg_fill,
+        bg_stroke: Stroke::new(HAIRLINE, bg_stroke),
+        corner_radius: RADIUS,
+        fg_stroke: Stroke::new(HAIRLINE, fg),
+        expansion: 0.0,
     }
-    DARK_ACTIVE.store(dark, std::sync::atomic::Ordering::Relaxed);
-    ctx.set_visuals(visuals);
-
-    // Global ergonomics: uniform control sizes and breathing room. Sliders
-    // and combos share one width so every form column lines up; buttons get
-    // real padding (comfortable click targets); vertical rhythm is airier
-    // than egui's compact default.
-    ctx.all_styles_mut(|style| {
-        // Filled slider span (rail start -> handle) in the accent color:
-        // makes a slider's range and current value legible at a glance.
-        style.visuals.slider_trailing_fill = true;
-        style.spacing.item_spacing = egui::vec2(8.0, 6.0);
-        style.spacing.button_padding = egui::vec2(10.0, 5.0);
-        style.spacing.interact_size.y = 24.0;
-        style.spacing.slider_width = 240.0;
-        style.spacing.combo_width = 240.0;
-    });
 }
 
-/// Apply professional dark theme
-pub fn apply_dark_theme(visuals: &mut egui::Visuals) {
-    visuals.window_fill = dark::BG;
-    visuals.panel_fill = dark::BG;
-    visuals.faint_bg_color = dark::SURFACE;
-
-    // Text fields and code wells sit in a visibly RECESSED background. Given the
-    // same fill as the card around them, their bounds disappear.
-    visuals.extreme_bg_color = DARK.well;
-
-    // Widgets. Three distinct fills so every control reads against a SURFACE
-    // card: rails/checkbox wells are recessed (bg_fill), buttons are raised
-    // (weak_bg_fill = SURFACE_ELEVATED), and everything gets a 1 px border
-    // (bg_stroke) so starts/ends of sliders and field bounds are explicit.
-    visuals.widgets.noninteractive.bg_fill = dark::SURFACE;
-    visuals.widgets.noninteractive.fg_stroke = Stroke::new(1.0, dark::TEXT);
-    visuals.widgets.noninteractive.weak_bg_fill = dark::SURFACE;
-    visuals.widgets.noninteractive.bg_stroke = Stroke::new(1.0, dark::BORDER);
-
-    visuals.widgets.inactive.bg_fill = DARK.well;
-    visuals.widgets.inactive.fg_stroke = Stroke::new(1.0, dark::TEXT);
-    visuals.widgets.inactive.weak_bg_fill = dark::SURFACE_ELEVATED;
-    visuals.widgets.inactive.bg_stroke = Stroke::new(1.0, dark::BORDER);
-    visuals.widgets.inactive.corner_radius = RADIUS;
-
-    visuals.widgets.hovered.bg_fill = dark::SURFACE_ELEVATED;
-    visuals.widgets.hovered.fg_stroke = Stroke::new(1.5, DARK.accent);
-    visuals.widgets.hovered.weak_bg_fill = dark::SURFACE_ELEVATED;
-    visuals.widgets.hovered.bg_stroke = Stroke::new(1.0, DARK.accent);
-    visuals.widgets.hovered.corner_radius = RADIUS;
-
-    visuals.widgets.active.bg_fill = DARK.accent;
-    visuals.widgets.active.fg_stroke = Stroke::new(2.0, Color32::WHITE);
-    visuals.widgets.active.weak_bg_fill = DARK.accent;
-    visuals.widgets.active.corner_radius = RADIUS;
-
-    visuals.widgets.open.bg_fill = dark::SURFACE_ELEVATED;
-    visuals.widgets.open.fg_stroke = Stroke::new(1.0, DARK.accent);
-    visuals.widgets.open.corner_radius = RADIUS;
-
-    // Selection + the slider's filled span (trailing fill, enabled in
-    // apply()): SOLID accent - a translucent tint washed out against the rail
-    // and made the filled span hard to see.
-    visuals.selection.bg_fill = Color32::from_rgb(70, 120, 175);
-    visuals.selection.stroke = Stroke::new(1.0, DARK.accent);
-
-    visuals.window_stroke = Stroke::new(1.0, dark::BORDER);
-    visuals.window_corner_radius = RADIUS;
-    visuals.menu_corner_radius = RADIUS;
-    visuals.striped = true;
+/// A one-pixel shadow under a lip; never a blur.
+fn hairline_shadow(p: &Palette) -> egui::epaint::Shadow {
+    egui::epaint::Shadow {
+        offset: [0, 1],
+        blur: 0,
+        spread: 0,
+        color: Color32::from_black_alpha(p.lip_shadow_a),
+    }
 }
 
-/// Apply professional light theme
-pub fn apply_light_theme(visuals: &mut egui::Visuals) {
-    visuals.window_fill = light::BG;
-    visuals.panel_fill = light::BG;
-    // Recessed wells for text fields (visible bounds on white cards).
-    visuals.extreme_bg_color = LIGHT.well;
-    visuals.faint_bg_color = light::SURFACE_ELEVATED;
+/// The egui visuals of one skin. Panels are flat, text fields and rails are
+/// sunk in the well, buttons stand on the raised fill, and the accent appears
+/// as a ring on hover and a wash when pressed.
+pub fn visuals_for(p: &Palette) -> egui::Visuals {
+    let mut v = if p.dark { egui::Visuals::dark() } else { egui::Visuals::light() };
+    v.panel_fill = p.panel;
+    v.window_fill = p.panel;
+    v.extreme_bg_color = p.well;
+    v.text_edit_bg_color = Some(p.well);
+    v.code_bg_color = p.well;
+    v.faint_bg_color = p.raised;
+    v.window_stroke = Stroke::new(HAIRLINE, p.border);
+    v.window_corner_radius = RADIUS;
+    v.menu_corner_radius = RADIUS;
+    v.window_shadow = hairline_shadow(p);
+    v.popup_shadow = hairline_shadow(p);
+    v.selection.bg_fill = tinted(p.accent, SELECTION_A);
+    v.selection.stroke = Stroke::new(HAIRLINE, p.accent);
+    v.hyperlink_color = p.accent;
+    v.warn_fg_color = p.warning;
+    v.error_fg_color = p.error;
+    v.widgets.noninteractive = wv(p.panel, p.panel, p.border, p.ink);
+    v.widgets.inactive = wv(p.well, p.raised, p.border, p.ink);
+    v.widgets.hovered = wv(p.raised, p.raised, p.accent.gamma_multiply(FOCUS_RING_HOVER_GAMMA), p.ink);
+    let wash = tinted(p.accent, ACTIVE_WASH_A);
+    v.widgets.active = wv(wash, wash, p.accent, p.ink);
+    v.widgets.open = wv(p.raised, p.raised, p.accent, p.ink);
+    v.striped = true;
+    v.slider_trailing_fill = true;
+    v
+}
 
-    // Widgets - same three-level scheme as dark: recessed rails, raised
-    // buttons, explicit 1 px borders.
-    visuals.widgets.noninteractive.bg_fill = light::SURFACE;
-    visuals.widgets.noninteractive.fg_stroke = Stroke::new(1.0, light::TEXT);
-    visuals.widgets.noninteractive.weak_bg_fill = light::SURFACE;
-    visuals.widgets.noninteractive.bg_stroke = Stroke::new(1.0, light::BORDER);
-
-    visuals.widgets.inactive.bg_fill = LIGHT.well;
-    visuals.widgets.inactive.fg_stroke = Stroke::new(1.0, light::TEXT);
-    visuals.widgets.inactive.weak_bg_fill = light::SURFACE_ELEVATED;
-    visuals.widgets.inactive.bg_stroke = Stroke::new(1.0, light::BORDER);
-    visuals.widgets.inactive.corner_radius = RADIUS;
-
-    visuals.widgets.hovered.bg_fill = light::SURFACE_ELEVATED;
-    visuals.widgets.hovered.fg_stroke = Stroke::new(1.5, LIGHT.accent);
-    visuals.widgets.hovered.weak_bg_fill = light::SURFACE_ELEVATED;
-    visuals.widgets.hovered.bg_stroke = Stroke::new(1.0, LIGHT.accent);
-    visuals.widgets.hovered.corner_radius = RADIUS;
-
-    visuals.widgets.active.bg_fill = LIGHT.accent;
-    visuals.widgets.active.fg_stroke = Stroke::new(2.0, Color32::WHITE);
-    visuals.widgets.active.weak_bg_fill = LIGHT.accent;
-    visuals.widgets.active.corner_radius = RADIUS;
-
-    visuals.widgets.open.bg_fill = light::SURFACE_ELEVATED;
-    visuals.widgets.open.fg_stroke = Stroke::new(1.0, LIGHT.accent);
-    visuals.widgets.open.corner_radius = RADIUS;
-
-    // Selection + slider trailing span: solid accent (see dark theme note).
-    visuals.selection.bg_fill = Color32::from_rgb(65, 125, 190);
-    visuals.selection.stroke = Stroke::new(1.0, LIGHT.accent);
-
-    visuals.window_stroke = Stroke::new(1.0, light::BORDER);
-    visuals.window_corner_radius = RADIUS;
-    visuals.menu_corner_radius = RADIUS;
-    visuals.striped = true;
+/// The spacing of one skin: an 8 px grid, 24 px controls, one form width.
+pub fn style_for(_p: &Palette, style: &mut egui::Style) {
+    style.spacing.item_spacing = egui::vec2(GAP_WIDGETS, GAP_LABEL);
+    style.spacing.button_padding = egui::vec2(GAP_WIDGETS, GAP_LABEL);
+    style.spacing.interact_size.y = CONTROL_H;
+    style.spacing.slider_width = FORM_CONTROL_W;
+    style.spacing.combo_width = FORM_CONTROL_W;
+    style.spacing.slider_rail_height = SLIDER_RAIL_H;
+    style.spacing.window_margin = egui::Margin::same(PANEL_PADDING);
+    style.spacing.menu_margin = egui::Margin::same(PANEL_PADDING);
 }
 
 #[cfg(test)]
@@ -514,5 +481,20 @@ mod tests {
     fn status_icon_glyphs_are_single_chars() {
         assert_eq!(ICON_FILLED.chars().count(), 1, "ICON_FILLED must be 1 char");
         assert_eq!(ICON_EMPTY.chars().count(),  1, "ICON_EMPTY must be 1 char");
+    }
+
+    #[test]
+    fn apply_installs_the_palette() {
+        let ctx = egui::Context::default();
+        apply(&ctx, false);
+        assert!(!is_dark());
+        assert_eq!(ctx.global_style().visuals.panel_fill, LIGHT.panel);
+        assert_eq!(ctx.global_style().visuals.extreme_bg_color, LIGHT.well);
+        assert_eq!(ctx.global_style().spacing.interact_size.y, CONTROL_H);
+        apply(&ctx, true);
+        assert!(is_dark());
+        assert_eq!(ctx.global_style().visuals.panel_fill, DARK.panel);
+        assert_eq!(ctx.global_style().visuals.extreme_bg_color, DARK.well);
+        assert_eq!(ctx.global_style().visuals.widgets.hovered.expansion, 0.0);
     }
 }
