@@ -59,8 +59,8 @@ const LAMP_R: f32 = 4.0;
 pub const LAMP_CELL: f32 = 16.0;
 /// A chrome row: its pinned height and its margins.
 pub const CHROME_ROW_H: f32 = 26.0;
-const CHROME_MARGIN_X: i8 = 10;
-const CHROME_MARGIN_Y: i8 = 5;
+pub const CHROME_MARGIN_X: i8 = 10;
+pub const CHROME_MARGIN_Y: i8 = 5;
 /// An icon button's cell and the icon inside it.
 const ICON_BUTTON_PX: f32 = 24.0;
 const ICON_PT: f32 = 14.0;
@@ -294,6 +294,12 @@ pub fn led(ui: &mut Ui, on: bool, tint: Color32, size: f32) -> Response {
 
 /// An icon in a square cell; a ring appears on hover, nothing grows.
 pub fn icon_button(ui: &mut Ui, icon: Icon, tip: &str) -> Response {
+    icon_button_lit(ui, icon, tip, false)
+}
+
+/// `icon_button`, drawn in the accent while `lit`: the state of the thing
+/// the button drives.
+pub fn icon_button_lit(ui: &mut Ui, icon: Icon, tip: &str, lit: bool) -> Response {
     let (rect, response) = ui.allocate_exact_size(Vec2::splat(ICON_BUTTON_PX), Sense::click());
     let hovered = response.hovered();
     if hovered {
@@ -306,7 +312,13 @@ pub fn icon_button(ui: &mut Ui, icon: Icon, tip: &str) -> Response {
             egui::StrokeKind::Inside,
         );
     }
-    let ink = if hovered { theme::ink() } else { theme::ink_dim() };
+    let ink = if lit {
+        theme::accent()
+    } else if hovered {
+        theme::ink()
+    } else {
+        theme::ink_dim()
+    };
     icon.image(ICON_PT, ink)
         .paint_at(ui, rect.shrink((ICON_BUTTON_PX - ICON_PT) / 2.0));
     response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, tip));

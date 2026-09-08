@@ -15,6 +15,7 @@ use eframe::egui::{self, Color32, RichText, CornerRadius, Stroke, Vec2};
 use crate::theme::{self, text};
 use crate::state::Section;
 use crate::icons::Icon;
+use crate::ui::{surface, widgets};
 
 /// Sidebar width (icon + label when expanded)
 const SIDEBAR_WIDTH: f32 = 56.0;
@@ -61,175 +62,107 @@ const NAV_ITEMS: &[NavItem] = &[
 // eframe entry point yet, so we keep the deprecated top-level form.
 // When egui exposes a top-level Ui scaffold we'll migrate; until then,
 // allow the deprecated call locally rather than across the whole crate.
-/// Top-bar render output. `refresh_clicked` is the Refresh button;
-/// `theme_toggle_clicked` is the dark/light theme-toggle button.
-/// Both signals propagate to app.rs's update() loop for handling.
+/// Gap between the blocks of the chrome row, and inside its tail.
+const CHROME_GAP: f32 = 12.0;
+const CHROME_TAIL_GAP: f32 = 8.0;
+/// Fixed cells of the chrome row: the status word, the model name, the
+/// loaded count; and how many characters of a model name are shown.
+const STATUS_W: f32 = 84.0;
+const MODEL_READOUT_W: f32 = 200.0;
+const MODEL_READOUT_CHARS: usize = 30;
+const METRICS_W: f32 = 72.0;
+/// The meter in the tail.
+const METER_SIZE_CHROME: Vec2 = Vec2::new(60.0, 8.0);
+
+/// What the top bar shows.
+pub struct TopBarInput<'a> {
+    pub connection: crate::state::ConnectionState,
+    pub connection_detail: &'a str,
+    pub active_model: Option<&'a str>,
+    pub loaded: usize,
+    pub server_running: bool,
+    pub refreshing: bool,
+    /// Work in flight, 0..1, drawn as a meter in the tail. None hides it.
+    pub progress: Option<f32>,
+}
+
+/// What the top bar was asked: the Refresh button, the theme toggle.
 pub struct TopBarOutput {
     pub refresh_clicked: bool,
     pub theme_toggle_clicked: bool,
 }
 
+/// The top bar: a plate of pinned height. Title, status lamp and word,
+/// model name in a fixed cell; in the tail the theme toggle, Refresh, the
+/// meter and the loaded count as a monospace readout.
 #[allow(deprecated)]
-pub fn top_bar(
-    ui: &mut egui::Ui,
-    connection_state: crate::state::ConnectionState,
-    connection_detail: &str,
-    active_model: Option<&str>,
-    metrics_text: &str,
-    server_running: bool,
-    refreshing: bool,
-) -> TopBarOutput {
-    let mut refresh_clicked = false;
-    let mut theme_toggle_clicked = false;
-
-    let bar_fill = if theme::is_dark() { Color32::from_rgb(28, 30, 36) } else { Color32::WHITE };
-    let bar_border = theme::border();
-    let text_primary = theme::ink();
-    let text_secondary = theme::ink_dim();
+pub fn top_bar(ui: &mut egui::Ui, input: &TopBarInput) -> TopBarOutput {
+    let mut out = TopBarOutput { refresh_clicked: false, theme_toggle_clicked: false };
+    let margin = egui::Margin::symmetric(widgets::CHROME_MARGIN_X, widgets::CHROME_MARGIN_Y);
 
     egui::Panel::top("top_bar")
-        .frame(egui::Frame {
-            inner_margin: egui::Margin::symmetric(16, 8),
-            fill: bar_fill,
-            stroke: Stroke::new(1.0, bar_border),
-            shadow: egui::epaint::Shadow {
-                offset: [0, 1],
-                blur: 3,
-                spread: 0,
-                color: Color32::from_black_alpha(if theme::is_dark() { 30 } else { 8 }),
-            },
-            ..Default::default()
-        })
+        .frame(egui::Frame::NONE.fill(theme::panel()).inner_margin(margin))
         .show(ui, |ui| {
+            surface::plate(ui, ui.max_rect().expand2(margin.sum() / 2.0), 0.0);
             ui.horizontal(|ui| {
-                ui.set_min_height(32.0);
+                ui.set_min_height(widgets::CHROME_ROW_H);
 
-                // App title. It named the server before, which is the one thing this
-                // window is not: it holds no model and can point at any backend.
                 ui.label(text::title("Atelier"));
-                ui.add_space(16.0);
+                ui.add_space(CHROME_GAP);
 
-                // Server status dot + label. The short_status text
-                // ('Online' / 'Connected' / 'Offline') doesn't carry the
-                // detail string from the underlying connection_status
-                // (e.g. 'Connecting to http://localhost:11435...' or
-                // 'Connection refused: ...'). Wrap both in a group that
-                // tooltips the full status so users hovering can see the
-                // raw connection state.
-                let (status_color, short_status) =
-                    classify_top_bar_status(connection_state, server_running);
-                let group_resp = ui
-                    .horizontal(|ui| {
-                        let (dot_rect, _) = ui.allocate_exact_size(Vec2::new(8.0, 8.0), egui::Sense::hover());
-                        ui.painter().circle_filled(dot_rect.center(), 4.0, status_color);
-                        ui.label(text::note(short_status));
-                    })
-                    .response;
-                group_resp.on_hover_text(connection_detail);
+                let status = classify_top_bar_status(input.connection, input.server_running);
+                widgets::lamp_inline(ui, status.lit, status.color);
+                widgets::fixed_label(ui, STATUS_W, text::label(status.caps))
+                    .on_hover_text(input.connection_detail);
+                ui.add_space(CHROME_GAP);
 
-                ui.add_space(12.0);
-                ui.separator();
-                ui.add_space(12.0);
-
-                // Active (selected) model — truncate long names. The
-                // label now says 'selected' rather than 'loaded': a
-                // model can be picked from the Models tab without being
-                // loaded into memory yet, and the previous 'No model
-                // loaded' wording conflated those two states.
-                //
-                // For long names the truncated label hides the suffix
-                // (often the quant tag or sub-version: "…32B-q4_0:latest").
-                // `Label::sense(hover)` makes the truncated text
-                // tooltip-eligible so hovering reveals the full name —
-                // matching the pattern used in the chat-header dropdown,
-                // scheduler row, Hardware-tab device cards, etc.
-                if let Some(model) = active_model {
-                    let display_name = crate::modality::truncate_with_ellipsis(model, 30);
-                    let lbl = ui.add(
-                        egui::Label::new(
-                            RichText::new(display_name.as_ref())
-                                .size(text::VALUE_PT).strong()
-                                .color(text_primary),
-                        )
-                        .sense(egui::Sense::hover()),
-                    );
-                    if model.len() > display_name.len() {
-                        lbl.on_hover_text(model);
-                    }
-                } else {
-                    ui.label(text::note("No model selected"));
-                }
-
-                ui.add_space(12.0);
-                ui.separator();
-                ui.add_space(12.0);
-
-                // Metrics
-                if !metrics_text.is_empty() {
-                    ui.label(text::note(metrics_text));
-                }
-
-                // Right side
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    // Refresh button — pulls model list + hardware info
-                    // from the server. The same action lives on the
-                    // Models tab toolbar (↻ Refresh) for users already
-                    // looking at the list; the top-bar copy is a global
-                    // shortcut available from every section.
-                    //
-                    // While a refresh is already in flight, disable the
-                    // button and show an inline spinner so the click registers as
-                    // "working" rather than dead: the fetch is async, and without
-                    // this nothing moves until the model list changes.
-                    if refreshing {
-                        let btn = egui::Button::image_and_text(
-                            Icon::Refresh.image(13.0, Color32::WHITE),
-                            text::value("Refresh").color(theme::on_accent()),
-                        )
-                        .fill(theme::accent())
-                        .corner_radius(CornerRadius::same(4));
-                        ui.add_enabled(false, btn)
-                            .on_hover_text("Refreshing model list and hardware info…");
-                        ui.add_space(4.0);
-                        ui.spinner();
-                    } else {
-                        let btn = egui::Button::image_and_text(
-                            Icon::Refresh.image(13.0, Color32::WHITE),
-                            text::value("Refresh").color(theme::on_accent()),
-                        )
-                        .fill(theme::accent())
-                        .corner_radius(CornerRadius::same(4));
-                        if ui.add(btn).on_hover_text("Refresh model list and hardware info").clicked() {
-                            refresh_clicked = true;
+                match input.active_model {
+                    Some(model) => {
+                        let shown = crate::modality::truncate_with_ellipsis(model, MODEL_READOUT_CHARS);
+                        let cell = widgets::fixed_label(ui, MODEL_READOUT_W, text::value(shown.as_ref()));
+                        if model.len() > shown.len() {
+                            cell.on_hover_text(model);
                         }
                     }
-                    ui.add_space(4.0);
-
-                    // Theme toggle — quick dark/light switch without
-                    // bouncing to Settings. Same Eye icon used in the
-                    // Vision modality badge (currentColor SVG retints).
-                    // Tooltip reflects the OPPOSITE state so the user
-                    // knows what clicking will produce.
-                    let (theme_tip, theme_label) = if theme::is_dark() {
-                        ("Switch to light theme", "Light")
-                    } else {
-                        ("Switch to dark theme", "Dark")
-                    };
-                    let theme_btn = egui::Button::image_and_text(
-                        Icon::Palette.image(13.0, text_secondary),
-                        text::note(theme_label),
-                    )
-                    .fill(theme::raised())
-                    .stroke(Stroke::new(1.0, bar_border))
-                    .corner_radius(CornerRadius::same(4));
-                    if ui.add(theme_btn).on_hover_text(theme_tip).clicked() {
-                        theme_toggle_clicked = true;
+                    None => {
+                        widgets::fixed_label(ui, MODEL_READOUT_W, text::note("No model selected"));
                     }
+                }
+
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let theme_tip = if theme::is_dark() {
+                        "Switch to light theme"
+                    } else {
+                        "Switch to dark theme"
+                    };
+                    if widgets::icon_button(ui, Icon::Palette, theme_tip).clicked() {
+                        out.theme_toggle_clicked = true;
+                    }
+                    ui.add_space(CHROME_TAIL_GAP);
+
+                    if input.refreshing {
+                        ui.add_enabled_ui(false, |ui| {
+                            widgets::icon_button_lit(ui, Icon::Refresh, "Refreshing model list and hardware info", true);
+                        });
+                    } else if widgets::icon_button(ui, Icon::Refresh, "Refresh model list and hardware info").clicked() {
+                        out.refresh_clicked = true;
+                    }
+                    ui.add_space(CHROME_TAIL_GAP);
+
+                    if let Some(progress) = input.progress {
+                        surface::meter(ui, progress, METER_SIZE_CHROME, theme::accent());
+                        ui.add_space(CHROME_TAIL_GAP);
+                    }
+                    widgets::fixed_label(
+                        ui,
+                        METRICS_W,
+                        text::readout(&format!("{:>2} loaded", input.loaded)),
+                    );
                 });
             });
         });
 
-    TopBarOutput { refresh_clicked, theme_toggle_clicked }
+    out
 }
 
 /// Render the left sidebar and return which section is active.
@@ -373,19 +306,33 @@ fn render_nav_item(
 ///
 /// Colour + base label both derive from the `ConnectionState` enum
 /// (single source of truth) — no more `.contains()` string sniffing.
+/// The status lamp: its colour, its word, whether it is lit.
+pub(crate) struct TopBarStatus {
+    pub color: Color32,
+    pub caps: &'static str,
+    /// Off when there is no connection at all.
+    pub lit: bool,
+}
+
 pub(crate) fn classify_top_bar_status(
     state: crate::state::ConnectionState,
     server_running: bool,
-) -> (Color32, &'static str) {
-    // ConnectionState::color() uses the same theme::{SUCCESS,WARNING,
-    // ERROR} palette the rest of the GUI uses for state dots / chips.
-    let colour = state.color();
-    let label = if server_running {
-        "Online"
+) -> TopBarStatus {
+    use crate::state::ConnectionState;
+    let caps = if server_running {
+        "ONLINE"
     } else {
-        state.label()
+        match state {
+            ConnectionState::Connected => "CONNECTED",
+            ConnectionState::Connecting => "CONNECTING",
+            _ => "OFFLINE",
+        }
     };
-    (colour, label)
+    TopBarStatus {
+        color: state.color(),
+        caps,
+        lit: state != ConnectionState::Disconnected,
+    }
 }
 
 #[cfg(test)]
@@ -402,27 +349,30 @@ mod tests {
         // `.contains()` ladders that can disagree. Both derive
         // from the ConnectionState enum, so they can't desync.
         use crate::state::ConnectionState;
-        let (colour, label) = classify_top_bar_status(ConnectionState::Connecting, false);
-        assert_eq!(colour, theme::warning(),
+        let status = classify_top_bar_status(ConnectionState::Connecting, false);
+        assert_eq!(status.color, theme::warning(),
             "Connecting state must use the theme amber, not red");
-        assert_eq!(label, "Connecting…",
+        assert_eq!(status.caps, "CONNECTING",
             "label must say Connecting, not Offline, during handshake");
+        assert!(status.lit);
     }
 
     #[test]
     fn top_bar_status_connected_is_green_and_says_connected() {
         use crate::state::ConnectionState;
-        let (colour, label) = classify_top_bar_status(ConnectionState::Connected, false);
-        assert_eq!(colour, theme::success());
-        assert_eq!(label, "Connected");
+        let status = classify_top_bar_status(ConnectionState::Connected, false);
+        assert_eq!(status.color, theme::success());
+        assert_eq!(status.caps, "CONNECTED");
+        assert!(status.lit);
     }
 
     #[test]
     fn top_bar_status_disconnected_is_red_and_says_offline() {
         use crate::state::ConnectionState;
-        let (colour, label) = classify_top_bar_status(ConnectionState::Disconnected, false);
-        assert_eq!(colour, theme::error());
-        assert_eq!(label, "Offline");
+        let status = classify_top_bar_status(ConnectionState::Disconnected, false);
+        assert_eq!(status.color, theme::error());
+        assert_eq!(status.caps, "OFFLINE");
+        assert!(!status.lit, "no connection: the lamp is off");
     }
 
     #[test]
@@ -434,8 +384,8 @@ mod tests {
         // a green-or-amber dot with "Online" label (informative
         // overlap, not contradictory).
         use crate::state::ConnectionState;
-        let (_, label) = classify_top_bar_status(ConnectionState::Disconnected, true);
-        assert_eq!(label, "Online");
+        let status = classify_top_bar_status(ConnectionState::Disconnected, true);
+        assert_eq!(status.caps, "ONLINE");
     }
 
     /// The sidebar draws its collapse toggle once. The block was pasted twice, which put two

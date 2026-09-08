@@ -603,8 +603,6 @@ pub struct LLMGuiApp {
     /// per repaint for text that almost never moves (a user with a
     /// loaded model + fixed GPU count saw 60 allocs/sec for the
     /// "1 loaded · 2 GPU" line).
-    top_bar_metrics_cache: String,
-    top_bar_metrics_inputs: (usize, usize),
     /// Transient bottom-right notifications. Pushed via `self.toast(..)`,
     /// rendered + expired in update() after the CentralPanel.
     toasts: Vec<Toast>,
@@ -676,12 +674,10 @@ impl LLMGuiApp {
             last_window_size_save: None,
             toasts: Vec::new(),
             refresh_toast_pending: false,
-            top_bar_metrics_cache: String::new(),
             // (usize::MAX, usize::MAX) is a sentinel that no real
             // (loaded, gpu) tuple can produce; forces the first
             // top-bar render to populate the cache instead of
             // mis-matching against (0, 0).
-            top_bar_metrics_inputs: (usize::MAX, usize::MAX),
         };
 
         if let Some(url) = server_url_override {
@@ -3142,35 +3138,6 @@ impl eframe::App for LLMGuiApp {
 
         // ── TOP BAR ──
         let active_model = self.models.selected_model.as_deref();
-        // Compact metrics line: loaded-model count + GPU device count
-        // when the Hardware tab has fetched topology. Examples:
-        //   "1 loaded · 2 GPU"
-        //   "1 loaded"           (no hardware data yet)
-        //   ""                   (no models loaded)
-        //
-        // Build directly via `write!` on a reused stack buffer instead
-        // of `Vec<String> + join`. Top-bar renders every frame (60 Hz
-        // typical), so the previous Vec allocation + 2 format! calls
-        // + join allocation cost ~3-4 heap allocs/frame for a string
-        // that almost never changes. SmolStr-style growable String
-        // here is bounded (loaded count is small, gpu count single
-        // digit), so the first formatted call's capacity backs every
-        // subsequent frame without reallocation.
-        // Top-bar metrics: rebuild only when the count changes. The device count that used
-        // to sit here was fed by the hardware tab's own polling; with that gone it would
-        // have read zero for ever, which is worse than not showing it. `atlas` reports the
-        // devices, and it reports every node rather than this one.
-        let loaded = self.models.loaded_models.len();
-        let metrics_inputs = (loaded, 0);
-        if metrics_inputs != self.top_bar_metrics_inputs {
-            use std::fmt::Write;
-            self.top_bar_metrics_cache.clear();
-            if loaded > 0 {
-                let _ = write!(self.top_bar_metrics_cache, "{} loaded", loaded);
-            }
-            self.top_bar_metrics_inputs = metrics_inputs;
-        }
-        let metrics = self.top_bar_metrics_cache.as_str();
         let server_running = matches!(self.server.status, ServerStatus::Running { .. });
 
         // The top-bar Refresh reflects an in-flight refresh: refresh_models
@@ -3178,14 +3145,24 @@ impl eframe::App for LLMGuiApp {
         // of the /api/tags + /api/ps round-trip, so observing it gives the
         // button a spinner + disabled state without a second flag.
         let refreshing = self.models.action_status.is_in_progress();
+        // A reply's image steps or a render's steps, as a fraction for the
+        // meter in the top bar's tail.
+        let progress = self
+            .chat
+            .image_gen_progress
+            .map(|(done, total)| done as f32 / total.max(1) as f32)
+            .or_else(|| self.media.progress.map(|(step, total)| step as f32 / total.max(1) as f32));
         let top_out = crate::ui::layout::top_bar(
             ui,
-            self.connection_status.state,
-            &self.connection_status.detail,
-            active_model,
-            metrics,
-            server_running,
-            refreshing,
+            &crate::ui::layout::TopBarInput {
+                connection: self.connection_status.state,
+                connection_detail: &self.connection_status.detail,
+                active_model,
+                loaded: self.models.loaded_models.len(),
+                server_running,
+                refreshing,
+                progress,
+            },
         );
         if top_out.refresh_clicked {
             // Arm the completion toast for this explicit refresh.
