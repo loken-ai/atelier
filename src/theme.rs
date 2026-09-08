@@ -10,8 +10,6 @@
 use eframe::egui::{self, Color32, CornerRadius, Stroke};
 
 /// One skin of the application. Every colour the app paints is a field here.
-// The surface fields are read by the painted surfaces (src/ui/surface.rs).
-#[allow(dead_code)]
 pub struct Palette {
     pub dark: bool,
 
@@ -135,10 +133,7 @@ pub fn success() -> Color32 { palette().success }
 pub fn warning() -> Color32 { palette().warning }
 pub fn error() -> Color32 { palette().error }
 pub fn accent() -> Color32 { palette().accent }
-// Read by the chrome and the views (src/ui/layout.rs, the view modules).
-#[allow(dead_code)]
 pub fn accent_dim() -> Color32 { palette().accent_dim }
-#[allow(dead_code)]
 pub fn on_accent() -> Color32 { palette().on_accent }
 
 /// Build a tinted (unmultiplied-alpha) variant of `color`. `alpha` is the
@@ -147,13 +142,6 @@ pub fn on_accent() -> Color32 { palette().on_accent }
 pub fn tinted(color: Color32, alpha: u8) -> Color32 {
     Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha)
 }
-
-// Status glyphs for the places a dot is built into a formatted string, where
-// an SVG cannot slot in. Both resolve in the bundled fonts (see the glyph audit
-// in screenshots.rs). Wherever a standalone icon is drawn, use
-// crate::icons::Icon instead.
-pub const ICON_FILLED: &str = "\u{2022}";   // bullet (status: active/enabled)
-pub const ICON_EMPTY: &str = "\u{25CB}";    // white circle (status: inactive/disabled)
 
 // ============================================================================
 // Spacing and Sizing
@@ -279,8 +267,6 @@ pub fn style_for(_p: &Palette, style: &mut egui::Style) {
 }
 
 /// The type scale. Five sizes and a weight each; the colour is the palette's.
-// The whole scale is read once the views are on it (src/ui/widgets.rs, the view modules).
-#[allow(dead_code)]
 pub mod text {
     use super::palette;
     use eframe::egui::{FontFamily, FontId, RichText, TextStyle};
@@ -532,11 +518,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn status_icon_glyphs_are_single_chars() {
-        assert_eq!(ICON_FILLED.chars().count(), 1, "ICON_FILLED must be 1 char");
-        assert_eq!(ICON_EMPTY.chars().count(),  1, "ICON_EMPTY must be 1 char");
-    }
 
     #[test]
     fn apply_installs_the_palette() {

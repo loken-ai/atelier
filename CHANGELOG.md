@@ -2,6 +2,20 @@
 
 All notable changes to `atelier`. The format follows [Keep a Changelog](https://keepachangelog.com/1.1.0/).
 
+## [Unreleased]
+
+### Changed
+
+- One visual grammar, shared with the phonix plugins: a palette of two skins built on three
+  surface depths (a raised plate, a flat panel, a sunk well) with the light coming from above
+  in both; one accent; a type scale of five sizes; section panels with a striped title;
+  chrome rows of pinned height; labels in capitals, values in monospace cells of fixed width;
+  lamps for state, with the word beside them. Nothing moves under the pointer.
+- The chat is rows in a well, the Studio is section panels in two columns with every
+  description on hover, the model list and the log are lines with a stripe, the terminal is
+  a screen. The colour relations of both skins are pinned by tests.
+- Documentation screenshots for the model list and the server log.
+
 ## [0.1.0]
 
 ### Added

@@ -183,7 +183,7 @@ mod tests {
     /// shapes and they still do not resolve. Anything decorative is
     /// an SVG from this module; anything structural is a word.
     const MISSING_GLYPHS: &[(char, &str)] = &[
-        ('\u{25CF}', "black circle - theme::ICON_FILLED or an Icon"),
+        ('\u{25CF}', "black circle - an Icon"),
         ('\u{25C6}', "black diamond - use an Icon"),
         ('\u{2715}', "multiplication x - Icon::Cross"),
         ('\u{2191}', "up arrow - use the word"),

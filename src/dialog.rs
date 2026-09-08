@@ -12,7 +12,6 @@ use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 
 use eframe::egui;
-use egui::RichText;
 
 use crate::icons::Icon;
 use crate::state::{ChatDialogResult, MediaAudioSlot, MediaState};
@@ -80,7 +79,7 @@ pub(crate) fn save_button(
         !busy,
         egui::Button::image_and_text(
             Icon::Save.image(11.0, theme::ink()),
-            RichText::new(label).size(11.0),
+            crate::theme::text::note(label),
         ),
     )
 }

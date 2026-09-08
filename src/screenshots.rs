@@ -40,11 +40,27 @@ fn model(name: &str, size: &str, family: &str, caps: &[&str]) -> ModelInfo {
 }
 
 fn shoot(name: &str, section: Section, dress: impl FnOnce(&mut LLMGuiApp) + 'static) {
+    shoot_skin(OUT, name, true, section, dress);
+}
+
+/// Where the light-skin renders go: a diagnostic, not documentation.
+const LIGHT_OUT: &str = "target/light";
+
+/// `shoot`, on either skin, into `out`.
+fn shoot_skin(
+    out: &str,
+    name: &str,
+    dark: bool,
+    section: Section,
+    dress: impl FnOnce(&mut LLMGuiApp) + 'static,
+) {
     let mut harness = Harness::builder()
         .with_size(egui::vec2(WINDOW.0, WINDOW.1))
         .build_eframe(move |cc| {
             let mut app = LLMGuiApp::new(cc, Args { model: None, server: None }, LogBuffer::new(256));
             app.config = AppConfig::default();
+            app.config.dark_theme = dark;
+            crate::theme::apply(&cc.egui_ctx, dark);
             app.current_section = section;
             app.sidebar_expanded = true;
             app.connection_status = crate::state::ConnectionStatus::connected("2 models loaded");
@@ -64,12 +80,41 @@ fn shoot(name: &str, section: Section, dress: impl FnOnce(&mut LLMGuiApp) + 'sta
     // A fixed number of steps, never `run`: a panel with a spinner asks for another frame
     // forever, and `run` gives up rather than returning one to photograph.
     harness.run_steps(6);
-    std::fs::create_dir_all(OUT).expect("docs/img");
+    std::fs::create_dir_all(out).unwrap_or_else(|e| panic!("create {out}: {e}"));
     harness
         .render()
         .expect("a graphics adapter")
-        .save(format!("{OUT}/{name}.png"))
+        .save(format!("{out}/{name}.png"))
         .unwrap_or_else(|e| panic!("write {name}.png: {e}"));
+}
+
+/// Every documented view on the light skin, into target/light. The light
+/// palette has to carry the same surfaces as the dark one, and this is how
+/// to look at it.
+#[test]
+#[ignore = "writes target/light and needs a graphics adapter"]
+fn light_skin() {
+    shoot_skin(LIGHT_OUT, "atelier-chat", false, Section::Chat, |app| {
+        app.chat.messages.push_back(ChatMessage {
+            role: "user".into(),
+            content: "Explain what a KV cache holds, briefly.".into(),
+            timestamp: "14:02".into(),
+            ..Default::default()
+        });
+        app.chat.messages.push_back(ChatMessage {
+            role: "assistant".into(),
+            content: "It holds the keys and values already computed for every token.".into(),
+            timestamp: "14:02".into(),
+            timing: Some(MessageTiming { tokens_per_sec: 148.6, duration_ms: 1240, token_count: 184 }),
+            ..Default::default()
+        });
+    });
+    shoot_skin(LIGHT_OUT, "atelier-media", false, Section::MediaStudio, |app| {
+        app.media.kind = crate::state::MediaKind::Image;
+        app.media.prompt = "a lighthouse on a basalt shore, low sun, long exposure".into();
+    });
+    shoot_skin(LIGHT_OUT, "atelier-models", false, Section::Models, |_| {});
+    shoot_skin(LIGHT_OUT, "atelier-settings", false, Section::Settings, |_| {});
 }
 
 /// A conversation mid-answer. An empty chat shows the placeholder and none of what the tab is
