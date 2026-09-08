@@ -2985,6 +2985,9 @@ Keyboard:
     }
 }
 
+/// Margin between the floor's edge and the panels standing on it.
+const FLOOR_MARGIN: i8 = 12;
+
 impl eframe::App for LLMGuiApp {
     /// Flush the in-memory config to disk before the GUI exits.
     /// The 1 s rate-limit on the per-frame window-size save (commit
@@ -3193,7 +3196,9 @@ impl eframe::App for LLMGuiApp {
         }
 
         // ── MAIN CONTENT AREA ──
-        egui::CentralPanel::default().show(ui, |ui| {
+        egui::CentralPanel::default()
+            .frame(egui::Frame::NONE.fill(theme::bg()).inner_margin(FLOOR_MARGIN))
+            .show(ui, |ui| {
             ui.set_width(ui.available_width());
 
             match self.current_section {
