@@ -27,7 +27,7 @@ const ICON_PT: f32 = 14.0;
 const FILTER_W: f32 = 200.0;
 const SORT_DIR_W: f32 = 40.0;
 /// Fixed cells in a model row: modality, source, size.
-const MODALITY_W: f32 = 56.0;
+const MODALITY_W: f32 = 72.0;
 const SOURCE_W: f32 = 48.0;
 const SIZE_W: f32 = 64.0;
 /// Padding inside a model row.
