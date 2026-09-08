@@ -8,7 +8,7 @@ use crate::icons::Icon;
 use crate::state::{ActionStatus, ModelState, ModelSortDirection, ModelSortField};
 use crate::settings::SettingsAction;
 use crate::theme;
-use crate::ui::components::panel;
+use crate::ui::widgets;
 use crate::modality::ModelModality;
 
 /// Popular models for suggestions
@@ -250,7 +250,7 @@ pub fn render(
     let visible = visible_pairs.len();
 
     // ── 1. Section header ─────────────────────────────────────────
-    panel::section_header(ui, "LOCAL MODELS", theme::accent());
+    widgets::section_header(ui, "LOCAL MODELS");
     ui.add_space(8.0);
 
     // ── 2. Toolbar: filter, sort, refresh, count ─────────────────

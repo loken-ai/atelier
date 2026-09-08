@@ -125,6 +125,8 @@ pub fn palette() -> &'static Palette {
     if is_dark() { &DARK } else { &LIGHT }
 }
 
+// The floor under the content (src/app.rs).
+#[allow(dead_code)]
 pub fn bg() -> Color32 { palette().bg }
 pub fn panel() -> Color32 { palette().panel }
 pub fn raised() -> Color32 { palette().raised }
