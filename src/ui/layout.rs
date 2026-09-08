@@ -43,8 +43,7 @@ const NAV_PAD_X: f32 = 8.0;
 const NAV_GAP: f32 = 6.0;
 /// The toggle row, and the chevron drawn in it.
 const TOGGLE_H: f32 = 24.0;
-const CHEVRON_W: f32 = 10.0;
-const CHEVRON_STROKE_W: f32 = 1.5;
+use crate::ui::surface::{CHEVRON_STROKE_W, CHEVRON_W};
 
 /// Sidebar navigation item. `icon` is an Icon variant rather than an emoji
 /// character. Terminal keeps a text glyph (">_"), which is a command-prompt

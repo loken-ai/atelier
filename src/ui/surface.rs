@@ -284,25 +284,43 @@ pub fn meter(ui: &mut Ui, fraction: f32, size: Vec2, tint: Color32) -> egui::Res
 pub enum Chevron {
     Left,
     Right,
+    Down,
 }
+
+/// The glyph box a chevron is drawn in, and its stroke.
+pub const CHEVRON_W: f32 = 10.0;
+pub const CHEVRON_STROKE_W: f32 = 1.5;
 
 /// A chevron drawn with two strokes, pointing `dir`, inset from `rect`.
 pub fn chevron(ui: &Ui, rect: Rect, dir: Chevron, stroke: Stroke) {
     let inset = rect.width() * CHEVRON_INSET;
-    let (near, far) = match dir {
-        Chevron::Left => (rect.right() - inset, rect.left() + inset),
-        Chevron::Right => (rect.left() + inset, rect.right() - inset),
+    let (left, right, top, bottom) = (
+        rect.left() + inset,
+        rect.right() - inset,
+        rect.top() + inset,
+        rect.bottom() - inset,
+    );
+    let center = rect.center();
+    let (a, tip, b) = match dir {
+        Chevron::Left => (
+            Pos2::new(right, top),
+            Pos2::new(left, center.y),
+            Pos2::new(right, bottom),
+        ),
+        Chevron::Right => (
+            Pos2::new(left, top),
+            Pos2::new(right, center.y),
+            Pos2::new(left, bottom),
+        ),
+        Chevron::Down => (
+            Pos2::new(left, top),
+            Pos2::new(center.x, bottom),
+            Pos2::new(right, top),
+        ),
     };
-    let mid = rect.center().y;
     let painter = ui.painter();
-    painter.line_segment(
-        [Pos2::new(near, rect.top() + inset), Pos2::new(far, mid)],
-        stroke,
-    );
-    painter.line_segment(
-        [Pos2::new(far, mid), Pos2::new(near, rect.bottom() - inset)],
-        stroke,
-    );
+    painter.line_segment([a, tip], stroke);
+    painter.line_segment([tip, b], stroke);
 }
 
 #[cfg(test)]

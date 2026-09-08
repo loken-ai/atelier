@@ -204,6 +204,10 @@ pub struct ChatState {
     pub messages: VecDeque<ChatMessage>,
     pub input: String,
     pub is_generating: bool,
+    /// What the model picker's filter holds while the picker is open.
+    pub picker_search: String,
+    /// How many times the picker was opened: each opening is a fresh popup area.
+    pub picker_opening: u64,
     /// Smart routing: send turns to /conversation, where the server picks the
     /// right model per prompt (rules + a tiny classifier LLM) — chat, vision,
     /// image generation or TTS — instead of the fixed selected model.

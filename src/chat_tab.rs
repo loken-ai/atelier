@@ -51,7 +51,12 @@ const PROFILE_CHARS: usize = 20;
 const MODEL_CHARS: usize = 25;
 /// The model picker and its popup.
 const MODEL_PICKER_W: f32 = 220.0;
+/// The least height the open picker takes; it grows to a share of the window.
 const MODEL_POPUP_H: f32 = 360.0;
+/// The share of the window height the open picker may take.
+const MODEL_POPUP_SHARE: f32 = 0.7;
+/// The open picker is wider than its button: a model name is a repository path.
+const MODEL_POPUP_W: f32 = 460.0;
 /// Width of the cell that says whether a slider overrides the server.
 const OVERRIDE_W: f32 = 56.0;
 /// Side of an attachment thumbnail in the composer.
@@ -740,97 +745,146 @@ fn render_chat_header(
         };
         let mut new_selection: Option<String> = None;
         let mut auto_clicked = false;
-        let combo_resp = ui
-            .add_enabled_ui(!chat.is_generating, |ui| {
-                egui::ComboBox::from_id_salt("chat_model_picker")
-                    .selected_text(
-                        RichText::new(selected_text.as_ref())
-                            .size(text::SECTION_PT)
-                            .color(theme::ink()),
+        // The list is a popup of this tab's own rather than a combo box: a fixed header,
+        // the filter and the Auto row, then one scroll area for the rows that takes a
+        // share of the window. A combo box wraps its content in a scroll area of its own,
+        // capped at the style's combo height; two scroll areas then fight over the wheel.
+        //
+        // An area sizes itself once, on its first frame, at the style's default size, and
+        // then to the content it had. So each opening is a new area, and the default
+        // height is the picker's for as long as it shows.
+        let popup_h = (ui.ctx().content_rect().height() * MODEL_POPUP_SHARE).max(MODEL_POPUP_H);
+        // The name, and a drawn chevron in the room the trailing spaces leave.
+        let button = ui.add_enabled(
+            !chat.is_generating,
+            egui::Button::new(
+                RichText::new(format!("{selected_text}    "))
+                    .size(text::SECTION_PT)
+                    .color(theme::ink()),
+            )
+            .min_size(egui::vec2(MODEL_PICKER_W, 0.0)),
+        );
+        let glyph = egui::Rect::from_center_size(
+            egui::pos2(
+                button.rect.right() - surface::CHEVRON_W,
+                button.rect.center().y,
+            ),
+            egui::Vec2::splat(surface::CHEVRON_W),
+        );
+        surface::chevron(
+            ui,
+            glyph,
+            surface::Chevron::Down,
+            egui::Stroke::new(surface::CHEVRON_STROKE_W, theme::ink()),
+        );
+        let opened = button.clicked();
+        if opened {
+            chat.picker_opening += 1;
+        }
+        let popup_id = ui.make_persistent_id(("chat_model_picker", chat.picker_opening));
+        let area_size = ui.ctx().global_style().spacing.default_area_size;
+        ui.ctx()
+            .all_styles_mut(|style| style.spacing.default_area_size.y = popup_h);
+        let shown = egui::Popup::menu(&button)
+            .id(popup_id)
+            .width(MODEL_POPUP_W)
+            .show(|ui| {
+                let filter = ui.add(
+                    egui::TextEdit::singleline(&mut chat.picker_search)
+                        .hint_text("Filter")
+                        .desired_width(f32::INFINITY),
+                );
+                if opened {
+                    filter.request_focus();
+                }
+                let auto_row = ui
+                    .selectable_label(
+                        chat.smart_auto,
+                        RichText::new("Auto (smart routing)").size(text::SECTION_PT),
                     )
-                    .width(MODEL_PICKER_W)
-                    .show_ui(ui, |ui| {
-                        let auto_row = ui
-                            .selectable_label(
-                                chat.smart_auto,
-                                RichText::new("Auto (smart routing)").size(text::SECTION_PT),
-                            )
-                            .on_hover_text(
-                                "Let the server pick the model per prompt: chat, vision, \
-                             image generation or speech (rules + classifier LLM).",
-                            );
-                        if auto_row.clicked() {
-                            auto_clicked = true;
-                        }
-                        ui.separator();
-                        if models.available_models.is_empty() {
-                            ui.label(text::note(
-                                "No models available: open the Models tab to import one",
-                            ));
-                            return;
-                        }
-                        // Grouped by modality, the likeliest target first.
-                        const GROUPS: &[(ModelModality, &str)] = &[
-                            (ModelModality::Text, "TEXT"),
-                            (ModelModality::Vision, "VISION"),
-                            (ModelModality::ImageGen, "IMAGE"),
-                            (ModelModality::AudioTts, "TTS"),
-                            (ModelModality::AudioAsr, "ASR"),
-                            (ModelModality::VideoGen, "VIDEO"),
-                        ];
-                        let mut sorted: Vec<&crate::api::ModelInfo> =
-                            models.available_models.iter().collect();
-                        sorted.sort_by(|a, b| a.name.cmp(&b.name));
-                        egui::ScrollArea::vertical()
-                            .max_height(MODEL_POPUP_H)
-                            .show(ui, |ui| {
-                                let mut by_modality: HashMap<
-                                    ModelModality,
-                                    Vec<&crate::api::ModelInfo>,
-                                > = HashMap::with_capacity(GROUPS.len());
-                                for m in &sorted {
-                                    let modality = ModelModality::from_model_name(&m.name);
-                                    by_modality.entry(modality).or_default().push(m);
-                                }
-                                for (group_modality, group_label) in GROUPS {
-                                    let Some(in_group) = by_modality.get(group_modality) else {
-                                        continue;
-                                    };
-                                    if in_group.is_empty() {
-                                        continue;
-                                    }
-                                    ui.label(text::label(group_label));
-                                    for m in in_group {
-                                        let is_selected =
-                                            selected.map(String::as_str) == Some(m.name.as_str());
-                                        let is_loaded = models.is_loaded(&m.name);
-                                        ui.horizontal(|ui| {
-                                            widgets::lamp_inline(ui, is_loaded, theme::success());
-                                            let row = ui
-                                                .selectable_label(
-                                                    is_selected,
-                                                    RichText::new(&m.name)
-                                                        .size(text::SECTION_PT)
-                                                        .color(theme::ink()),
-                                                )
-                                                .on_hover_text(if is_loaded {
-                                                    "Loaded in memory"
-                                                } else {
-                                                    "Not loaded: the first send triggers a load"
-                                                });
-                                            if row.clicked() {
-                                                new_selection = Some(m.name.clone());
-                                            }
+                    .on_hover_text(
+                        "Let the server pick the model per prompt: chat, vision, \
+                     image generation or speech (rules + classifier LLM).",
+                    );
+                if auto_row.clicked() {
+                    auto_clicked = true;
+                }
+                ui.separator();
+                if models.available_models.is_empty() {
+                    ui.label(text::note(
+                        "No models available: open the Models tab to import one",
+                    ));
+                    return;
+                }
+                let needle = chat.picker_search.trim().to_lowercase();
+                let mut sorted: Vec<&crate::api::ModelInfo> = models
+                    .available_models
+                    .iter()
+                    .filter(|m| needle.is_empty() || m.name.to_lowercase().contains(&needle))
+                    .collect();
+                sorted.sort_by(|a, b| a.name.cmp(&b.name));
+                if sorted.is_empty() {
+                    ui.label(text::note("No model matches the filter"));
+                    return;
+                }
+                // Grouped by modality, the likeliest target first.
+                const GROUPS: &[(ModelModality, &str)] = &[
+                    (ModelModality::Text, "TEXT"),
+                    (ModelModality::Vision, "VISION"),
+                    (ModelModality::ImageGen, "IMAGE"),
+                    (ModelModality::AudioTts, "TTS"),
+                    (ModelModality::AudioAsr, "ASR"),
+                    (ModelModality::VideoGen, "VIDEO"),
+                ];
+                let mut by_modality: HashMap<ModelModality, Vec<&crate::api::ModelInfo>> =
+                    HashMap::with_capacity(GROUPS.len());
+                for m in &sorted {
+                    let modality = ModelModality::from_model_name(&m.name);
+                    by_modality.entry(modality).or_default().push(m);
+                }
+                egui::ScrollArea::vertical()
+                    .max_height(popup_h)
+                    .show(ui, |ui| {
+                        for (group_modality, group_label) in GROUPS {
+                            let Some(in_group) = by_modality.get(group_modality) else {
+                                continue;
+                            };
+                            ui.label(text::label(group_label));
+                            for m in in_group {
+                                let is_selected =
+                                    selected.map(String::as_str) == Some(m.name.as_str());
+                                let is_loaded = models.is_loaded(&m.name);
+                                ui.horizontal(|ui| {
+                                    widgets::lamp_inline(ui, is_loaded, theme::success());
+                                    let row = ui
+                                        .selectable_label(
+                                            is_selected,
+                                            RichText::new(&m.name)
+                                                .size(text::SECTION_PT)
+                                                .color(theme::ink()),
+                                        )
+                                        .on_hover_text(if is_loaded {
+                                            "Loaded in memory"
+                                        } else {
+                                            "Not loaded: the first send triggers a load"
                                         });
+                                    if row.clicked() {
+                                        new_selection = Some(m.name.clone());
                                     }
-                                    ui.add_space(widgets::GAP_LABEL);
-                                }
-                            });
-                    })
-            })
-            .inner;
+                                });
+                            }
+                            ui.add_space(widgets::GAP_LABEL);
+                        }
+                    });
+            });
+        ui.ctx()
+            .all_styles_mut(|style| style.spacing.default_area_size = area_size);
+        // A closed popup forgets its filter, so the next opening shows the whole list.
+        if shown.is_none() {
+            chat.picker_search.clear();
+        }
         let selected_name = selected.map(String::as_str);
-        combo_resp.response.on_hover_ui(|ui| {
+        button.on_hover_ui(|ui| {
             if chat.is_generating {
                 ui.label("Locked while a response is generating.");
                 ui.label("Stop (or press Esc) to switch models.");
