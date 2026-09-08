@@ -58,9 +58,9 @@ impl ConnectionState {
     /// Settings row, and every other state dot speak the same language.
     pub fn color(self) -> eframe::egui::Color32 {
         match self {
-            ConnectionState::Connected => crate::theme::SUCCESS,
-            ConnectionState::Connecting => crate::theme::WARNING,
-            ConnectionState::Disconnected => crate::theme::ERROR,
+            ConnectionState::Connected => crate::theme::success(),
+            ConnectionState::Connecting => crate::theme::warning(),
+            ConnectionState::Disconnected => crate::theme::error(),
         }
     }
 

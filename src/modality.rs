@@ -271,9 +271,9 @@ pub(crate) fn truncate_with_ellipsis(s: &str, max_bytes: usize) -> std::borrow::
 pub(crate) fn modality_badge_color(modality: ModelModality) -> egui::Color32 {
     match modality {
         ModelModality::Vision   => theme::PRIMARY,
-        ModelModality::ImageGen => theme::SUCCESS,
-        ModelModality::VideoGen => theme::ERROR,
-        ModelModality::AudioTts | ModelModality::AudioAsr => theme::WARNING,
+        ModelModality::ImageGen => theme::success(),
+        ModelModality::VideoGen => theme::error(),
+        ModelModality::AudioTts | ModelModality::AudioAsr => theme::warning(),
         ModelModality::Text     => theme::PRIMARY,
     }
 }
@@ -1575,10 +1575,10 @@ mod tests {
         // change the visual signal users learn ("green = image
         // gen") without any compile error.
         assert_eq!(modality_badge_color(ModelModality::Vision),   theme::PRIMARY);
-        assert_eq!(modality_badge_color(ModelModality::ImageGen), theme::SUCCESS);
-        assert_eq!(modality_badge_color(ModelModality::VideoGen), theme::ERROR);
-        assert_eq!(modality_badge_color(ModelModality::AudioTts), theme::WARNING);
-        assert_eq!(modality_badge_color(ModelModality::AudioAsr), theme::WARNING);
+        assert_eq!(modality_badge_color(ModelModality::ImageGen), theme::success());
+        assert_eq!(modality_badge_color(ModelModality::VideoGen), theme::error());
+        assert_eq!(modality_badge_color(ModelModality::AudioTts), theme::warning());
+        assert_eq!(modality_badge_color(ModelModality::AudioAsr), theme::warning());
         // Text falls through to PRIMARY — callers short-circuit on
         // Text but the function itself must be safe to call.
         assert_eq!(modality_badge_color(ModelModality::Text),     theme::PRIMARY);
@@ -1589,8 +1589,8 @@ mod tests {
         // Sanity: VideoGen must NOT be SUCCESS (would suggest it
         // works) — pin it explicitly so a future refactor can't
         // silently flip the signal.
-        assert_ne!(modality_badge_color(ModelModality::VideoGen), theme::SUCCESS);
-        assert_eq!(modality_badge_color(ModelModality::VideoGen), theme::ERROR,
+        assert_ne!(modality_badge_color(ModelModality::VideoGen), theme::success());
+        assert_eq!(modality_badge_color(ModelModality::VideoGen), theme::error(),
             "VideoGen should signal 'not yet runnable' in red");
     }
 

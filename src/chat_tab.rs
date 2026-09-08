@@ -75,19 +75,19 @@ impl ChatTheme {
         // (fill, stroke, text_color)
         match role {
             "user" => if dark {
-                (self.surface, theme::SUCCESS, self.text_primary)
+                (self.surface, theme::success(), self.text_primary)
             } else {
-                (Color32::from_rgb(232, 245, 233), theme::SUCCESS, self.text_primary)
+                (Color32::from_rgb(232, 245, 233), theme::success(), self.text_primary)
             },
             "system" if error_flag => if dark {
-                (self.surface, theme::ERROR, self.text_primary)
+                (self.surface, theme::error(), self.text_primary)
             } else {
-                (Color32::from_rgb(253, 232, 232), theme::ERROR, self.text_primary)
+                (Color32::from_rgb(253, 232, 232), theme::error(), self.text_primary)
             },
             "system" => if dark {
-                (self.surface, theme::WARNING, self.text_primary)
+                (self.surface, theme::warning(), self.text_primary)
             } else {
-                (Color32::from_rgb(255, 248, 225), theme::WARNING, self.text_primary)
+                (Color32::from_rgb(255, 248, 225), theme::warning(), self.text_primary)
             },
             _ => if dark {
                 (self.surface, theme::PRIMARY, self.text_primary)
@@ -109,15 +109,15 @@ impl ChatTheme {
         // (bg, icon, label)
         match role {
             "user" => (
-                theme::tinted(theme::SUCCESS, 180),
+                theme::tinted(theme::success(), 180),
                 Icon::User, "You",
             ),
             "system" if error_flag => (
-                theme::tinted(theme::ERROR, 200),
+                theme::tinted(theme::error(), 200),
                 Icon::Cross, "Error",
             ),
             "system" => (
-                theme::tinted(theme::WARNING, 180),
+                theme::tinted(theme::warning(), 180),
                 Icon::Warning, "System",
             ),
             _ => (
@@ -462,13 +462,13 @@ pub fn render(
                     egui::Frame {
                         inner_margin: egui::Margin::symmetric(10, 6),
                         corner_radius: CornerRadius::same(4),
-                        fill: theme::tinted(theme::WARNING, 22),
-                        stroke: Stroke::new(1.0, theme::WARNING),
+                        fill: theme::tinted(theme::warning(), 22),
+                        stroke: Stroke::new(1.0, theme::warning()),
                         ..Default::default()
                     }
                     .show(ui, |ui| {
                         ui.horizontal(|ui| {
-                            ui.label(RichText::new(theme::ICON_EMPTY).size(11.0).color(theme::WARNING));
+                            ui.label(RichText::new(theme::ICON_EMPTY).size(11.0).color(theme::warning()));
                             ui.label(
                                 RichText::new("Model not loaded — the first response will be slower while it loads into memory.")
                                     .size(11.0)
@@ -826,11 +826,11 @@ fn render_chat_header(
                 let badge_resp = egui::Frame {
                     inner_margin: egui::Margin::symmetric(8, 3),
                     corner_radius: CornerRadius::same(4),
-                    fill: theme::tinted(theme::WARNING, 25),
+                    fill: theme::tinted(theme::warning(), 25),
                     ..Default::default()
                 }
                 .show(ui, |ui| {
-                    ui.label(RichText::new("No profile").size(11.0).color(theme::WARNING));
+                    ui.label(RichText::new("No profile").size(11.0).color(theme::warning()));
                 });
                 badge_resp.response.on_hover_text(
                     "No API profile selected.\n\
@@ -856,11 +856,11 @@ fn render_chat_header(
             // this borrow is live.
             let selected: Option<&String> = models.selected_model.as_ref();
             let (current_is_loaded, current_color, current_icon) = match selected.map(String::as_str) {
-                _ if chat.smart_auto => (true, theme::SUCCESS, theme::ICON_FILLED),
+                _ if chat.smart_auto => (true, theme::success(), theme::ICON_FILLED),
                 Some(m) => {
                     let loaded = models.is_loaded(m);
-                    if loaded { (true,  theme::SUCCESS, theme::ICON_FILLED) }
-                    else      { (false, theme::WARNING, theme::ICON_EMPTY)  }
+                    if loaded { (true,  theme::success(), theme::ICON_FILLED) }
+                    else      { (false, theme::warning(), theme::ICON_EMPTY)  }
                 }
                 None => (false, t.text_muted, theme::ICON_EMPTY),
             };
@@ -982,7 +982,7 @@ fn render_chat_header(
                                         let is_selected = selected.map(String::as_str) == Some(m.name.as_str());
                                         let is_loaded = models.is_loaded(&m.name);
                                         let row_icon = if is_loaded { theme::ICON_FILLED } else { theme::ICON_EMPTY };
-                                        let row_color = if is_loaded { theme::SUCCESS } else { t.text_primary };
+                                        let row_color = if is_loaded { theme::success() } else { t.text_primary };
                                         let label = format!("{} {}", row_icon, m.name);
                                         if ui.selectable_label(is_selected, RichText::new(label).size(11.0).color(row_color)).clicked() {
                                             new_selection = Some(m.name.clone());
@@ -1071,7 +1071,7 @@ fn render_chat_header(
             use crate::state::LayerMode;
             let (toggle_color, toggle_text) = match chat.layer_mode {
                 LayerMode::AllLayers => (t.text_muted, "All Layers"),
-                LayerMode::Adaptive  => (theme::WARNING, "Adaptive"),
+                LayerMode::Adaptive  => (theme::warning(), "Adaptive"),
             };
             let toggle_tip = match chat.layer_mode {
                 LayerMode::AllLayers => "All Layers: run every layer (highest quality).\nClick to switch to Adaptive.",
@@ -1101,10 +1101,10 @@ fn render_chat_header(
                 // Button supports an image_and_text constructor that
                 // composes the icon + label in one widget.
                 let clear_btn = egui::Button::image_and_text(
-                    Icon::Trash.image(13.0, theme::ERROR),
-                    RichText::new("Clear").size(11.0).color(theme::ERROR),
+                    Icon::Trash.image(13.0, theme::error()),
+                    RichText::new("Clear").size(11.0).color(theme::error()),
                 )
-                .fill(theme::tinted(theme::ERROR, 20))
+                .fill(theme::tinted(theme::error(), 20))
                 .corner_radius(CornerRadius::same(4));
                 let resp = ui.add_enabled(can_clear, clear_btn);
                 // Tooltip enumerates what gets cleared + what doesn't
@@ -1212,17 +1212,17 @@ fn render_input_area(
                 egui::Frame {
                     inner_margin: egui::Margin::symmetric(8, 3),
                     corner_radius: CornerRadius::same(4),
-                    fill: theme::tinted(theme::SUCCESS, 30),
+                    fill: theme::tinted(theme::success(), 30),
                     ..Default::default()
                 }
                 .show(ui, |ui| {
                     ui.horizontal(|ui| {
-                        Icon::Lock.show(ui, 11.0, theme::SUCCESS);
+                        Icon::Lock.show(ui, 11.0, theme::success());
                         ui.label(
                             RichText::new(format!("Seed locked: {seed}"))
                                 .size(10.0)
                                 .strong()
-                                .color(theme::SUCCESS)
+                                .color(theme::success())
                                 .family(egui::FontFamily::Monospace),
                         );
                     });
@@ -1762,7 +1762,7 @@ fn render_input_area(
             if matches!(modality, ModelModality::AudioTts) {
                 let chars = chat.input.chars().count();
                 let over = chars > TTS_INPUT_MAX_CHARS_CLIENT;
-                let color = if over { theme::ERROR } else { t.text_muted };
+                let color = if over { theme::error() } else { t.text_muted };
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let mut text = RichText::new(format!(
                         "{} / {} chars",
@@ -1865,7 +1865,7 @@ fn render_input_area(
                     Icon::Stop.image(11.0, Color32::WHITE),
                     RichText::new("Stop").size(12.0).color(Color32::WHITE),
                 )
-                .fill(theme::ERROR)
+                .fill(theme::error())
                 .corner_radius(CornerRadius::same(4));
                 if ui.add(stop_btn)
                     .on_hover_text("Cancel the in-flight generation (or press Esc).\n\
@@ -2095,7 +2095,7 @@ fn render_message(
                     egui::Frame {
                         inner_margin: egui::Margin::symmetric(8, 3),
                         corner_radius: CornerRadius::same(4),
-                        fill: theme::tinted(theme::SUCCESS, 30),
+                        fill: theme::tinted(theme::success(), 30),
                         ..Default::default()
                     }
                     .show(ui, |ui| {
@@ -2103,7 +2103,7 @@ fn render_message(
                             RichText::new(format!("seed {seed}"))
                                 .size(10.0)
                                 .strong()
-                                .color(theme::SUCCESS)
+                                .color(theme::success())
                                 .family(egui::FontFamily::Monospace),
                         );
                     });
@@ -2493,7 +2493,7 @@ fn render_streaming_message(
                     ui.label(
                         RichText::new(format!("Generating image... Step {}/{}{}", completed, total, eta_str))
                             .size(12.0)
-                            .color(theme::WARNING),
+                            .color(theme::warning()),
                     );
                 });
                 ui.add_space(4.0);

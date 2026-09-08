@@ -30,9 +30,9 @@ impl ToastSeverity {
     /// same colour language as status dots / chips elsewhere.
     fn color(self) -> Color32 {
         match self {
-            ToastSeverity::Success => theme::SUCCESS,
-            ToastSeverity::Warning => theme::WARNING,
-            ToastSeverity::Error => theme::ERROR,
+            ToastSeverity::Success => theme::success(),
+            ToastSeverity::Warning => theme::warning(),
+            ToastSeverity::Error => theme::error(),
         }
     }
 }

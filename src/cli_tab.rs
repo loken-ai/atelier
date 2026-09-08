@@ -198,7 +198,7 @@ fn render_output(
     border: Color32,
 ) {
     let (stroke_color, output_color) = if output.is_error {
-        (theme::ERROR, theme::ERROR)
+        (theme::error(), theme::error())
     } else if output.in_progress {
         (theme::PRIMARY, theme::PRIMARY)
     } else {
@@ -207,7 +207,7 @@ fn render_output(
 
     // Subtle fill tint for errors/progress
     let fill = if output.is_error {
-        theme::tinted(theme::ERROR, if dark { 15 } else { 8 })
+        theme::tinted(theme::error(), if dark { 15 } else { 8 })
     } else if output.in_progress {
         theme::tinted(theme::PRIMARY, if dark { 15 } else { 8 })
     } else {

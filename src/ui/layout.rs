@@ -457,7 +457,7 @@ mod tests {
         // from the ConnectionState enum, so they can't desync.
         use crate::state::ConnectionState;
         let (colour, label) = classify_top_bar_status(ConnectionState::Connecting, false);
-        assert_eq!(colour, theme::WARNING,
+        assert_eq!(colour, theme::warning(),
             "Connecting state must use the theme amber, not red");
         assert_eq!(label, "Connecting…",
             "label must say Connecting, not Offline, during handshake");
@@ -467,7 +467,7 @@ mod tests {
     fn top_bar_status_connected_is_green_and_says_connected() {
         use crate::state::ConnectionState;
         let (colour, label) = classify_top_bar_status(ConnectionState::Connected, false);
-        assert_eq!(colour, theme::SUCCESS);
+        assert_eq!(colour, theme::success());
         assert_eq!(label, "Connected");
     }
 
@@ -475,7 +475,7 @@ mod tests {
     fn top_bar_status_disconnected_is_red_and_says_offline() {
         use crate::state::ConnectionState;
         let (colour, label) = classify_top_bar_status(ConnectionState::Disconnected, false);
-        assert_eq!(colour, theme::ERROR);
+        assert_eq!(colour, theme::error());
         assert_eq!(label, "Offline");
     }
 

@@ -264,13 +264,13 @@ fn render_filter_controls(
                 // Clear button — Trash SVG matches the Clear-chat
                 // button in chat_tab so destructive "wipe this list"
                 // controls have the same visual language across the
-                // GUI. theme::ERROR is the same red used for delete
+                // GUI. theme::error() is the same red used for delete
                 // buttons elsewhere; works on either theme.
                 let clear_btn = egui::Button::image_and_text(
                     Icon::Trash.image(12.0, Color32::WHITE),
                     RichText::new("Clear").size(11.0).color(Color32::WHITE),
                 )
-                .fill(theme::ERROR)
+                .fill(theme::error())
                 .corner_radius(CornerRadius::same(4));
                 if ui.add(clear_btn).clicked() {
                     log_buffer.clear();
@@ -473,8 +473,8 @@ fn log_card_colors(
     neutral_stroke: Color32,
 ) -> (Color32, Color32) {
     match level {
-        LogLevel::Error => (theme::tinted(theme::ERROR, 50), theme::ERROR),
-        LogLevel::Warn => (theme::tinted(theme::WARNING, 50), theme::WARNING),
+        LogLevel::Error => (theme::tinted(theme::error(), 50), theme::error()),
+        LogLevel::Warn => (theme::tinted(theme::warning(), 50), theme::warning()),
         _ => (neutral_fill, neutral_stroke),
     }
 }

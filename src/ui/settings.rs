@@ -100,7 +100,7 @@ pub fn render(
                         let reset_btn = egui::Button::new(
                             RichText::new("Reset").size(12.0).color(Color32::WHITE),
                         )
-                        .fill(theme::ERROR)
+                        .fill(theme::error())
                         .corner_radius(CornerRadius::same(4));
                         if ui.add(reset_btn).clicked() {
                             confirmed = true;
@@ -383,8 +383,8 @@ pub fn render(
                     ui.horizontal(|ui| {
                         let badge_color = match profile.api_type {
                             ApiType::Loken => theme::PRIMARY,
-                            ApiType::Ollama => theme::SUCCESS,
-                            ApiType::OpenApi => theme::WARNING,
+                            ApiType::Ollama => theme::success(),
+                            ApiType::OpenApi => theme::warning(),
                         };
                         pill_badge(ui, &format!("{}", profile.api_type), badge_color);
                         ui.add_space(8.0);
@@ -403,9 +403,9 @@ pub fn render(
                             // to recover and is rarely intended.
                             let can_delete = profiles_count > 1;
                             let del_btn = egui::Button::new(
-                                RichText::new("Delete").size(10.0).color(theme::ERROR),
+                                RichText::new("Delete").size(10.0).color(theme::error()),
                             )
-                            .fill(theme::tinted(theme::ERROR, 18))
+                            .fill(theme::tinted(theme::error(), 18))
                             .corner_radius(CornerRadius::same(3));
                             let del_tip = if can_delete {
                                 "Delete this profile"
@@ -501,14 +501,14 @@ pub fn render(
                 egui::Frame {
                     inner_margin: egui::Margin::symmetric(12, 8),
                     corner_radius: CornerRadius::same(4),
-                    fill: theme::tinted(theme::ERROR, 20),
-                    stroke: Stroke::new(1.0, theme::ERROR),
+                    fill: theme::tinted(theme::error(), 20),
+                    stroke: Stroke::new(1.0, theme::error()),
                     ..Default::default()
                 }
                 .show(ui, |ui| {
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new("!").size(14.0).strong().color(theme::ERROR));
-                        ui.label(RichText::new(error).size(12.0).color(theme::ERROR));
+                        ui.label(RichText::new("!").size(14.0).strong().color(theme::error()));
+                        ui.label(RichText::new(error).size(12.0).color(theme::error()));
                     });
                 });
                 ui.add_space(8.0);
@@ -731,9 +731,9 @@ pub fn render(
                     // re-trigger or visually hint that a second click
                     // is needed.
                     let reset_btn = egui::Button::new(
-                        RichText::new("Reset GUI defaults").size(12.0).color(theme::ERROR),
+                        RichText::new("Reset GUI defaults").size(12.0).color(theme::error()),
                     )
-                    .fill(theme::tinted(theme::ERROR, 12))
+                    .fill(theme::tinted(theme::error(), 12))
                     .corner_radius(CornerRadius::same(4));
                     if ui
                         .add_enabled(!settings_state.reset_confirm_pending, reset_btn)
@@ -984,7 +984,7 @@ fn render_inapp_folder_picker(ctx: &egui::Context, editor: &mut ConfigEditorStat
                             .map(|e| e.path())
                             .collect(),
                         Err(e) => {
-                            ui.colored_label(theme::ERROR, format!("Can't read directory: {}", e));
+                            ui.colored_label(theme::error(), format!("Can't read directory: {}", e));
                             Vec::new()
                         }
                     };

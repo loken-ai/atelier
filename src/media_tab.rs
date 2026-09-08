@@ -94,7 +94,7 @@ pub fn render(
                             .color(if selected { egui::Color32::WHITE } else { theme::text() }),
                     )
                     .fill(if selected { accent } else { theme::surface_elevated() })
-                    .corner_radius(theme::ROUNDING)
+                    .corner_radius(theme::RADIUS)
                     .min_size(egui::vec2(72.0, 30.0));
                     if ui.add(btn).on_hover_text(kind.tip()).clicked() {
                         media.set_kind(kind);
@@ -196,7 +196,7 @@ pub fn render(
             // ── Params (only the relevant widgets for this kind) ──────
             egui::Frame::group(ui.style())
                 .fill(theme::surface())
-                .corner_radius(theme::ROUNDING)
+                .corner_radius(theme::RADIUS)
                 .inner_margin(egui::Margin::symmetric(14, 12))
                 .show(ui, |ui| {
                     ui.set_width(ui.available_width());
@@ -223,7 +223,7 @@ pub fn render(
                         .color(egui::Color32::WHITE),
                 )
                 .fill(accent)
-                .corner_radius(theme::ROUNDING)
+                .corner_radius(theme::RADIUS)
                 .min_size(egui::vec2(140.0, 34.0));
                 if ui.add_enabled(can_generate, gen_btn).clicked() {
                     out.generate_clicked = true;
@@ -234,8 +234,8 @@ pub fn render(
                         Icon::Cross.image(13.0, egui::Color32::WHITE),
                         RichText::new("Cancel").size(13.0).color(egui::Color32::WHITE),
                     )
-                    .fill(theme::ERROR)
-                    .corner_radius(theme::ROUNDING)
+                    .fill(theme::error())
+                    .corner_radius(theme::RADIUS)
                     .min_size(egui::vec2(90.0, 34.0));
                     if ui
                         .add(cancel_btn)
@@ -286,13 +286,13 @@ pub fn render(
             if let Some(err) = media.error.clone() {
                 ui.add_space(6.0);
                 egui::Frame::group(ui.style())
-                    .fill(theme::tinted(theme::ERROR, 30))
-                    .corner_radius(theme::ROUNDING)
+                    .fill(theme::tinted(theme::error(), 30))
+                    .corner_radius(theme::RADIUS)
                     .show(ui, |ui| {
                         ui.horizontal(|ui| {
-                            Icon::Warning.show(ui, 14.0, theme::ERROR);
+                            Icon::Warning.show(ui, 14.0, theme::error());
                             ui.add_space(4.0);
-                            ui.label(RichText::new(err).size(12.0).color(theme::ERROR));
+                            ui.label(RichText::new(err).size(12.0).color(theme::error()));
                         });
                     });
             }
@@ -1857,7 +1857,7 @@ fn render_status(ui: &mut egui::Ui, media: &MediaState) {
                 // written as an escape so this stays an ASCII source line.
                 RichText::new(format!("{what} \u{b7} {elapsed:.0}s{eta}"))
                     .size(12.0)
-                    .color(theme::WARNING),
+                    .color(theme::warning()),
             );
         });
         ui.add_space(4.0);
@@ -1871,7 +1871,7 @@ fn render_status(ui: &mut egui::Ui, media: &MediaState) {
             } else {
                 format!("{} · {elapsed:.0}s", media.status)
             };
-            ui.label(RichText::new(label).size(12.0).color(theme::WARNING));
+            ui.label(RichText::new(label).size(12.0).color(theme::warning()));
         });
         ui.add_space(4.0);
         // Indeterminate bar for the kinds without server step events: a slow
@@ -1882,9 +1882,9 @@ fn render_status(ui: &mut egui::Ui, media: &MediaState) {
         ui.ctx().request_repaint_after(std::time::Duration::from_millis(100));
     } else if !media.status.is_empty() {
         ui.horizontal(|ui| {
-            Icon::Play.show(ui, 12.0, theme::SUCCESS);
+            Icon::Play.show(ui, 12.0, theme::success());
             ui.add_space(4.0);
-            ui.label(RichText::new(&media.status).size(12.0).color(theme::SUCCESS));
+            ui.label(RichText::new(&media.status).size(12.0).color(theme::success()));
         });
     }
 }
@@ -2433,7 +2433,7 @@ fn render_history(
                         ui.add(
                             egui::Image::new(&*tex)
                                 .fit_to_exact_size(egui::vec2(84.0, 84.0))
-                                .corner_radius(theme::ROUNDING)
+                                .corner_radius(theme::RADIUS)
                                 .sense(egui::Sense::click()),
                         )
                         .on_hover_text(format!("{label}\nClick to bring this result back"))

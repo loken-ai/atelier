@@ -80,7 +80,7 @@ pub fn render(
                             Icon::Trash.image(13.0, Color32::WHITE),
                             RichText::new("Delete").size(12.0).color(Color32::WHITE),
                         )
-                        .fill(theme::ERROR)
+                        .fill(theme::error())
                         .corner_radius(CornerRadius::same(4));
                         if ui.add(delete_btn).clicked() {
                             confirmed = true;
@@ -187,7 +187,7 @@ pub fn render(
         }
         ActionStatus::Success(msg) => {
             ui.horizontal(|ui| {
-                status_chip(ui, Icon::Check, "OK", theme::SUCCESS);
+                status_chip(ui, Icon::Check, "OK", theme::success());
                 ui.add_space(6.0);
                 ui.label(RichText::new(msg).size(11.0).color(text_secondary));
             });
@@ -195,7 +195,7 @@ pub fn render(
         }
         ActionStatus::Failed(msg) => {
             ui.horizontal(|ui| {
-                status_chip(ui, Icon::Cross, "Error", theme::ERROR);
+                status_chip(ui, Icon::Cross, "Error", theme::error());
                 ui.add_space(6.0);
                 ui.label(RichText::new(msg).size(11.0).color(text_secondary));
             });
@@ -453,7 +453,7 @@ pub fn render(
                         ui.painter().circle_filled(
                             dot_rect.center(),
                             4.0,
-                            if is_loaded { theme::SUCCESS } else { Color32::from_gray(60) },
+                            if is_loaded { theme::success() } else { Color32::from_gray(60) },
                         );
                         if is_loaded {
                             ui.add_space(2.0);
@@ -497,7 +497,7 @@ pub fn render(
                         // weights / templates.
                         if !model.source.is_empty() {
                             let (src_label, src_color) = match model.source.as_str() {
-                                "ollama"      => ("Ollama", theme::SUCCESS),
+                                "ollama"      => ("Ollama", theme::success()),
                                 "huggingface" => ("HF",     theme::PRIMARY),
                                 other         => (other,    text_secondary),
                             };
