@@ -86,8 +86,7 @@ pub(crate) fn load_base64_texture(
     // cannot see this one, which is how the divergence survived.
     let img = match crate::media_tab::decode_oriented(&bytes).ok_or(()) {
         Ok(i) => i,
-        Err(e) => {
-            let _ = e;
+        Err(()) => {
             warn_once_per_texture(name, || {
                 format!(
                     "image texture {name}: decode failed - {} bytes of \

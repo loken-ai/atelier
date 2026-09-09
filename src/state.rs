@@ -1069,7 +1069,7 @@ impl Default for ImageEditParams {
 }
 
 /// Transcribe-kind parameters (`/v1/audio/transcriptions`, multipart).
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Default, Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SeparateParams {
     /// The mix to split: (file name, bytes). Not persisted (blob).
     #[serde(skip)]
@@ -1106,16 +1106,7 @@ impl SeparateStems {
     }
 }
 
-impl Default for SeparateParams {
-    fn default() -> Self {
-        Self {
-            audio: None,
-            stems: SeparateStems::default(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Default, Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 /// Persisted: every field must survive a file written by an OLDER build. The
 /// container-level `serde(default)` is what guarantees that - without it ONE field added
 /// here makes serde reject the WHOLE config.json, and the user loses their settings and
@@ -1138,17 +1129,6 @@ pub struct TranscribeParams {
     pub language: String,
 }
 
-impl Default for TranscribeParams {
-    fn default() -> Self {
-        Self {
-            model: String::new(),
-            audio: None,
-            translate: false,
-            language: String::new(),
-        }
-    }
-}
-
 /// Music-kind parameters (`/v1/audio/generations`, model=ace-step).
 /// Kept separate from `SfxParams` even though both carry
 /// seconds + steps: the defaults differ (27 vs 25 steps), bpm is
@@ -1167,7 +1147,7 @@ pub struct MusicParams {
     pub steps: u32,
     /// Tempo (bpm).
     pub bpm: u32,
-    /// Sung lyrics (with optional [verse]/[chorus] section tags). Empty = instrumental.
+    /// Sung lyrics, with optional `[verse]` and `[chorus]` section tags. Empty = instrumental.
     pub lyrics: String,
     /// Negative prompt — traits to push AWAY from (stronger than caption negation).
     pub negative_prompt: String,
@@ -2098,7 +2078,7 @@ impl ModelState {
         let mut models = self.available_models.clone();
         match self.sort_field {
             ModelSortField::Name => models.sort_by(|a, b| a.name.cmp(&b.name)),
-            ModelSortField::Size => models.sort_by(|a, b| a.size_bytes.cmp(&b.size_bytes)),
+            ModelSortField::Size => models.sort_by_key(|m| m.size_bytes),
             ModelSortField::Date => models.sort_by(|a, b| a.modified_at.cmp(&b.modified_at)),
         }
         if self.sort_direction == ModelSortDirection::Desc {
@@ -3065,6 +3045,7 @@ mod media_persist_tests {
     /// The persist snapshot must round-trip through JSON (the config format)
     /// and re-hydrate every tuned parameter (blobs excluded by design).
     #[test]
+    #[allow(clippy::field_reassign_with_default)]
     fn media_persist_round_trips_through_json() {
         let mut m = MediaState::default();
         m.kind = MediaKind::Music;
@@ -3190,6 +3171,7 @@ mod video_estimate_key_tests {
     /// What the estimate depends on is in the key; what it does not depend on is not.
     /// Getting this wrong costs a request per keystroke on the prompt.
     #[test]
+    #[allow(clippy::type_complexity)]
     fn only_the_settings_that_move_the_cost_move_the_key() {
         let mut m = MediaState::default();
         let base = m.video_estimate_key();

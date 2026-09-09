@@ -427,9 +427,9 @@ fn render_node(v: &serde_json::Value) -> Option<String> {
 /// The status line for a progress event: what the server says it is doing, and how far in
 /// when there is a distance to be far in.
 ///
-/// A phase with nothing to count says only its name. Some backends report no count at all
-/// - a Piper voice is one `.onnx` file, not a directory of shards, so it announces its
-/// load with `step: 0, total: 0` - and rendering that as "0/0" states a progress the
+/// A phase with nothing to count says only its name. Some backends report no count at
+/// all: a Piper voice is one `.onnx` file, not a directory of shards, so it announces
+/// its load with `step: 0, total: 0`, and rendering that as "0/0" states a progress the
 /// server never claimed, next to a bar that cannot move.
 fn media_progress_status(label: &str, step: u64, total: u64, node: Option<&str>) -> String {
     let what = match (label.is_empty(), total > 0) {
@@ -1840,15 +1840,13 @@ impl LLMGuiApp {
             // the network round-trip and keeps the user's typed
             // context (e.g. an initial_prompt or commentary) intact
             // for them to add the attachment + retry.
-            crate::modality::ModelModality::AudioAsr => {
-                if self.chat.attached_images.is_empty() {
-                    self.chat.messages.push_back(ChatMessage::system(
-                        "Whisper requires an audio attachment. \
-                         Use the Attach button to add a \
-                         WAV / MP3 / FLAC / OGG / M4A / AAC file.",
-                    ));
-                    return;
-                }
+            crate::modality::ModelModality::AudioAsr if self.chat.attached_images.is_empty() => {
+                self.chat.messages.push_back(ChatMessage::system(
+                    "Whisper requires an audio attachment. \
+                     Use the Attach button to add a \
+                     WAV / MP3 / FLAC / OGG / M4A / AAC file.",
+                ));
+                return;
             }
             _ => {}
         }
@@ -3922,13 +3920,17 @@ mod tests {
             "Denoising 17/40 on desktop"
         );
         // A server that runs alone says null, and the status says nothing of where.
-        let alone = json!({"status": "rendering", "phase": "denoise", "step": 1, "total": 4, "node": null});
+        let alone =
+            json!({"status": "rendering", "phase": "denoise", "step": 1, "total": 4, "node": null});
         assert_eq!(progress_from_event(&alone).3, None);
     }
 
     #[test]
     fn an_event_with_no_label_at_all_still_reads_as_activity() {
-        assert_eq!(media_progress_status("", 4, 20, None), "Rendering step 4/20");
+        assert_eq!(
+            media_progress_status("", 4, 20, None),
+            "Rendering step 4/20"
+        );
         assert_eq!(media_progress_status("", 0, 0, None), "Working");
     }
 

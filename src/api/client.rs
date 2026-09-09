@@ -517,6 +517,7 @@ impl Client {
     /// base64-encoded PNGs from the `data[].b64_json` array. `size` is
     /// sent as the OpenAI-shaped "WIDTHxHEIGHT" string; `seed` is passed
     /// through when the caller pinned one (None → server picks random).
+    #[allow(clippy::too_many_arguments)]
     pub async fn images_generate(
         &self,
         model: &str,
@@ -583,8 +584,8 @@ impl Client {
     }
 
     /// Smart-routed conversation turn (POST /conversation): the server picks
-    /// the model (chat / vision / image-gen / TTS) from the prompt via rules
-    /// + a tiny classifier LLM, keeps the conversation's models warm, and
+    /// the model (chat / vision / image-gen / TTS) from the prompt via rules and
+    /// a tiny classifier LLM, keeps the conversation's models warm, and
     /// returns the assistant message plus an optional image/audio payload.
     pub async fn conversation(
         &self,

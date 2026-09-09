@@ -12,7 +12,9 @@
 //! cursor, so all three agree by construction and behave identically everywhere.
 
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+#[cfg(feature = "native-audio")]
+use std::sync::Mutex;
 
 #[cfg(feature = "native-audio")]
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
@@ -33,11 +35,7 @@ pub(crate) struct Playing {
 
 impl Playing {
     fn frames(&self) -> usize {
-        if self.channels == 0 {
-            0
-        } else {
-            self.samples.len() / self.channels
-        }
+        self.samples.len().checked_div(self.channels).unwrap_or(0)
     }
 }
 
@@ -47,11 +45,14 @@ const STREAM_POLL: std::time::Duration = std::time::Duration::from_millis(250);
 /// The pause before a lost device is opened again.
 #[cfg(feature = "native-audio")]
 const REOPEN_DELAY: std::time::Duration = std::time::Duration::from_secs(1);
+#[cfg(feature = "native-audio")]
 /// Stream errors logged in one burst before the rest are counted.
 const ERRORS_LOGGED_PER_BURST: u64 = 3;
+#[cfg(feature = "native-audio")]
 /// A burst ends, and the count is reported, after this long without an error.
 const ERROR_BURST_GAP: std::time::Duration = std::time::Duration::from_secs(5);
 
+#[cfg(feature = "native-audio")]
 /// A tally of stream errors that logs the first few of a burst and counts the rest, so a
 /// device that fails on every period does not write a line per period.
 struct ErrorTally {
@@ -59,6 +60,7 @@ struct ErrorTally {
     last: Option<std::time::Instant>,
 }
 
+#[cfg(feature = "native-audio")]
 impl ErrorTally {
     const fn new() -> Self {
         Self {
@@ -233,6 +235,7 @@ impl Output {
 }
 
 /// Copy the next block to the device, or silence when idle, paused or finished.
+#[cfg(feature = "native-audio")]
 fn fill(out: &mut [f32], slot: &Arc<Mutex<Option<Arc<Playing>>>>) {
     out.fill(0.0);
     let Ok(guard) = slot.try_lock() else { return };
@@ -257,6 +260,7 @@ fn fill(out: &mut [f32], slot: &Arc<Mutex<Option<Arc<Playing>>>>) {
 /// Speech models here emit 22-24 kHz mono while a desktop device is usually 48 kHz
 /// stereo. Playing the samples untouched would shift the pitch by nearly an octave,
 /// which is what makes the rate conversion mandatory rather than an optimisation.
+#[cfg(any(feature = "native-audio", test))]
 pub(crate) fn resample(
     samples: &[f32],
     src_rate: u32,
@@ -292,6 +296,7 @@ pub(crate) fn resample(
 ///
 /// Handles the 16-bit PCM and 32-bit float forms the server produces; anything else is
 /// reported rather than played as noise.
+#[cfg(any(feature = "native-audio", test))]
 pub(crate) fn decode_wav(bytes: &[u8]) -> Result<(Vec<f32>, u32, usize), String> {
     if bytes.len() < 12 || &bytes[0..4] != b"RIFF" || &bytes[8..12] != b"WAVE" {
         return Err("not a RIFF/WAVE file".into());
@@ -459,6 +464,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg(feature = "native-audio")]
     fn a_burst_of_stream_errors_is_logged_a_few_times_then_counted() {
         use super::{ErrorTally, ERRORS_LOGGED_PER_BURST, ERROR_BURST_GAP};
         let mut tally = ErrorTally::new();
@@ -618,6 +624,7 @@ mod tests {
     /// The callback must be safe to run with no clip, while paused, and past the end -
     /// all three happen every time a clip finishes and the UI keeps painting.
     #[test]
+    #[cfg(feature = "native-audio")]
     fn the_callback_emits_silence_when_idle_paused_or_finished() {
         let slot: Arc<Mutex<Option<Arc<Playing>>>> = Arc::new(Mutex::new(None));
         let mut buf = vec![1.0f32; 8];
@@ -656,6 +663,7 @@ mod tests {
 
     /// A short final block must not read past the buffer.
     #[test]
+    #[cfg(feature = "native-audio")]
     fn a_partial_final_block_is_bounded() {
         let slot: Arc<Mutex<Option<Arc<Playing>>>> = Arc::new(Mutex::new(None));
         let p = Arc::new(Playing {

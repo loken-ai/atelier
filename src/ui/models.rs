@@ -529,6 +529,7 @@ mod tests {
     /// A row selects the model on click, and its Load button still takes the click
     /// meant for it: the row's click sense sits under the buttons, never over them.
     #[test]
+    #[allow(clippy::field_reassign_with_default)]
     fn the_load_button_takes_its_click() {
         let mut models = ModelState::default();
         models.available_models = vec![ModelInfo {

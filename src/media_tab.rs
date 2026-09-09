@@ -1712,12 +1712,12 @@ fn family_takes_loras(models: &[crate::api::types::ModelInfo], name: &str) -> bo
         .is_some_and(|m| matches!(m.family.as_str(), "sdxl" | "flux"))
 }
 
-/// Adapter picker: one checkbox per adapter the server advertises, with a strength
-/// slider for the ones that are on.
-///
-/// The list is the server's, so a name that cannot resolve is not offerable; the client
-/// never types a path. Strength runs past 1.0 because over-driving an adapter is a real
-/// technique, and below 0 because subtracting a style is one too.
+// Adapter picker: one checkbox per adapter the server advertises, with a strength
+// slider for the ones that are on.
+//
+// The list is the server's, so a name that cannot resolve is not offerable; the client
+// never types a path. Strength runs past 1.0 because over-driving an adapter is a real
+// technique, and below 0 because subtracting a style is one too.
 
 /// Regional prompts: one row per area, each with what belongs there and how
 /// hard. The base prompt still applies everywhere; a region adds to it over
@@ -1807,7 +1807,7 @@ fn lora_rows(
     let hidden = available.len() - usable.len();
     // Anything selected that this model cannot take would fail the render silently at
     // send time; drop it as the model changes.
-    selected.retain(|(n, _)| usable.iter().any(|u| *u == n));
+    selected.retain(|(n, _)| usable.contains(&n));
     let available: Vec<String> = usable.into_iter().cloned().collect();
     let available = &available[..];
     lora_rows_inner(ui, selected, available, hidden)
@@ -2717,8 +2717,10 @@ mod render_tests {
         busy: bool,
         check: impl FnOnce(&dyn Fn(&str) -> bool) -> R,
     ) -> R {
-        let mut media = MediaState::default();
-        media.kind = kind;
+        let mut media = MediaState {
+            kind,
+            ..Default::default()
+        };
         tweak(&mut media);
         let mut textures: HashMap<String, egui::TextureHandle> = HashMap::new();
         let mut harness = Harness::new_ui(move |ui| {

@@ -210,6 +210,7 @@ mod tests {
 /// killing it, seek meant respawning from a temporary file at an offset, and position
 /// was wall-clock arithmetic that drifted from what was audible. All three now read
 /// and write the same sample cursor, which is why they agree.
+#[derive(Default)]
 pub struct AudioPlayer {
     transport: crate::audio_engine::Transport,
     /// Which result row owns the transport.
@@ -271,15 +272,5 @@ impl AudioPlayer {
     /// Current position (s), read from the sample cursor the device is consuming.
     pub fn position(&mut self) -> f32 {
         self.transport.position()
-    }
-}
-
-impl Default for AudioPlayer {
-    fn default() -> Self {
-        Self {
-            transport: crate::audio_engine::Transport::new(),
-            id: None,
-            paused: false,
-        }
     }
 }
