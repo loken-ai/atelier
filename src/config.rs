@@ -501,7 +501,7 @@ mod tests {
 
         assert!(
             by_name("Default").server_url.ends_with(":11435"),
-            "Default profile must target loken port 11435 — got '{}'",
+            "Default profile must target the loken port 11435, got '{}'",
             by_name("Default").server_url
         );
         assert!(
