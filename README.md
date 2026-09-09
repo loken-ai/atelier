@@ -20,6 +20,16 @@ first line or Down on the last recalls earlier prompts, as in a shell.
 
 ![Chat: a conversation mid-answer, the first reply with its timing, the second still streaming](docs/img/atelier-chat.png)
 
+The model picker also offers **Auto (smart routing)**. The turn then goes to the server's
+conversation route, which reads the prompt and decides what it asks for: a chat answer, a
+look at an attached picture, an image to draw, a line to speak or a sound to make. Plain
+rules decide the clear cases, a small classifier model the rest, and the render comes back
+in the conversation as a picture or a clip, and a notice names the route, the model and
+which of the two decided. The model selected in the picker stays the preference
+for the chat turns, and the visible history travels with every turn so the answer keeps
+its context. In a cluster the turn renders on the node that holds the model it needs, and
+the status line names that node.
+
 ## Media Studio
 
 One panel per kind of render: image, image editing, music, sound effects, MIDI, video,
