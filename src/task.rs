@@ -43,7 +43,10 @@ pub enum TaskResult {
     /// `total == 0` is a phase with nothing to count - a load, an encode - and the tab
     /// shows its name without a bar. That case is most of a render's wall time and used
     /// to be a bare spinner, which cannot be told apart from a hang.
-    MediaProgress(String, u64, u64),
+    ///
+    /// The last field is the node that renders, when the server named one: a request
+    /// handed over inside a cluster runs somewhere else than where it was sent.
+    MediaProgress(String, u64, u64, Option<String>),
     /// Media Studio voice list fetched (GET /v1/audio/voices).
     MediaVoicesFetched(Vec<String>),
     /// What a video render is expected to cost, from `POST /v1/video/plan`.

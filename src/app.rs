@@ -257,11 +257,11 @@ async fn consume_media_stream(
                         // carry the same four fields as `rendering` and are shown the same
                         // way, so the phase a server adds tomorrow reads correctly here.
                         "rendering" | "loading" | "synthesizing" => {
-                            let (label, step, total) = progress_from_event(&v);
+                            let (label, step, total, node) = progress_from_event(&v);
                             tasks
                                 .lock()
                                 .unwrap()
-                                .push(TaskResult::MediaProgress(label, step, total));
+                                .push(TaskResult::MediaProgress(label, step, total, node));
                             egui_ctx.request_repaint();
                         }
                         "done" => {
@@ -340,6 +340,7 @@ async fn consume_media_stream(
                                     label,
                                     done,
                                     batch * total,
+                                    render_node(&v),
                                 ));
                                 egui_ctx.request_repaint();
                             } else if let Some(text) = v.get("response").and_then(|x| x.as_str()) {
@@ -350,6 +351,7 @@ async fn consume_media_stream(
                                         text.to_string(),
                                         0,
                                         0,
+                                        render_node(&v),
                                     ));
                                     egui_ctx.request_repaint();
                                 }
@@ -402,7 +404,7 @@ fn render_name(v: &serde_json::Value) -> Option<&str> {
 /// The label is taken from the server rather than mapped here, so a phase added there
 /// reads correctly without a client change. Zeroes mean the backend has no count to give,
 /// not that it has made no progress - see [`media_progress_status`].
-fn progress_from_event(v: &serde_json::Value) -> (String, u64, u64) {
+fn progress_from_event(v: &serde_json::Value) -> (String, u64, u64, Option<String>) {
     let num = |k: &str| v.get(k).and_then(|x| x.as_u64()).unwrap_or(0);
     let label = v
         .get("phase_label")
@@ -410,7 +412,16 @@ fn progress_from_event(v: &serde_json::Value) -> (String, u64, u64) {
         .and_then(|x| x.as_str())
         .unwrap_or("")
         .to_string();
-    (label, num("step"), num("total"))
+    (label, num("step"), num("total"), render_node(v))
+}
+
+/// The node an event says is rendering, when the server named one. A server that runs
+/// alone sends null or nothing, and the status then says nothing of where.
+fn render_node(v: &serde_json::Value) -> Option<String> {
+    v.get("node")
+        .and_then(|x| x.as_str())
+        .filter(|n| !n.is_empty())
+        .map(str::to_string)
 }
 
 /// The status line for a progress event: what the server says it is doing, and how far in
@@ -420,12 +431,16 @@ fn progress_from_event(v: &serde_json::Value) -> (String, u64, u64) {
 /// - a Piper voice is one `.onnx` file, not a directory of shards, so it announces its
 /// load with `step: 0, total: 0` - and rendering that as "0/0" states a progress the
 /// server never claimed, next to a bar that cannot move.
-fn media_progress_status(label: &str, step: u64, total: u64) -> String {
-    match (label.is_empty(), total > 0) {
+fn media_progress_status(label: &str, step: u64, total: u64, node: Option<&str>) -> String {
+    let what = match (label.is_empty(), total > 0) {
         (true, true) => format!("Rendering step {step}/{total}"),
         (true, false) => "Working".to_string(),
         (false, true) => format!("{label} {step}/{total}"),
         (false, false) => label.to_string(),
+    };
+    match node {
+        Some(node) => format!("{what} on {node}"),
+        None => what,
     }
 }
 
@@ -2688,7 +2703,7 @@ impl LLMGuiApp {
                         }
                     }
                 }
-                TaskResult::MediaProgress(label, step, total) => {
+                TaskResult::MediaProgress(label, step, total, node) => {
                     // Only meaningful while a generation is in flight;
                     // late events after completion are ignored.
                     if self.media.is_generating {
@@ -2696,7 +2711,8 @@ impl LLMGuiApp {
                         // freezing it at the last step of the previous phase, which
                         // read as progress that had stalled.
                         self.media.progress = (total > 0).then_some((step, total));
-                        self.media.status = media_progress_status(&label, step, total);
+                        self.media.status =
+                            media_progress_status(&label, step, total, node.as_deref());
                     }
                 }
                 TaskResult::MediaVoicesFetched(voices) => {
@@ -3857,10 +3873,11 @@ mod tests {
             "status": "loading", "phase": "load-model",
             "phase_label": "Loading the model", "step": 0, "total": 0, "elapsed_ms": 0
         });
-        let (label, step, total) = progress_from_event(&ev);
+        let (label, step, total, node) = progress_from_event(&ev);
         assert_eq!((step, total), (0, 0));
+        assert_eq!(node, None);
         assert_eq!(
-            media_progress_status(&label, step, total),
+            media_progress_status(&label, step, total, None),
             "Loading the model"
         );
     }
@@ -3872,9 +3889,9 @@ mod tests {
             "phase_label": "Synthesising the speech", "step": 1, "total": 2,
             "elapsed_ms": 965
         });
-        let (label, step, total) = progress_from_event(&ev);
+        let (label, step, total, _) = progress_from_event(&ev);
         assert_eq!(
-            media_progress_status(&label, step, total),
+            media_progress_status(&label, step, total, None),
             "Synthesising the speech 1/2"
         );
     }
@@ -3884,15 +3901,35 @@ mod tests {
         // The label is the server's, not a table here: a phase added there must read
         // correctly without a GUI change.
         let ev = json!({"status": "loading", "phase": "warm-cache", "step": 3, "total": 9});
-        let (label, step, total) = progress_from_event(&ev);
+        let (label, step, total, _) = progress_from_event(&ev);
         // No phase_label on this one - the raw phase name stands in rather than nothing.
-        assert_eq!(media_progress_status(&label, step, total), "warm-cache 3/9");
+        assert_eq!(
+            media_progress_status(&label, step, total, None),
+            "warm-cache 3/9"
+        );
+    }
+
+    #[test]
+    fn a_render_handed_over_says_which_node_has_it() {
+        // Sent to one node, rendered by another: the events name the one that renders.
+        let ev = json!({
+            "status": "rendering", "phase": "denoise", "phase_label": "Denoising",
+            "step": 17, "total": 40, "elapsed_ms": 9000, "node": "desktop"
+        });
+        let (label, step, total, node) = progress_from_event(&ev);
+        assert_eq!(
+            media_progress_status(&label, step, total, node.as_deref()),
+            "Denoising 17/40 on desktop"
+        );
+        // A server that runs alone says null, and the status says nothing of where.
+        let alone = json!({"status": "rendering", "phase": "denoise", "step": 1, "total": 4, "node": null});
+        assert_eq!(progress_from_event(&alone).3, None);
     }
 
     #[test]
     fn an_event_with_no_label_at_all_still_reads_as_activity() {
-        assert_eq!(media_progress_status("", 4, 20), "Rendering step 4/20");
-        assert_eq!(media_progress_status("", 0, 0), "Working");
+        assert_eq!(media_progress_status("", 4, 20, None), "Rendering step 4/20");
+        assert_eq!(media_progress_status("", 0, 0, None), "Working");
     }
 
     #[test]
