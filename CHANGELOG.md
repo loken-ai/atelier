@@ -1,45 +1,40 @@
 # Changelog
 
-All notable changes to `atelier`. The format follows [Keep a Changelog](https://keepachangelog.com/1.1.0/).
+All notable changes to atelier. The format follows [Keep a Changelog](https://keepachangelog.com/1.1.0/).
 
 ## [Unreleased]
 
 ### Added
 
-- Up on the first line of the chat input and Down on the last recall the previous and next
-  prompt, as in a shell; Ctrl+Up and Ctrl+Down recall from anywhere in the text.
+- Chat: Up and Down at the input edges recall the previous and next prompt; Ctrl+Up and Ctrl+Down from anywhere.
+- Models: the picker opens in a popup of its own.
+- Studio: the status names which node renders.
+- Docs: the chat's Auto mode is documented.
+- CI: a workflow with a dependency audit.
 
 ### Fixed
 
-- An audio output that fails is closed and the device opened again, instead of logging a
-  line on every period and never playing again.
+- Audio: a failed output is closed and reopened, instead of logging every period and never playing again.
+- Build: clean build and lint without audio output.
+- Audio: PCM samples are read as fixed-size chunks.
 
 ### Changed
 
-- One visual grammar, shared with the phonix plugins: a palette of two skins built on three
-  surface depths (a raised plate, a flat panel, a sunk well) with the light coming from above
-  in both; one accent; a type scale of five sizes; section panels with a striped title;
-  chrome rows of pinned height; labels in capitals, values in monospace cells of fixed width;
-  lamps for state, with the word beside them. Nothing moves under the pointer.
-- The chat is rows in a well, the Studio is section panels in two columns with every
-  description on hover, the model list and the log are lines with a stripe, the terminal is
-  a screen. The colour relations of both skins are pinned by tests.
-- Documentation screenshots for the model list and the server log.
+- Theme: one visual grammar, two skins on three surface depths, one accent, five type sizes.
+- Theme: chat as rows in a well, Studio two columns, terminal a screen; skin colours pinned by tests.
+- Docs: screenshots for the model list and the server log.
+- Docs: examples use documentation addresses and the current project name.
+- Docs: each screenshot sits with the section that explains it.
 
 ## [0.1.0]
 
 ### Added
 
-- Chat with streaming, image attachments for vision models, and speech input.
-- Media Studio for image, image editing, audio, speech, video and transcription. Each kind
-  owns its parameters, so switching kinds keeps the tweaks made to the others.
-- A viewer with fullscreen and zoom, and a strip of earlier generations that survives a new
-  run.
-- Hardware and server views: per-device topology, what is loaded where, and the server log.
-- In-process audio output (`native-audio`, on by default), so the transport behaves the same
-  on every platform.
-- Video that decodes as it plays, keeping the packets and producing pictures around the
-  playhead.
-- A cost estimate shown next to the button that starts a render.
-- Light and dark themes, with muted text pinned against the WCAG AA contrast floor on both
-  background and surface, in both, by test.
+- Chat: streaming, image attachments for vision models, and speech input.
+- Studio: image, editing, audio, speech, video and transcription, each kind keeping its own parameters.
+- Viewer: fullscreen and zoom, and a strip of earlier generations that survives a new run.
+- Views: hardware and server, per-device topology, what is loaded where, and the server log.
+- Audio: in-process output (native-audio, on by default), so the transport is the same on every platform.
+- Video: decodes as it plays, keeping packets and producing pictures around the playhead.
+- Studio: a cost estimate shown next to the button that starts a render.
+- Theme: light and dark, muted text pinned against the WCAG AA contrast floor on both, by test.
